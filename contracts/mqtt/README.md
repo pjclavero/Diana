@@ -109,13 +109,41 @@ Todo comando lleva:
 - `command_id` (UUID) — idempotencia de la orden.
 - `issued_at_ms` (epoch UTC del emisor).
 - `expires_in_ms` (por defecto 5000).
-- `nonce` monotónico por emisor.
+- `nonce` monotónico por emisor, **persistido en NVS**.
 
 Un módulo **descarta** un comando si:
 
 1. `command_id` ya fue ejecutado (caché de los últimos 128), o
-2. `nonce` ≤ último nonce aceptado de ese emisor (protección de reenvío, dosier §23.3), o
-3. han pasado más de `expires_in_ms` desde la recepción del canal.
+2. `nonce` ≤ último nonce aceptado de ese emisor, persistido entre reinicios
+   (protección de reproducción, dosier §23.3), o
+3. han pasado más de `expires_in_ms` **desde `issued_at_ms`**.
+
+La regla 3 se mide contra la marca del emisor, **no contra la recepción**. Medida desde la
+recepción, el plazo se reiniciaría en cada reentrega de QoS 1 y no protegería contra nada.
+
+La regla 2 exige persistencia: una caché en RAM se pierde al reiniciar y reabre la ventana
+de reproducción. Es la misma razón por la que `local_sequence` vive en NVS.
+
+### Techo para acciones críticas
+
+`expires_in_ms` admite hasta 600 000 ms para operaciones largas como OTA. Ese plazo es
+inaceptable para acciones que alteran el estado del módulo: un `reboot` capturado y
+reinyectado ocho minutos después seguiría siendo válido.
+
+Para `reboot`, `set_maintenance` y `start_calibration` el receptor rechaza cualquier
+`expires_in_ms` **superior a 15 000 ms**, con motivo declarado en `last_command.detail`.
+El esquema no puede expresarlo por acción sin duplicar el enum, así que es una regla del
+receptor, verificable en sus pruebas.
+
+### Módulo sin hora sincronizada
+
+La regla 3 exige hora de pared. Un módulo que no haya sincronizado reloj **acepta** el
+comando —rechazarlo lo dejaría inoperante— y se apoya en el nonce persistido como defensa
+principal. En ese caso **declara** que no ha verificado la caducidad en
+`last_command.detail`, y lo contabiliza aparte. No se finge una comprobación no realizada.
+
+Consecuencia operativa: **una instalación sin NTP no tiene protección por caducidad**, sólo
+por nonce. El servidor de hora debe ser local (el propio backend); Diana opera sin Internet.
 
 El resultado se reporta en `module/…/status` con `last_command`.
 
