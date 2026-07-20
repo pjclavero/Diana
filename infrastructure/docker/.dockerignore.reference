@@ -1,0 +1,39 @@
+# ==============================================================================
+# Diana · .dockerignore de referencia
+# ==============================================================================
+# Cada contexto de build (server/backend, server/frontend, server/worker,
+# simulators/target-module) debe incluir su propio `.dockerignore`. Ese
+# fichero pertenece al paquete dueño de ese directorio (WP-02/WP-03/WP-05),
+# no a WP-01. Esta copia es sólo una referencia/plantilla de mínimos para que
+# esos equipos no publiquen secretos ni artefactos pesados dentro de la
+# imagen. Cópiala y ajústala en tu contexto de build si te resulta útil.
+# ==============================================================================
+
+# VCS
+.git
+.gitignore
+
+# Node
+node_modules
+npm-debug.log
+dist
+build
+coverage
+.npm
+
+# Entorno y secretos
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Documentación y tests pesados que no hacen falta en la imagen final
+*.md
+tests/
+docs/
+
+# Utillaje editor
+.vscode
+.idea
+*.log

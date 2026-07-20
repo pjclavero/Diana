@@ -1,0 +1,60 @@
+# ==============================================================================
+# Diana · ACL de Mosquitto
+# ==============================================================================
+# Implementa EXACTAMENTE contracts/mqtt/README.md sección 8 "Seguridad":
+#
+#   - Mosquitto sin acceso anónimo (ver mosquitto.conf: allow_anonymous false).
+#   - Un usuario por módulo (`module-{module_id}`), generado con
+#     ./generate-users.sh (mosquitto_passwd, sin contraseñas embebidas aquí).
+#   - Cada módulo ESCRIBE sólo bajo targets/v1/module/{su_id}/#.
+#   - Cada módulo LEE sólo: .../command, .../config/desired, .../ota
+#     y targets/v1/system/+/game/state.
+#   - El backend es el ÚNICO con permiso de ESCRITURA sobre system/# y
+#     sobre .../config/desired (de cualquier módulo).
+#
+# Requisito operativo para que las reglas `pattern %c` de abajo sean válidas:
+# el firmware/simulador DEBE conectar con MQTT client_id == module_id (el
+# mismo identificador que aparece en el topic), y el nombre de usuario
+# mosquitto (module-{module_id}) NUNCA debe usarse como module_id de otro
+# módulo real (evita colisión de patrón). "backend" y "system" quedan
+# reservados y no deben usarse como module_id.
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Backend: único cliente con escritura sobre system/# y sobre config/desired
+# de cualquier módulo. Lectura total: es el consumidor/agregador de todo el
+# árbol de tópicos (presence, status, telemetry, hit, diagnostic, game/event...).
+# Usuario definido por MQTT_BACKEND_USERNAME en .env (por defecto "backend").
+# ------------------------------------------------------------------------------
+user backend
+topic read #
+topic write targets/v1/system/#
+topic write targets/v1/module/+/config/desired
+
+# ------------------------------------------------------------------------------
+# Módulos: reglas genéricas aplicadas a CUALQUIER cliente autenticado, usando
+# el patrón %c (client_id de la conexión MQTT, que debe coincidir con el
+# module_id). No se listan usuarios individuales aquí: cada módulo nuevo sólo
+# necesita usuario+contraseña vía generate-users.sh, la ACL ya le aplica.
+#
+# Escritura: todo el subárbol propio (presence, status, telemetry,
+# config/reported, hit, diagnostic, y también config/desired/command/ota bajo
+# su propio %c, tal y como especifica la sección 8 literalmente al decir
+# "escribe sólo bajo .../#" sin excepción explícita dentro de su propio árbol).
+# ------------------------------------------------------------------------------
+pattern write targets/v1/module/%c/#
+
+# Lectura: únicamente los 4 tópicos que la sección 8 autoriza.
+pattern read targets/v1/module/%c/command
+pattern read targets/v1/module/%c/config/desired
+pattern read targets/v1/module/%c/ota
+pattern read targets/v1/system/+/game/state
+
+# ------------------------------------------------------------------------------
+# Healthcheck: usuario de sólo prueba de conectividad usado por el healthcheck
+# de Docker del propio contenedor mosquitto (ver compose.yml). Vive fuera del
+# espacio de nombres targets/v1 y no tiene ningún permiso sobre él. Generar
+# con: infrastructure/mosquitto/generate-users.sh healthcheck
+# ------------------------------------------------------------------------------
+user healthcheck
+topic readwrite _health/probe
