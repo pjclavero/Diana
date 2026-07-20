@@ -76,16 +76,24 @@ Ninguno se borra con `make down` / `docker compose down` (sin `-v`).
 
 ## Seguridad de red y MQTT
 
-- Mosquitto sin acceso anónimo, ACL estricta por módulo — ver
-  `infrastructure/mosquitto/README` (más abajo) y
-  `contracts/mqtt/README.md` sección 8.
-- El backend es el único cliente con escritura sobre `system/#` y
-  `.../config/desired`.
+- Mosquitto sin acceso anónimo, ACL estricta y tópico a tópico por módulo
+  (no un comodín sobre todo el subárbol) — ver los comentarios de
+  `infrastructure/mosquitto/acl` y `contracts/mqtt/README.md` sección 8.
+- El backend es el único cliente con escritura sobre `system/#`,
+  `.../config/desired` y `.../ota`. El coordinador (rol PRINCIPAL) tiene,
+  además, escritura sobre `module/+/command` y `system/…/game/*` mediante
+  una entrada de ACL específica por `module_id` (ver plantilla comentada en
+  `infrastructure/mosquitto/acl`, sección "Coordinador").
 - Ningún secreto vive en este repositorio: `.env`, `infrastructure/mosquitto/passwd`
   y `infrastructure/mosquitto/acl`-derivados de contraseñas están en
   `.gitignore`. Genera credenciales reales con
   `infrastructure/mosquitto/generate-users.sh` (ver `.env.example` para la
   lista completa de variables y cómo generarlas).
+- `infrastructure/mosquitto/test-acl.sh` verifica la ACL contra un broker
+  real (anónimo rechazado, aislamiento entre módulos, sólo-lectura de
+  `config/desired`/`command`/`ota`). Esta máquina no tiene un broker Mosquitto
+  vivo; lo ejecuta WP-08 en la VM, o WP-11 como parte de la calidad
+  independiente.
 
 ## Procedimiento de actualización (con backup previo y rollback)
 

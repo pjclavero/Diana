@@ -1,27 +1,33 @@
 # ==============================================================================
 # Diana · ACL de Mosquitto
 # ==============================================================================
-# Implementa EXACTAMENTE contracts/mqtt/README.md sección 8 "Seguridad":
+# Implementa EXACTAMENTE contracts/mqtt/README.md sección 8 "Seguridad"
+# (versión corregida: la ACL de un módulo se enumera TÓPICO A TÓPICO, no como
+# un comodín de escritura sobre module/{su_id}/#; ese comodín permitiría a un
+# módulo comprometido escribirse su propio config/desired o publicar en su
+# canal ota, que deben ser sólo-lectura para el módulo).
 #
 #   - Mosquitto sin acceso anónimo (ver mosquitto.conf: allow_anonymous false).
 #   - Un usuario por módulo (`module-{module_id}`), generado con
 #     ./generate-users.sh (mosquitto_passwd, sin contraseñas embebidas aquí).
-#   - Cada módulo ESCRIBE sólo bajo targets/v1/module/{su_id}/#.
-#   - Cada módulo LEE sólo: .../command, .../config/desired, .../ota
-#     y targets/v1/system/+/game/state.
-#   - El backend es el ÚNICO con permiso de ESCRITURA sobre system/# y
-#     sobre .../config/desired (de cualquier módulo).
+#   - El client_id MQTT de un módulo DEBE ser igual a su module_id, sin
+#     prefijo (exigido por el contrato, sección 8). La ACL se apoya en esa
+#     igualdad mediante el patrón %c para acotar cada módulo a su propio
+#     subárbol sin necesidad de un usuario/ACL distinto por módulo.
+#   - El backend es el ÚNICO con permiso de escritura sobre system/#,
+#     .../config/desired y .../ota.
+#   - El coordinador (el módulo con rol PRINCIPAL) puede además escribir
+#     module/+/command y system/…/game/* — ver bloque "Coordinador" más abajo,
+#     que requiere una entrada específica por module_id (rol dinámico, no
+#     expresable con el patrón genérico %c).
 #
-# Requisito operativo para que las reglas `pattern %c` de abajo sean válidas:
-# el firmware/simulador DEBE conectar con MQTT client_id == module_id (el
-# mismo identificador que aparece en el topic), y el nombre de usuario
-# mosquitto (module-{module_id}) NUNCA debe usarse como module_id de otro
-# módulo real (evita colisión de patrón). "backend" y "system" quedan
-# reservados y no deben usarse como module_id.
+# Requisito operativo: "backend", "system" y "healthcheck" quedan reservados
+# y no deben usarse como module_id de un módulo real (evita colisión de
+# patrón/usuario).
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# Backend: único cliente con escritura sobre system/# y sobre config/desired
+# Backend: único cliente con escritura sobre system/#, config/desired y ota
 # de cualquier módulo. Lectura total: es el consumidor/agregador de todo el
 # árbol de tópicos (presence, status, telemetry, hit, diagnostic, game/event...).
 # Usuario definido por MQTT_BACKEND_USERNAME en .env (por defecto "backend").
@@ -30,6 +36,7 @@ user backend
 topic read #
 topic write targets/v1/system/#
 topic write targets/v1/module/+/config/desired
+topic write targets/v1/module/+/ota
 
 # ------------------------------------------------------------------------------
 # Módulos: reglas genéricas aplicadas a CUALQUIER cliente autenticado, usando
@@ -37,18 +44,47 @@ topic write targets/v1/module/+/config/desired
 # module_id). No se listan usuarios individuales aquí: cada módulo nuevo sólo
 # necesita usuario+contraseña vía generate-users.sh, la ACL ya le aplica.
 #
-# Escritura: todo el subárbol propio (presence, status, telemetry,
-# config/reported, hit, diagnostic, y también config/desired/command/ota bajo
-# su propio %c, tal y como especifica la sección 8 literalmente al decir
-# "escribe sólo bajo .../#" sin excepción explícita dentro de su propio árbol).
+# Escritura: únicamente los 6 tópicos que el módulo tiene permiso de publicar
+# (contracts/mqtt/README.md sección 8, tabla). NO se concede un comodín sobre
+# todo el subárbol.
 # ------------------------------------------------------------------------------
-pattern write targets/v1/module/%c/#
+pattern write targets/v1/module/%c/presence
+pattern write targets/v1/module/%c/status
+pattern write targets/v1/module/%c/telemetry
+pattern write targets/v1/module/%c/hit
+pattern write targets/v1/module/%c/diagnostic
+pattern write targets/v1/module/%c/config/reported
 
-# Lectura: únicamente los 4 tópicos que la sección 8 autoriza.
+# Lectura: únicamente los 4 tópicos que la sección 8 autoriza. command,
+# config/desired y ota son SÓLO LECTURA para el módulo (los escribe el
+# backend, ver arriba); un módulo nunca tiene permiso de escritura sobre
+# ellos, ni siquiera sobre su propia copia.
 pattern read targets/v1/module/%c/command
 pattern read targets/v1/module/%c/config/desired
 pattern read targets/v1/module/%c/ota
 pattern read targets/v1/system/+/game/state
+
+# ------------------------------------------------------------------------------
+# Coordinador (rol PRINCIPAL, dosier §6.3): además de los permisos genéricos
+# de módulo de arriba, el módulo elegido como coordinador puede escribir
+# module/+/command (para reenviar órdenes a los satélites) y system/…/game/*
+# (game/state y game/event, de los que es autoridad — contracts/mqtt/README.md
+# sección 2). Esto NO es expresable con el patrón %c genérico porque el rol
+# de coordinador es una asignación de despliegue (puede recaer en cualquier
+# módulo físico y puede cambiar), no una propiedad derivable del client_id.
+#
+# Para activarlo: duplica y descomenta este bloque sustituyendo
+# <coordinator_module_id> por el module_id real configurado como PRINCIPAL,
+# y recarga mosquitto (o reinicia el contenedor) tras el cambio. Si el rol de
+# coordinador se reasigna a otro módulo, retira el bloque del module_id
+# anterior y añade el del nuevo, o el módulo saliente conservará permisos que
+# ya no le corresponden.
+#
+# user module-<coordinator_module_id>
+# topic write targets/v1/module/+/command
+# topic write targets/v1/system/+/game/state
+# topic write targets/v1/system/+/game/event
+# ------------------------------------------------------------------------------
 
 # ------------------------------------------------------------------------------
 # Healthcheck: usuario de sólo prueba de conectividad usado por el healthcheck

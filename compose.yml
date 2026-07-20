@@ -84,9 +84,11 @@ services:
     networks:
       - edge
     healthcheck:
-      # Asume un endpoint /health servido por el propio contenedor frontend
-      # (convención NestJS/estático habitual). Si server/frontend usa una ruta
-      # distinta, WP-03 debe ajustar este test o exponer /health.
+      # ⚠ COORDINACIÓN PENDIENTE (WP-03): se asume un endpoint /health servido
+      # por el propio contenedor frontend (convención habitual de servidor
+      # estático/Vite). No confirmado contra código real de server/frontend
+      # (el contexto está vacío al escribir esto). Si WP-03 usa otra ruta o
+      # puerto, este test debe ajustarse antes de integrar las ramas.
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8081/health || exit 1"]
       interval: 15s
       timeout: 5s
@@ -134,9 +136,11 @@ services:
       - edge
       - internal
     healthcheck:
-      # Asume un endpoint /health en el backend NestJS (convención habitual,
-      # p.ej. @nestjs/terminus). WP-02 debe exponerlo tal cual o avisar si
-      # cambia de ruta/puerto.
+      # ⚠ COORDINACIÓN PENDIENTE (WP-02): se asume un endpoint /health en el
+      # backend NestJS (convención habitual, p.ej. @nestjs/terminus), puerto
+      # BACKEND_PORT. No confirmado contra código real (server/backend está
+      # vacío al escribir esto). WP-02 debe exponerlo tal cual o avisar si
+      # cambia de ruta/puerto; verificar al integrar las ramas.
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:${BACKEND_PORT:-3000}/health || exit 1"]
       interval: 15s
       timeout: 5s
@@ -180,9 +184,11 @@ services:
     networks:
       - internal
     healthcheck:
-      # Asume que el worker expone una sonda de vida mínima en un puerto HTTP
-      # interno (o bien un fichero de heartbeat). Placeholder documentado:
-      # WP-02 debe confirmar el mecanismo real y ajustar este test.
+      # ⚠ COORDINACIÓN PENDIENTE (WP-02): se asume que el worker expone una
+      # sonda de vida mínima en un puerto HTTP interno (o un fichero de
+      # heartbeat). Es un placeholder sin confirmar contra código real
+      # (server/worker está vacío al escribir esto). WP-02 debe confirmar el
+      # mecanismo real y ajustar este test antes de integrar las ramas.
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3100/health || exit 1"]
       interval: 20s
       timeout: 5s
