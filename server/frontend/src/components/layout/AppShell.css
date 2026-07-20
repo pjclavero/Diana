@@ -1,0 +1,129 @@
+.skip-link {
+  position: absolute;
+  left: -999px;
+  top: 0;
+  background: #111827;
+  color: #fff;
+  padding: 8px 16px;
+  z-index: 100;
+}
+.skip-link:focus {
+  left: 8px;
+  top: 8px;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    "topbar topbar"
+    "nav content";
+}
+
+.app-shell__topbar {
+  grid-area: topbar;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: #111827;
+  color: #fff;
+}
+
+.app-shell__menu-btn {
+  display: none;
+  background: transparent;
+  border: 1px solid #4b5563;
+  color: #fff;
+  padding: 0.4rem 0.7rem;
+  border-radius: 6px;
+}
+
+.app-shell__title {
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.app-shell__nav {
+  grid-area: nav;
+  background: #1f2937;
+  color: #e5e7eb;
+  padding: 1rem 0.75rem;
+  overflow-y: auto;
+}
+
+.app-shell__nav-section h2 {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #9ca3af;
+  margin: 1rem 0 0.35rem;
+}
+
+.app-shell__nav-section ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.app-shell__nav-section a {
+  display: block;
+  padding: 0.5rem 0.6rem;
+  border-radius: 6px;
+  color: #e5e7eb;
+  text-decoration: none;
+}
+
+.app-shell__nav-section a:hover,
+.app-shell__nav-section a:focus-visible {
+  background: #374151;
+}
+
+.app-shell__nav-section a.active {
+  background: #2563eb;
+  color: #fff;
+  font-weight: 600;
+}
+
+.app-shell__content {
+  grid-area: content;
+  padding: 1.25rem;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "topbar"
+      "content";
+  }
+  .app-shell__menu-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .app-shell__nav {
+    position: fixed;
+    inset: 48px 0 0 0;
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform 0.2s ease, visibility 0.2s ease;
+    z-index: 50;
+    height: calc(100vh - 48px);
+  }
+  .app-shell__nav--open {
+    transform: translateX(0);
+    visibility: visible;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .app-shell__content {
+    background: #0b1120;
+    color: #e5e7eb;
+  }
+}
