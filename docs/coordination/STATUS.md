@@ -14,7 +14,7 @@ Actualizado por el organizador. Última actualización: 2026-07-20.
 | WP-07 | CI y pruebas | Sonnet | `feat/wp07-ci` | `PENDING` | — |
 | WP-08 | VM 109 y despliegue | Sonnet | `feat/wp08-vm-deploy` | `IN_PROGRESS` | VM creada, red y SSH verificados; aprovisionando |
 | WP-09 | Documentación `s9-server` | Sonnet | `feat/diana-vm109` | `PENDING` | Espera datos finales de WP-08 |
-| WP-10 | Seguridad | Opus | informe | `PENDING` | — |
+| WP-10 | Seguridad | Opus | informe | `READY_FOR_REVIEW` | `docs/security/threat-model.md` + 6 ficheros en `evidence/` (salida real de comandos). 18 hallazgos F-01..F-18: 1 crítico (F-02, ACL MQTT por `client_id`), 6 altos, 10 medios, 1 bajo. **8 de ellos NO reproducidos en ejecución**: el stack no arranca (F-13, faltan `Dockerfile` de backend y worker) |
 | WP-11 | Calidad | Opus | informe | `PENDING` | — |
 | WP-12 | Supervisión | Opus | dictamen | `IN_PROGRESS` | Ola 0 dictaminada `NO CONFORME`; re-revisión pendiente |
 
@@ -29,6 +29,14 @@ Actualizado por el organizador. Última actualización: 2026-07-20.
 | X-05 | Healthchecks del stack asumen `/health` en backend, worker y frontend | WP-01 | WP-01, WP-02, WP-03 | Abierto, se verifica al integrar |
 | X-06 | El contrato REST que asume el panel no está negociado con el backend | WP-03 | WP-02, WP-03 | Abierto, se cierra con la OpenAPI real |
 | X-07 | E2E de Playwright no ejecutables aquí (sin Chromium ni privilegios) | WP-03 | WP-07, WP-11 | Abierto, se ejecutan en CI o en la VM |
+| X-08 | **F-02** · La ACL de MQTT autoriza por `%c` (`client_id`, que elige el cliente) y no por `%u`: unas credenciales cualesquiera de módulo bastan para publicar `hit`, `status`, `telemetry`… en nombre de **cualquier otro módulo**. Falta `use_username_as_clientid true` | WP-10 | WP-01, WP-04, WP-05 | Abierto. **Crítico.** Reproducción exacta en `findings.md`; no ejecutada contra la VM |
+| X-09 | **F-04** · El contrato de variables de entorno entre `compose.yml` y el backend está roto en 5 variables: `JWT_SECRET` no se pasa, `CORS_ORIGIN` vs `CORS_ORIGINS`, `MQTT_HOST/PORT` vs `MQTT_URL`, `SESSION_SECRET` sin uso, `DIANA_ADMIN_*` sin pasar. Con `NODE_ENV=production` el backend **no arranca**; sin él, firma los JWT con `'desarrollo-inseguro-cambiar'` | WP-10 | WP-01, WP-02, WP-08 | Abierto. Alto |
+| X-10 | **F-13** · Faltan los `Dockerfile` de `server/backend` y `server/worker`; 4 de los 6 servicios que construyen imagen apuntan a un contexto sin `Dockerfile`. Impide ejecutar el stack y, por tanto, verificar F-02, F-03, F-05, F-06, F-08, F-09, F-11 y F-12 | WP-10 | WP-01, WP-02, **WP-08 (en curso)** | En curso en WP-08. WP-10 debe reabrir la verificación cuando arranque |
+| X-11 | **F-07** · Sin TLS en ninguna capa: el bloque HTTPS de `nginx.conf:136-144` y el listener MQTT 8883 de `mosquitto.conf:57-61` están comentados. JWT, contraseñas de login y credenciales MQTT viajan en claro por la LAN | WP-10 | WP-01, WP-04, WP-08 | Abierto. Alto |
+| X-12 | **F-08** · El proxy reescribe `/api/` → `/` pese al prefijo global `api` del backend, y `/ws/` no casa con el namespace `/live`. Al corregir el enrutado hay que verificar que `/api/auth/login` sigue en la zona `api_auth` (5 r/s) y no cae en la general (20 r/s) | WP-10 | WP-01, WP-02, WP-07 | Abierto. Riesgo de perder el control antifuerza bruta al arreglar el fallo funcional |
+| X-13 | **F-14 + F-02** · Sin secure boot ni cifrado de flash, el acceso físico a un módulo entrega sus credenciales MQTT. Aceptar ese riesgo por custodia física **sólo es defendible si F-02 se cierra antes**: mientras la ACL autorice por `client_id`, comprometer un módulo compromete a todos | WP-10 | WP-01, WP-04, WP-06 | Abierto. Decisión conjunta pendiente |
+| X-14 | **F-16** · El firmware acepta comandos sin verificar caducidad cuando no hay hora (`clock_ok == false`). Requiere (a) rechazar los comandos con consecuencia física en ese estado y (b) confirmar que existe servidor NTP alcanzable en la LAN, que no tiene salida a Internet | WP-10 | WP-04, WP-08 | Abierto |
+| X-15 | **F-17** · `npm audit`: 23 vulnerabilidades en backend (12 altas), 3 altas en worker (`effect`/`prisma`, la única con camino de ejecución en producción), 5 en simuladores (1 crítica sin identificar: falta `npm audit --json`) | WP-10 | WP-02, WP-05, WP-07 | Abierto |
 
 ## Bitácora
 
