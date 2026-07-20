@@ -1,0 +1,42 @@
+{
+  "name": "desconexion-reconexion-cola",
+  "description": "Un satélite pierde la conexión (dispara el Last Will), sigue detectando impactos y los encola localmente; al reconectar, los reenvía con replay=true (dosier §14.3).",
+  "systemId": "system-a",
+  "seed": 5005,
+  "moduleCount": 2,
+  "principal": "module-01",
+  "steps": [
+    {
+      "type": "boot_all"
+    },
+    {
+      "type": "kill_connection",
+      "moduleId": "module-02"
+    },
+    {
+      "type": "settle"
+    },
+    {
+      "type": "hit",
+      "moduleId": "module-02",
+      "targetIndex": 4,
+      "suppressCrosstalk": true
+    },
+    {
+      "type": "hit",
+      "moduleId": "module-02",
+      "targetIndex": 7,
+      "suppressCrosstalk": true
+    },
+    {
+      "type": "settle"
+    },
+    {
+      "type": "reconnect",
+      "moduleId": "module-02"
+    },
+    {
+      "type": "settle"
+    }
+  ]
+}

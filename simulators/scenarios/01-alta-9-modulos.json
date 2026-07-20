@@ -1,0 +1,16 @@
+{
+  "name": "alta-9-modulos",
+  "description": "Arranque y registro de 9 módulos (matriz 3x3 completa, 81 dianas). Verifica presencia, estado ready y elección de principal.",
+  "systemId": "system-a",
+  "seed": 1001,
+  "moduleCount": 9,
+  "principal": "module-05",
+  "steps": [
+    {
+      "type": "boot_all"
+    },
+    {
+      "type": "settle"
+    }
+  ]
+}
