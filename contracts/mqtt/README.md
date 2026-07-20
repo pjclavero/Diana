@@ -115,8 +115,28 @@ El resultado se reporta en `module/…/status` con `last_command`.
 ## 8. Seguridad
 
 - Mosquitto sin acceso anónimo. Un usuario por módulo (`module-{module_id}`).
-- ACL: cada módulo escribe sólo bajo `targets/v1/module/{su_id}/#` y lee sólo `…/command`, `…/config/desired`, `…/ota` y `targets/v1/system/+/game/state`.
-- El backend es el único con permiso de escritura sobre `system/#` y `…/config/desired`.
+- El `client_id` MQTT de un módulo **debe ser igual a su `module_id`**, sin prefijo. La ACL
+  se apoya en esa igualdad (patrón `%c`) para acotar cada módulo a su propio subárbol.
+- ACL de un módulo, enumerada tópico a tópico (no basta con `module/{su_id}/#`):
+
+  | Tópico | Permiso |
+  |---|---|
+  | `targets/v1/module/{su_id}/presence` | escritura |
+  | `targets/v1/module/{su_id}/status` | escritura |
+  | `targets/v1/module/{su_id}/telemetry` | escritura |
+  | `targets/v1/module/{su_id}/hit` | escritura |
+  | `targets/v1/module/{su_id}/diagnostic` | escritura |
+  | `targets/v1/module/{su_id}/config/reported` | escritura |
+  | `targets/v1/module/{su_id}/command` | **sólo lectura** |
+  | `targets/v1/module/{su_id}/config/desired` | **sólo lectura** |
+  | `targets/v1/module/{su_id}/ota` | **sólo lectura** |
+  | `targets/v1/system/+/game/state` | sólo lectura |
+
+- Un comodín de escritura sobre `module/{su_id}/#` sería **incorrecto**: permitiría a un
+  módulo comprometido escribir su propio `config/desired` y auto-otorgarse configuración,
+  o publicar en su canal `ota`. La escritura se concede tópico a tópico.
+- El backend es el único con permiso de escritura sobre `system/#`, `…/config/desired`
+  y `…/ota`. El coordinador puede escribir `module/+/command` y `system/…/game/*`.
 - Ver `infrastructure/mosquitto/acl` y `docs/security/threat-model.md`.
 
 ## 9. Validación

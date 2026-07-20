@@ -15,6 +15,8 @@ varias áreas tienen además un ADR en `docs/adr/`.
 | D-08 | 2026-07-20 | `boot_id` en cada arranque además de `local_sequence` | `local_sequence` sola no distingue un reflasheo de un reinicio | ADR-0003 |
 | D-09 | 2026-07-20 | Semilla explícita (`seed`) en los comandos de partida | Sin ella los modos aleatorios no son reproducibles en E2E | — |
 | D-10 | 2026-07-20 | El coordinador calcula `elapsed_us`, no el backend | El dosier §14.2 fija al coordinador como autoridad temporal | ADR-0002 |
+| D-11 | 2026-07-20 | VM 109 con `memory=4096` y `balloon=1024` | **Decisión del usuario.** El nodo está sobrecomprometido (37,8 GB asignados sobre 32 GB, 4,4 GB de swap en uso); el balloon cumple los 4 GB del encargo sin degradar producción | ADR-0005 |
+| D-12 | 2026-07-20 | La VM 109 se añade al job `backup-daily-critical` existente | Integración con la política de copias vigente; cambio aditivo con copia previa del fichero | ADR-0005 |
 
 ## Correcciones al dosier
 
