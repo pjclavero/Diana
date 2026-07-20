@@ -1,0 +1,143 @@
+{
+  "name": "partida-aleatoria-completa",
+  "description": "Partida completa en modo 'random' sobre 3 módulos (27 dianas) con autojugador, hasta agotar todas las dianas.",
+  "systemId": "system-a",
+  "seed": 2002,
+  "moduleCount": 3,
+  "principal": "module-01",
+  "steps": [
+    {
+      "type": "boot_all"
+    },
+    {
+      "type": "start_autoplayer",
+      "reactionMs": [
+        50,
+        200
+      ]
+    },
+    {
+      "type": "arm_and_start",
+      "game": {
+        "gameId": "3d4c1a10-2222-4222-8222-2222222220a1",
+        "roundId": "3d4c1a10-2222-4222-8222-2222222220a2",
+        "mode": "random",
+        "targets": [
+          {
+            "module_id": "module-01",
+            "target_index": 1
+          },
+          {
+            "module_id": "module-01",
+            "target_index": 2
+          },
+          {
+            "module_id": "module-01",
+            "target_index": 3
+          },
+          {
+            "module_id": "module-01",
+            "target_index": 4
+          },
+          {
+            "module_id": "module-01",
+            "target_index": 5
+          },
+          {
+            "module_id": "module-01",
+            "target_index": 6
+          },
+          {
+            "module_id": "module-01",
+            "target_index": 7
+          },
+          {
+            "module_id": "module-01",
+            "target_index": 8
+          },
+          {
+            "module_id": "module-01",
+            "target_index": 9
+          },
+          {
+            "module_id": "module-02",
+            "target_index": 1
+          },
+          {
+            "module_id": "module-02",
+            "target_index": 2
+          },
+          {
+            "module_id": "module-02",
+            "target_index": 3
+          },
+          {
+            "module_id": "module-02",
+            "target_index": 4
+          },
+          {
+            "module_id": "module-02",
+            "target_index": 5
+          },
+          {
+            "module_id": "module-02",
+            "target_index": 6
+          },
+          {
+            "module_id": "module-02",
+            "target_index": 7
+          },
+          {
+            "module_id": "module-02",
+            "target_index": 8
+          },
+          {
+            "module_id": "module-02",
+            "target_index": 9
+          },
+          {
+            "module_id": "module-03",
+            "target_index": 1
+          },
+          {
+            "module_id": "module-03",
+            "target_index": 2
+          },
+          {
+            "module_id": "module-03",
+            "target_index": 3
+          },
+          {
+            "module_id": "module-03",
+            "target_index": 4
+          },
+          {
+            "module_id": "module-03",
+            "target_index": 5
+          },
+          {
+            "module_id": "module-03",
+            "target_index": 6
+          },
+          {
+            "module_id": "module-03",
+            "target_index": 7
+          },
+          {
+            "module_id": "module-03",
+            "target_index": 8
+          },
+          {
+            "module_id": "module-03",
+            "target_index": 9
+          }
+        ],
+        "seed": 77
+      }
+    },
+    {
+      "type": "settle",
+      "ticks": 2000
+    }
+  ]
+}

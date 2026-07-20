@@ -1,0 +1,49 @@
+{
+  "name": "penalizacion-impacto-incorrecto",
+  "description": "Impacto sobre una diana segura (azul) mientras otra está activa: debe clasificarse hit_on_safe y generar penalty_applied, sin puntuar ni finalizar la ronda.",
+  "systemId": "system-a",
+  "seed": 3003,
+  "moduleCount": 1,
+  "principal": "module-01",
+  "steps": [
+    {
+      "type": "boot_all"
+    },
+    {
+      "type": "arm_and_start",
+      "game": {
+        "gameId": "8b9a6a41-839c-49c5-bc35-6547795ff312",
+        "roundId": "6b7b0859-a95f-429b-bcfc-479728aab4b2",
+        "mode": "random",
+        "targets": [
+          {
+            "module_id": "module-01",
+            "target_index": 5
+          }
+        ],
+        "seed": 1
+      }
+    },
+    {
+      "type": "settle"
+    },
+    {
+      "type": "hit",
+      "moduleId": "module-01",
+      "targetIndex": 2,
+      "suppressCrosstalk": true
+    },
+    {
+      "type": "settle"
+    },
+    {
+      "type": "hit",
+      "moduleId": "module-01",
+      "targetIndex": 5,
+      "suppressCrosstalk": true
+    },
+    {
+      "type": "settle"
+    }
+  ]
+}

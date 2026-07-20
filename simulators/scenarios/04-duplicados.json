@@ -1,0 +1,51 @@
+{
+  "name": "duplicados",
+  "description": "Reenvío del mismo event_id (QoS 1 at-least-once, ADR-0003): el coordinador debe deduplicar y no contar el impacto dos veces.",
+  "systemId": "system-a",
+  "seed": 4004,
+  "moduleCount": 1,
+  "principal": "module-01",
+  "steps": [
+    {
+      "type": "boot_all"
+    },
+    {
+      "type": "arm_and_start",
+      "game": {
+        "gameId": "70adc91d-25a2-4d18-a72b-cef153833a6f",
+        "roundId": "41c566db-f1c3-44db-b363-895dc42eccc3",
+        "mode": "random",
+        "targets": [
+          {
+            "module_id": "module-01",
+            "target_index": 3
+          }
+        ],
+        "seed": 5
+      }
+    },
+    {
+      "type": "settle"
+    },
+    {
+      "type": "hit",
+      "moduleId": "module-01",
+      "targetIndex": 3,
+      "suppressCrosstalk": true
+    },
+    {
+      "type": "settle"
+    },
+    {
+      "type": "duplicate_last_hit",
+      "moduleId": "module-01"
+    },
+    {
+      "type": "duplicate_last_hit",
+      "moduleId": "module-01"
+    },
+    {
+      "type": "settle"
+    }
+  ]
+}
