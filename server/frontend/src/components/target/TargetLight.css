@@ -1,0 +1,113 @@
+.target-light {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: 2px solid rgba(0, 0, 0, 0.35);
+  border-radius: 10px;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  font-family: inherit;
+  cursor: default;
+  min-width: 0;
+}
+
+button.target-light {
+  cursor: pointer;
+}
+
+button.target-light:focus-visible {
+  outline: 3px solid #fef08a;
+  outline-offset: 2px;
+}
+
+.target-light--sm {
+  width: 42px;
+  height: 42px;
+  font-size: 0.55rem;
+}
+
+.target-light--md {
+  width: 64px;
+  height: 64px;
+  font-size: 0.65rem;
+}
+
+.target-light--lg {
+  width: 96px;
+  height: 96px;
+  font-size: 0.8rem;
+}
+
+.target-light__symbol {
+  font-size: 1.3em;
+  line-height: 1;
+}
+
+.target-light__index {
+  font-size: 0.75em;
+  opacity: 0.85;
+}
+
+.target-light__label {
+  font-size: 0.72em;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.05;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pattern-slow-pulse {
+    animation: dt-pulse 1.6s ease-in-out infinite;
+  }
+  .pattern-flash-fade {
+    animation: dt-flash-fade 1.2s ease-out 1;
+  }
+  .pattern-countdown {
+    animation: dt-pulse 0.8s ease-in-out infinite;
+  }
+  .pattern-fast-blink {
+    animation: dt-blink 0.35s steps(1) infinite;
+  }
+  .pattern-alternate {
+    animation: dt-alternate 0.5s steps(1) infinite;
+  }
+  .pattern-sweep {
+    animation: dt-sweep 1.4s linear infinite;
+  }
+}
+
+.pattern-dim-solid {
+  opacity: 0.6;
+}
+
+.pattern-hatched {
+  background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.25) 0 6px, transparent 6px 12px);
+}
+
+@keyframes dt-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@keyframes dt-flash-fade {
+  0% { opacity: 1; box-shadow: 0 0 0 8px rgba(22, 163, 74, 0.5); }
+  100% { opacity: 1; box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); }
+}
+
+@keyframes dt-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0.25; }
+}
+
+@keyframes dt-alternate {
+  0%, 49% { filter: brightness(1); }
+  50%, 100% { filter: brightness(2.2) saturate(0); }
+}
+
+@keyframes dt-sweep {
+  0% { filter: hue-rotate(0deg) brightness(1); }
+  50% { filter: hue-rotate(30deg) brightness(1.4); }
+  100% { filter: hue-rotate(0deg) brightness(1); }
+}

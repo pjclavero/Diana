@@ -1,0 +1,117 @@
+.topology-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.topology-cell {
+  border: 2px dashed #9ca3af;
+  border-radius: 10px;
+  min-height: 170px;
+  padding: 0.5rem;
+  background: #f9fafb;
+}
+
+.topology-cell--duplicate {
+  border-color: #dc2626;
+  background: #fef2f2;
+}
+
+.topology-cell--locked {
+  border-style: solid;
+}
+
+.topology-cell__coord {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.topology-cell__empty {
+  color: #9ca3af;
+  font-style: italic;
+  margin-top: 2rem;
+  text-align: center;
+}
+
+.topology-chip {
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 0.5rem;
+  cursor: grab;
+}
+
+.topology-chip__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin: 0.4rem 0;
+}
+
+.topology-chip__actions button {
+  font-size: 0.72rem;
+  padding: 0.25rem 0.4rem;
+}
+
+.topology-move {
+  display: block;
+  font-size: 0.72rem;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 0.68rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  margin-left: 0.35rem;
+}
+
+.badge--error {
+  background: #dc2626;
+  color: #fff;
+}
+
+.badge--warn {
+  background: #ca8a04;
+  color: #fff;
+}
+
+.topology-warning {
+  color: #991b1b;
+  font-weight: 600;
+}
+
+.topology-pool {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.topology-pool li {
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 0.4rem 0.7rem;
+  cursor: grab;
+  background: #fff;
+}
+
+@media (max-width: 700px) {
+  .topology-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .topology-cell {
+    background: #111827;
+    border-color: #4b5563;
+  }
+  .topology-chip,
+  .topology-pool li {
+    background: #1f2937;
+    border-color: #374151;
+    color: #e5e7eb;
+  }
+}
