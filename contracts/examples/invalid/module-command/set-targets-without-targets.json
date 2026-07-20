@@ -1,0 +1,13 @@
+{
+  "_schema": "module-command.schema.json",
+  "_reason": "action=set_targets sin params.targets. El contrato debe validar los parámetros por acción (hallazgo H-07): un comando sin dianas no es ejecutable.",
+  "schema_version": 1,
+  "command_id": "ad506082-af5e-4d6c-bf71-5e6f70819203",
+  "issued_at_ms": 1784500001000,
+  "expires_in_ms": 2000,
+  "nonce": 43,
+  "issuer": "coordinator",
+  "module_id": "module-03",
+  "action": "set_targets",
+  "params": {"duration_ms": 1000}
+}

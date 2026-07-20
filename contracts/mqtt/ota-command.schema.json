@@ -6,10 +6,10 @@
   "type": "object",
   "properties": {
     "schema_version": {
-      "$ref": "common.schema.json#/$defs/schemaVersion"
+      "$ref": "../schemas/common.schema.json#/$defs/schemaVersion"
     },
     "command_id": {
-      "$ref": "common.schema.json#/$defs/uuid"
+      "$ref": "../schemas/common.schema.json#/$defs/uuid"
     },
     "issued_at_ms": {
       "type": "integer",
@@ -18,11 +18,13 @@
     "expires_in_ms": {
       "type": "integer",
       "minimum": 100,
-      "maximum": 600000
+      "maximum": 600000,
+      "description": "Vida del comando en milisegundos, medida desde issued_at_ms del emisor y NO desde la recepción: si se midiera desde la recepción, el temporizador se reiniciaría en cada reentrega de QoS 1 y no protegería contra reproducción (dosier 23.3). El receptor descarta el comando si (ahora - issued_at_ms) > expires_in_ms."
     },
     "nonce": {
       "type": "integer",
-      "minimum": 0
+      "minimum": 0,
+      "description": "Contador monotónico por emisor. El receptor lo PERSISTE en NVS, igual que local_sequence, y rechaza todo nonce menor o igual al último aceptado. Sin persistencia, un reinicio reabriría la ventana de reproducción."
     },
     "issuer": {
       "type": "string",
@@ -33,7 +35,7 @@
       ]
     },
     "module_id": {
-      "$ref": "common.schema.json#/$defs/identifier"
+      "$ref": "../schemas/common.schema.json#/$defs/identifier"
     },
     "action": {
       "type": "string",
@@ -48,7 +50,7 @@
       "type": "object",
       "properties": {
         "version": {
-          "$ref": "common.schema.json#/$defs/semver"
+          "$ref": "../schemas/common.schema.json#/$defs/semver"
         },
         "url": {
           "type": "string",
@@ -60,7 +62,7 @@
           "minimum": 1
         },
         "sha256": {
-          "$ref": "common.schema.json#/$defs/sha256"
+          "$ref": "../schemas/common.schema.json#/$defs/sha256"
         },
         "signature": {
           "type": "string",

@@ -22,7 +22,7 @@ de validación física, y queda explícitamente marcado como *pendiente de banco
 
 | Ola | Contenido | Estado |
 |---|---|---|
-| 0 | Auditoría, esqueleto de repositorio, contratos MQTT v1, ADR, coordinación | `APPROVED` |
+| 0 | Auditoría, esqueleto de repositorio, contratos MQTT v1, ADR, coordinación | ver `STATUS.md` |
 | 1 | Infra Docker, backend, frontend, firmware, simulador, KiCad, CI | ver `STATUS.md` |
 | 2 | Integración MQTT ↔ backend ↔ panel, modos de juego, estadísticas | ver `STATUS.md` |
 | 3 | Creación de VM 109, endurecimiento, despliegue real, documentación `s9-server` | ver `STATUS.md` |
