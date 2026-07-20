@@ -43,7 +43,8 @@ fp-info-cache
 data/
 backups/*.sql
 backups/*.dump
-exports/
+/exports/
+server/backend/data/exports/
 
 # Herramientas
 .DS_Store
