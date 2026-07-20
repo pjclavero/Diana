@@ -1,0 +1,2 @@
+# Salida de la compilacion de pruebas en host (make -C firmware test).
+build-host/

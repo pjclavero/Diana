@@ -1,0 +1,23 @@
+# Tabla de particiones Diana · flash de 8 MB
+#
+# Requisitos (dosier 8.2, 13.5, 13.6):
+#   - particiones OTA A/B del mismo tamano, para actualizar y hacer rollback
+#   - NVS para identidad, credenciales, configuracion y calibracion
+#   - almacenamiento propio para la cola de eventos no confirmados, SEPARADO de
+#     la NVS de configuracion: una cola llena no debe poder dejar sin espacio a
+#     la identidad del modulo
+#   - otadata para que el bootloader sepa que particion arrancar
+#
+# nvs_key es para cifrado de NVS (credenciales MQTT). Se reserva ya aunque el
+# cifrado se active en una fase posterior: anadirla despues obligaria a
+# reparticionar en campo.
+#
+# Nombre,   Tipo, Subtipo,  Offset,   Tamano,  Flags
+nvs,        data, nvs,      0x9000,   0x6000,
+otadata,    data, ota,      0xf000,   0x2000,
+phy_init,   data, phy,      0x11000,  0x1000,
+nvs_key,    data, nvs_keys, 0x12000,  0x1000,  encrypted
+ota_0,      app,  ota_0,    0x20000,  0x300000,
+ota_1,      app,  ota_1,    0x320000, 0x300000,
+evtqueue,   data, fat,      0x620000, 0x180000,
+coredump,   data, coredump, 0x7A0000, 0x40000,
