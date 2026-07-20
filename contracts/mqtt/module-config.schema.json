@@ -6,10 +6,10 @@
   "type": "object",
   "properties": {
     "schema_version": {
-      "$ref": "common.schema.json#/$defs/schemaVersion"
+      "$ref": "../schemas/common.schema.json#/$defs/schemaVersion"
     },
     "module_id": {
-      "$ref": "common.schema.json#/$defs/identifier"
+      "$ref": "../schemas/common.schema.json#/$defs/identifier"
     },
     "config_version": {
       "type": "integer",
@@ -19,7 +19,7 @@
     "system_id": {
       "oneOf": [
         {
-          "$ref": "common.schema.json#/$defs/identifier"
+          "$ref": "../schemas/common.schema.json#/$defs/identifier"
         },
         {
           "type": "null"
@@ -29,7 +29,7 @@
     "position": {
       "oneOf": [
         {
-          "$ref": "common.schema.json#/$defs/modulePosition"
+          "$ref": "../schemas/common.schema.json#/$defs/modulePosition"
         },
         {
           "type": "null"
@@ -37,7 +37,7 @@
       ]
     },
     "rotation": {
-      "$ref": "common.schema.json#/$defs/moduleRotation"
+      "$ref": "../schemas/common.schema.json#/$defs/moduleRotation"
     },
     "friendly_name": {
       "type": "string",
@@ -99,7 +99,7 @@
         "type": "object",
         "properties": {
           "target_index": {
-            "$ref": "common.schema.json#/$defs/targetIndex"
+            "$ref": "../schemas/common.schema.json#/$defs/targetIndex"
           },
           "threshold": {
             "type": "integer",

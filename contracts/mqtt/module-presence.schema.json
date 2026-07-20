@@ -6,10 +6,10 @@
   "type": "object",
   "properties": {
     "schema_version": {
-      "$ref": "common.schema.json#/$defs/schemaVersion"
+      "$ref": "../schemas/common.schema.json#/$defs/schemaVersion"
     },
     "module_id": {
-      "$ref": "common.schema.json#/$defs/identifier"
+      "$ref": "../schemas/common.schema.json#/$defs/identifier"
     },
     "online": {
       "type": "boolean"
@@ -25,7 +25,7 @@
     "boot_id": {
       "oneOf": [
         {
-          "$ref": "common.schema.json#/$defs/uuid"
+          "$ref": "../schemas/common.schema.json#/$defs/uuid"
         },
         {
           "type": "null"
@@ -35,7 +35,7 @@
     "firmware_version": {
       "oneOf": [
         {
-          "$ref": "common.schema.json#/$defs/semver"
+          "$ref": "../schemas/common.schema.json#/$defs/semver"
         },
         {
           "type": "null"

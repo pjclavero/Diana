@@ -2,23 +2,23 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://diana.seccionnueve/contracts/mqtt/hit-event.schema.json",
   "title": "Evento de impacto",
-  "description": "targets/v1/module/{module_id}/hit · QoS 1 · retain=false. Publicado por el módulo que detecta el impacto. Reenviado por el coordinador con el bloque 'coordinator' relleno.",
+  "description": "targets/v1/module/{module_id}/hit · QoS 1 · retain=false. Lo publica SIEMPRE el módulo que detecta el impacto, y sólo él: ningún módulo escribe nunca en el tópico de otro. El bloque 'coordinator' (T2) sólo viene relleno cuando el detector es el propio coordinador; para los impactos de un satélite, T2 viaja en game-event (kind=target_hit) enlazado por hit_event_id.",
   "type": "object",
   "properties": {
-    "schema_version": { "$ref": "common.schema.json#/$defs/schemaVersion" },
-    "event_id": { "$ref": "common.schema.json#/$defs/eventId" },
-    "system_id": { "$ref": "common.schema.json#/$defs/identifier" },
-    "module_id": { "$ref": "common.schema.json#/$defs/identifier" },
-    "game_id": { "$ref": "common.schema.json#/$defs/uuid" },
-    "round_id": { "$ref": "common.schema.json#/$defs/uuid" },
-    "target_index": { "$ref": "common.schema.json#/$defs/targetIndex" },
-    "module_position": { "$ref": "common.schema.json#/$defs/modulePosition" },
-    "module_rotation": { "$ref": "common.schema.json#/$defs/moduleRotation" },
+    "schema_version": { "$ref": "../schemas/common.schema.json#/$defs/schemaVersion" },
+    "event_id": { "$ref": "../schemas/common.schema.json#/$defs/eventId" },
+    "system_id": { "$ref": "../schemas/common.schema.json#/$defs/identifier" },
+    "module_id": { "$ref": "../schemas/common.schema.json#/$defs/identifier" },
+    "game_id": { "$ref": "../schemas/common.schema.json#/$defs/uuid" },
+    "round_id": { "$ref": "../schemas/common.schema.json#/$defs/uuid" },
+    "target_index": { "$ref": "../schemas/common.schema.json#/$defs/targetIndex" },
+    "module_position": { "$ref": "../schemas/common.schema.json#/$defs/modulePosition" },
+    "module_rotation": { "$ref": "../schemas/common.schema.json#/$defs/moduleRotation" },
     "local_sequence": { "type": "integer", "minimum": 0 },
-    "device": { "$ref": "common.schema.json#/$defs/deviceTime" },
+    "device": { "$ref": "../schemas/common.schema.json#/$defs/deviceTime" },
     "coordinator": {
       "oneOf": [
-        { "$ref": "common.schema.json#/$defs/coordinatorTime" },
+        { "$ref": "../schemas/common.schema.json#/$defs/coordinatorTime" },
         { "type": "null" }
       ],
       "description": "null cuando el satélite publica el evento crudo; relleno por el principal al consolidar."
@@ -38,7 +38,7 @@
       "items": {
         "type": "object",
         "properties": {
-          "target_index": { "$ref": "common.schema.json#/$defs/targetIndex" },
+          "target_index": { "$ref": "../schemas/common.schema.json#/$defs/targetIndex" },
           "amplitude": { "type": "integer", "minimum": 0, "maximum": 65535 },
           "delta_us": { "type": "integer" }
         },
@@ -46,14 +46,14 @@
         "additionalProperties": false
       }
     },
-    "target_state_before": { "$ref": "common.schema.json#/$defs/targetState" },
-    "classification": { "$ref": "common.schema.json#/$defs/hitClassification" },
+    "target_state_before": { "$ref": "../schemas/common.schema.json#/$defs/targetState" },
+    "classification": { "$ref": "../schemas/common.schema.json#/$defs/hitClassification" },
     "classification_reason": {
       "type": "string",
       "maxLength": 120,
       "description": "Motivo legible de la clasificación. Obligatorio si classification no es valid_hit."
     },
-    "firmware_version": { "$ref": "common.schema.json#/$defs/semver" },
+    "firmware_version": { "$ref": "../schemas/common.schema.json#/$defs/semver" },
     "replay": {
       "type": "boolean",
       "default": false,

@@ -4,7 +4,7 @@ Actualizado por el organizador. Última actualización: 2026-07-20.
 
 | WP | Paquete | Modelo | Rama | Estado | Revisión |
 |---|---|---|---|---|---|
-| WP-00 | Fundación y contratos | Opus | `develop` | `APPROVED` | Supervisor |
+| WP-00 | Fundación y contratos | Opus | `develop` | `CHANGES_REQUESTED` → correcciones aplicadas, en re-revisión | Supervisor: NO CONFORME (H-01..H-07) |
 | WP-01 | Infraestructura Docker | Sonnet | `feat/wp01-infra` | `PENDING` | — |
 | WP-02 | Backend y motor de partidas | Opus | `feat/wp02-backend` | `PENDING` | — |
 | WP-03 | Panel web | Sonnet | `feat/wp03-frontend` | `PENDING` | — |

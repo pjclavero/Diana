@@ -75,6 +75,19 @@ Se distinguen **cuatro** marcas y ninguna sustituye a otra:
 | T3 · recepción MQTT | backend, al llegar el mensaje | columna BD, nunca en el payload | `received_at` |
 | T4 · persistencia | backend, al confirmar el INSERT | columna BD | `persisted_at` |
 
+### Por dónde viaja T2
+
+Ningún módulo escribe jamás en el tópico de otro módulo. El coordinador, por tanto, **no**
+reescribe el `hit` de un satélite:
+
+| Quién detecta | Dónde va T1 | Dónde va T2 |
+|---|---|---|
+| Un satélite | `module/{satelite}/hit` con `coordinator: null` | `system/{sys}/game/event` con `kind=target_hit`, enlazado por `hit_event_id` |
+| El propio coordinador | `module/{coordinador}/hit` con el bloque `coordinator` relleno | el mismo mensaje |
+
+El backend une ambos por `event_id`. Así la ACL puede ser estricta —cada módulo escribe
+sólo lo suyo— sin dejar inejecutable la consolidación temporal.
+
 Reglas:
 
 - `elapsed_us` (tiempo de juego mostrado al jugador) lo calcula **el coordinador** a partir de T1, no el backend.
