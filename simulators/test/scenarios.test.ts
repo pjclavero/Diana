@@ -91,12 +91,14 @@ describe('escenarios declarativos obligatorios (encargo WP-05, entregable 2)', (
 
     const history = sim.getBroker()!.history();
     const hits = history.filter((m) => m.topic === 'targets/v1/module/module-02/hit');
-    // 2 impactos crudos reenviados desde la cola (replay=true) + 2 versiones
-    // consolidadas por el coordinador (module-01 es principal en este escenario).
+    // H-01: ningún módulo escribe en el tópico de otro. module-02 es satélite
+    // (module-01 es el principal), así que el coordinador NUNCA vuelve a
+    // publicar en module/module-02/hit: sólo están los 2 crudos que el propio
+    // satélite reenvía desde su cola (replay=true), con coordinator=null.
     const raw = hits.filter((m) => (m.payload as HitEventPayload).coordinator === null);
     const consolidated = hits.filter((m) => (m.payload as HitEventPayload).coordinator !== null);
     expect(raw).toHaveLength(2);
-    expect(consolidated).toHaveLength(2);
+    expect(consolidated).toHaveLength(0);
     const replayed = raw.filter((m) => (m.payload as HitEventPayload).replay === true);
     expect(replayed).toHaveLength(2);
 
@@ -109,18 +111,37 @@ describe('escenarios declarativos obligatorios (encargo WP-05, entregable 2)', (
     expect(sawLwt).toBe(true);
   });
 
-  it('06: conflicto de dos módulos PRINCIPAL — visible en module-status (role=principal duplicado)', async () => {
+  it('06: conflicto de dos módulos PRINCIPAL — provocado de forma determinista, no sólo declarado', async () => {
     const scenario = loadScenario(scenarioPath('06-conflicto-doble-principal.json'));
     const sim = await runScenario(scenario, { clock: new VirtualClock() });
 
+    // 1. Observable en module-status: dos módulos con role=principal a la vez.
     const retained = sim.getBroker()!.retainedSnapshot();
     const principals = ['module-01', 'module-02', 'module-03']
       .map((id) => retained.get(`targets/v1/module/${id}/status`))
       .filter((m) => (m as { payload: { role: string } } | undefined)?.payload.role === 'principal');
-
     expect(principals).toHaveLength(2);
-    // El simulador no decide el conflicto (es responsabilidad del backend, WP-02):
-    // aquí sólo comprobamos que la situación es observable por los dos módulos.
-    expect(sim.coordinator).toBeNull();
+
+    // 2. Provocado de verdad: hay DOS coordinadores vivos a la vez.
+    expect(sim.coordinators.size).toBe(2);
+    expect(sim.coordinators.has('module-01')).toBe(true);
+    expect(sim.coordinators.has('module-02')).toBe(true);
+
+    // 3. Ambos recibieron el mismo arm_game/start_game (mismo game_id/round_id)
+    // y ambos publicaron game/state para él con SU PROPIO coordinator_module_id:
+    // exactamente la señal inequívoca que un backend debe usar para emitir
+    // conflicts:['dual_principal'] y negarse a arrancar. El simulador no lo
+    // arbitra: dos autoridades de partida han actuado a la vez.
+    const history = sim.getBroker()!.history();
+    const gameStates = history
+      .filter((m) => m.topic === 'targets/v1/system/system-a/game/state')
+      .map((m) => m.payload as { game_id: string; coordinator_module_id: string });
+
+    const coordinatorIdsForThisGame = new Set(
+      gameStates
+        .filter((s) => s.game_id === '6d0a1c6e-8b0e-4b0e-9b0e-6d0a1c6e8b01')
+        .map((s) => s.coordinator_module_id),
+    );
+    expect(coordinatorIdsForThisGame).toEqual(new Set(['module-01', 'module-02']));
   });
 });

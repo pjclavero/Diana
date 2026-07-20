@@ -25,8 +25,18 @@ export type ScenarioStep =
   | { type: 'boot_all' }
   | { type: 'wait_ms'; ms: number }
   | { type: 'set_selector'; moduleId: string; selector: SelectorPosition }
+  /**
+   * A diferencia de "set_selector" (sólo mueve el selector físico), esto
+   * crea de verdad un Coordinator para ese módulo. Llamarlo dos veces con
+   * módulos distintos crea DOS coordinadores independientes a la vez — es
+   * el mecanismo para provocar el conflicto de doble PRINCIPAL de forma
+   * determinista (ver escenario 06).
+   */
+  | { type: 'set_principal'; moduleId: string }
   | { type: 'start_autoplayer'; reactionMs?: [number, number]; errorRate?: number }
   | { type: 'arm_and_start'; game: ScenarioGame }
+  /** Emitido por un actor "operator-cli"/backend, nunca por un módulo (H-06/H-01). */
+  | { type: 'system_command'; action: string; game?: ScenarioGame }
   | { type: 'pause_game' }
   | { type: 'resume_game' }
   | { type: 'abort_game' }

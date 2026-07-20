@@ -31,7 +31,7 @@ npm install
 ## Pruebas
 
 ```bash
-npm test          # vitest run — suite completa (28 tests)
+npm test          # vitest run — suite completa (33 tests)
 npm run typecheck # tsc --noEmit sobre src/ y test/
 npm run build     # compila a dist/ (usado también por el Dockerfile)
 ```
@@ -51,6 +51,13 @@ La suite cubre:
   (`test/module-lifecycle.test.ts`).
 - **Clasificación de impactos** (`test/classify.test.ts`) y **adyacencia
   3×3** (`test/topology.test.ts`).
+- **H-01 — ningún módulo escribe en el tópico de otro**
+  (`test/h01-topic-ownership.test.ts`): un hit de satélite nunca se
+  republica en su propio tópico (T2 viaja sólo por `game/event`); un hit
+  del propio coordinador sí puede llevar el bloque `coordinator` en su
+  propio tópico.
+- **H-05/H-06 — caducidad de comandos, nonce persistente, client_id
+  == module_id** (`test/h05-h06-hardening.test.ts`).
 
 ## CLI
 
@@ -104,13 +111,28 @@ src/
 └── simulation.ts                Orquesta N módulos + coordinador + autojugador.
 ```
 
-### Modelo temporal (ADR-0002)
+### Modelo temporal (ADR-0002) y H-01 (dictamen NO CONFORME → corregido)
 
 El simulador respeta la separación de las cuatro marcas: `device.event_us`
-(T1) lo pone el módulo que detecta; `coordinator.elapsed_us` (T2) lo calcula
-**el principal**, nunca el backend; T3/T4 no existen en este paquete (son del
-backend). El campo `seed` de `system-command.game` fija además la semilla de
-la ronda para que el orden de activación en modo `random` sea reproducible.
+(T1) lo pone el módulo que detecta; T2 lo calcula **el principal**, nunca el
+backend; T3/T4 no existen en este paquete (son del backend). El campo `seed`
+de `system-command.game` fija además la semilla de la ronda para que el
+orden de activación en modo `random` sea reproducible.
+
+El supervisor auditó los contratos y encontró que el diseño original violaba
+la ACL: el coordinador no puede tener permiso de escritura sobre
+`module/{otro}/hit` ("ningún módulo escribe jamás en el tópico de otro").
+Corregido (`Coordinator.consolidateHit` en `src/domain/coordinator.ts`):
+
+- **Detector = un satélite**: su hit-event original (`coordinator: null`) es
+  la ÚNICA publicación en `module/{satelite}/hit`. T2 viaja exclusivamente
+  por `system/{sys}/game/event` (`kind=target_hit` o `penalty_applied`) con
+  `hit_event_id` enlazando al hit original — el backend une por `event_id`.
+- **Detector = el propio coordinador**: sí puede volver a publicar en su
+  PROPIO tópico (`module/{coordinador}/hit`) con el bloque `coordinator`
+  relleno, porque es el mismo módulo/cliente MQTT.
+
+Ver `test/h01-topic-ownership.test.ts` y `contracts/mqtt/README.md §4`.
 
 ### Idempotencia (ADR-0003)
 
@@ -132,12 +154,21 @@ Los 6 exigidos por el encargo, todos con `seed` fija y ejecutados en
 | `03-penalizacion-impacto-incorrecto.json` | Impacto sobre diana segura (azul) → `hit_on_safe` → `penalty_applied`, no puntúa. |
 | `04-duplicados.json` | Mismo `event_id` reenviado 2 veces → el coordinador lo cuenta como duplicado, no como 3 impactos. |
 | `05-desconexion-reconexion-cola.json` | Satélite pierde conexión (dispara el LWT), encola impactos, reconecta y los reenvía con `replay=true`. |
-| `06-conflicto-doble-principal.json` | Dos módulos con selector forzado a PRINCIPAL: el simulador expone el conflicto en `module-status` (dos `role=principal`); resolverlo es responsabilidad del backend (WP-02). |
+| `06-conflicto-doble-principal.json` | Dos módulos con selector forzado a PRINCIPAL: el escenario **provoca** el conflicto (no sólo lo declara) creando dos `Coordinator` independientes y enviándoles el mismo `arm_game`+`start_game`; ambos publican `game/state` para el mismo `game_id` con su propio `coordinator_module_id`, la señal inequívoca que el backend (WP-02) debe leer para emitir `conflicts:["dual_principal"]` y bloquear el inicio. |
 
 Formato (ver `src/scenarios/schema.ts`): `systemId`, `seed`, `modules` o
 `moduleCount`, `principal` opcional, y una lista de `steps` (`boot_all`,
-`arm_and_start`, `hit`, `kill_connection`, `reconnect`, `reboot`,
-`low_voltage`, `duplicate_last_hit`, `settle`, …). Soporta JSON y YAML.
+`set_principal`, `system_command`, `arm_and_start`, `hit`,
+`kill_connection`, `reconnect`, `reboot`, `low_voltage`,
+`duplicate_last_hit`, `settle`, …). Soporta JSON y YAML.
+
+`set_principal` (distinto de `set_selector`) crea de verdad un
+`Coordinator` para ese módulo; llamarlo con dos módulos deja a
+`Simulation.coordinators` con dos entradas vivas a la vez — así se
+construye el escenario 06. `system_command` publica un `system-command`
+real como lo haría el backend/operator-cli (cliente MQTT dedicado
+`operator-cli`, nunca el de un módulo), y si hay varios coordinadores
+activos, todos lo reciben.
 
 ## Capacidades cubiertas frente al encargo
 
@@ -145,9 +176,11 @@ Formato (ver `src/scenarios/schema.ts`): `systemId`, `seed`, `modules` o
   del dosier §6.1).
 - Selector SATÉLITE/AUTO/PRINCIPAL (`ModuleSimulator.setSelector`,
   `setResolvedAutoRole` para AUTO).
-- El coordinador consolida: rellena `coordinator` en los hits de los
-  satélites (`coordinator=null` cuando el satélite publica el crudo);
-  `elapsed_us` lo calcula siempre el principal.
+- El coordinador consolida: `elapsed_us` (T2) lo calcula siempre el
+  principal a partir de T1. Desde H-01, sólo rellena `coordinator` en el
+  hit-event cuando el detector es su propio módulo; para satélites, T2 va
+  en `game/event` (ver más arriba). `coordinator=null` es el estado
+  permanente del hit-event de un satélite, no un valor transitorio.
 - Estados LED de las dianas reflejados en `module-status.targets[].state`.
 - Impactos válidos, sobre diana segura, ya alcanzada, fuera de orden
   (`strict_order`) y disparo anticipado (`countdown` → `early_shot`).
@@ -159,6 +192,30 @@ Formato (ver `src/scenarios/schema.ts`): `systemId`, `seed`, `modules` o
   `local_sequence` persistente), módulos con firmwares distintos.
 - Telemetría periódica (`publishTelemetry`).
 - Escenarios deterministas por semilla.
+
+### Resincronización con `develop` tras el dictamen NO CONFORME del supervisor
+
+- **H-01** (arriba): corregido, con test dedicado.
+- **H-02** — los `$ref` del contrato pasaron a `../schemas/common.schema.json#/...`.
+  `src/contracts/ajv.ts` se simplificó para registrar cada esquema
+  ÚNICAMENTE por su `$id` real (como `contracts/validate.py`), sin los
+  atajos de resolución del código anterior que el supervisor predijo que
+  fallarían.
+- **H-03** — el contrato recuperó los modos `memory` y `no_shoot`
+  (`GameMode` en `coordinator.ts`); el simulador no los rechaza por
+  esquema, pero no los implementa (se comportan como `sequence`). Pendiente
+  de verdad para cuando WP-05 aborde esos modos.
+- **H-05** — la caducidad de comandos ya se medía desde `issued_at_ms`, no
+  desde la recepción, y el nonce por emisor ya persistía a través de
+  `reboot()` (nunca se reiniciaba); ambos comportamientos ya eran correctos
+  y ahora tienen test explícito (`test/h05-h06-hardening.test.ts`).
+- **H-06** — `client_id` MQTT == `module_id`, sin prefijo: ya era así
+  (`Simulation.addModule` pasa `entry.moduleId` directo); documentado y
+  bloqueado con test en `mqttjsTransport.ts`.
+- **H-07** — `module-command` valida `params` por acción
+  (`set_targets`/`set_all_targets`/`identify`/`set_maintenance`); el único
+  emisor de comandos del simulador (`Coordinator.sendSetTargets`) ya
+  cumplía las reglas nuevas (`assertValid` antes de publicar lo confirma).
 
 ### Limitaciones conocidas (léase antes de dar esto por "completo")
 

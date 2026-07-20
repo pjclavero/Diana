@@ -1,41 +1,32 @@
 {
   "name": "conflicto-doble-principal",
-  "description": "Dos módulos con el selector físico forzado a PRINCIPAL (dosier §6.3): el simulador expone el conflicto vía module-status (role=principal por duplicado); resolverlo es responsabilidad del backend (WP-02), que no debe permitir iniciar partida en este estado.",
+  "description": "Dos módulos con el selector físico forzado a PRINCIPAL (dosier §6.3): cada uno actúa como coordinador por su cuenta, sin saber del otro. El escenario provoca el conflicto de forma determinista (no sólo lo describe): ambos reciben el mismo system-command 'arm_game'+'start_game' y ambos intentan gobernar la misma partida, dejando en el flujo de game/state dos coordinator_module_id distintos para el mismo game_id/round_id. El backend (WP-02) debe leer esto en module-status (dos role=principal) y bloquear el inicio con conflicts:['dual_principal']; el simulador no lo resuelve, sólo lo hace observable y reproducible.",
   "systemId": "system-a",
   "seed": 6006,
-  "moduleCount": 3,
   "modules": [
-    {
-      "moduleId": "module-01",
-      "selector": "PRINCIPAL",
-      "position": {
-        "x": -1,
-        "y": 0
-      }
-    },
-    {
-      "moduleId": "module-02",
-      "selector": "PRINCIPAL",
-      "position": {
-        "x": 0,
-        "y": 0
-      }
-    },
-    {
-      "moduleId": "module-03",
-      "selector": "SATELITE",
-      "position": {
-        "x": 1,
-        "y": 0
-      }
-    }
+    { "moduleId": "module-01", "selector": "PRINCIPAL", "position": { "x": -1, "y": 0 } },
+    { "moduleId": "module-02", "selector": "PRINCIPAL", "position": { "x": 0, "y": 0 } },
+    { "moduleId": "module-03", "selector": "SATELITE", "position": { "x": 1, "y": 0 } }
   ],
   "steps": [
+    { "type": "boot_all" },
+    { "type": "settle" },
+    { "type": "set_principal", "moduleId": "module-01" },
+    { "type": "set_principal", "moduleId": "module-02" },
+    { "type": "settle" },
     {
-      "type": "boot_all"
+      "type": "system_command",
+      "action": "arm_game",
+      "game": {
+        "gameId": "6d0a1c6e-8b0e-4b0e-9b0e-6d0a1c6e8b01",
+        "roundId": "6d0a1c6e-8b0e-4b0e-9b0e-6d0a1c6e8b02",
+        "mode": "random",
+        "targets": [{ "module_id": "module-03", "target_index": 5 }],
+        "seed": 1
+      }
     },
-    {
-      "type": "settle"
-    }
+    { "type": "settle" },
+    { "type": "system_command", "action": "start_game" },
+    { "type": "settle" }
   ]
 }

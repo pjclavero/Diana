@@ -1,4 +1,6 @@
 import type { Clock } from '../clock.js';
+import { seededUuid } from '../ids.js';
+import { Rng } from '../rng.js';
 import { Simulation, type SimulationOptions } from '../simulation.js';
 import type { Scenario, ScenarioStep } from './schema.js';
 
@@ -16,6 +18,16 @@ export async function runScenario(scenario: Scenario, opts: RunScenarioOptions):
     clock: opts.clock,
     mqtt: opts.mqtt,
   });
+  // Semilla propia (derivada, pero independiente de la de los módulos) para
+  // los identificadores sintéticos que el propio runner genera (p.ej.
+  // command_id de los pasos "system_command"): determinista igual que todo
+  // lo demás en el simulador.
+  const runnerRng = new Rng(scenario.seed).fork('scenario-runner');
+  // Contador simple, no basado en el reloj: dos pasos "system_command"
+  // seguidos con el reloj virtual sin avanzar (habitual en tests) no deben
+  // colisionar en el mismo nonce, o el segundo se rechazaría por
+  // "nonce <= último aceptado" (protección de reproducción, H-05).
+  const counters = { syscmdNonce: 1 };
 
   if (scenario.modules && scenario.modules.length > 0) {
     for (const m of scenario.modules) {
@@ -31,13 +43,19 @@ export async function runScenario(scenario: Scenario, opts: RunScenarioOptions):
   }
 
   for (const step of scenario.steps) {
-    await runStep(sim, step, scenario);
+    await runStep(sim, step, scenario, runnerRng, counters);
   }
 
   return sim;
 }
 
-async function runStep(sim: Simulation, step: ScenarioStep, scenario: Scenario): Promise<void> {
+async function runStep(
+  sim: Simulation,
+  step: ScenarioStep,
+  scenario: Scenario,
+  runnerRng: Rng,
+  counters: { syscmdNonce: number },
+): Promise<void> {
   switch (step.type) {
     case 'boot_all':
       await sim.bootAll();
@@ -51,6 +69,37 @@ async function runStep(sim: Simulation, step: ScenarioStep, scenario: Scenario):
     case 'set_selector': {
       const m = requireModule(sim, step.moduleId);
       m.setSelector(step.selector);
+      break;
+    }
+    case 'set_principal':
+      sim.setPrincipal(step.moduleId);
+      break;
+    case 'system_command': {
+      const commandId = seededUuid(runnerRng.fork(`syscmd-${step.action}-${sim.getClock().nowUs()}`));
+      const payload: Record<string, unknown> = {
+        schema_version: 1,
+        command_id: commandId,
+        issued_at_ms: Math.floor(sim.getClock().nowUs() / 1000),
+        expires_in_ms: 5000,
+        nonce: counters.syscmdNonce++,
+        issuer: 'backend',
+        system_id: scenario.systemId,
+        action: step.action,
+      };
+      if (step.game) {
+        payload.game = {
+          game_id: step.game.gameId,
+          round_id: step.game.roundId,
+          mode: step.game.mode,
+          targets: step.game.targets,
+          sequence: step.game.sequence ?? null,
+          penalty_ms: step.game.penaltyMs ?? 0,
+          strict_order: step.game.strictOrder ?? false,
+          reaction_delay_ms: step.game.reactionDelayMs ?? null,
+          seed: step.game.seed,
+        };
+      }
+      await sim.broadcastSystemCommand(payload);
       break;
     }
     case 'start_autoplayer':

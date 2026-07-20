@@ -61,8 +61,21 @@ export class Simulation {
 
   readonly modules = new Map<string, ModuleSimulator>();
   private readonly transports = new Map<string, Transport>();
+  /** Coordinador "activo" para la API de conveniencia (armAndStart, startAutoplayer, …). */
   coordinator: Coordinator | null = null;
+  /**
+   * TODOS los coordinadores vivos, indexados por moduleId. Normalmente
+   * tiene 0 ó 1 entradas. Puede tener 2+ deliberadamente para reproducir el
+   * conflicto de doble PRINCIPAL (dosier §6.3: "el sistema no permitirá
+   * iniciar una partida si detecta dos módulos forzados como principal") de
+   * forma determinista: cada módulo con el selector en PRINCIPAL actúa
+   * como autoridad de partida por su cuenta, sin saber del otro — que es
+   * exactamente la situación que el backend (WP-02) debe detectar y
+   * bloquear.
+   */
+  readonly coordinators = new Map<string, Coordinator>();
   autoplayer: Autoplayer | null = null;
+  private operatorTransport: Transport | null = null;
 
   private activeGameContext: { gameId?: string; roundId?: string } | undefined;
 
@@ -153,8 +166,29 @@ export class Simulation {
       rng: this.rootRng.fork('coordinator'),
     });
     for (const m of this.modules.values()) coordinator.registerModule(m);
-    this.coordinator = coordinator;
+    this.coordinators.set(moduleId, coordinator);
+    this.coordinator = coordinator; // "el más reciente", conveniencia para el caso de un solo principal
     return coordinator;
+  }
+
+  /**
+   * Publica un system-command tal como lo emitiría el backend/operator-cli
+   * (no un módulo): usa un cliente MQTT propio "operator-cli", nunca el de
+   * un módulo (coherente con H-06/H-01 — este actor no es un módulo y no
+   * escribe en ningún tópico de módulo). Si hay varios coordinadores
+   * activos (conflicto de doble PRINCIPAL), TODOS lo reciben, porque todos
+   * están suscritos a system/{sys}/command: exactamente el escenario que
+   * el backend real debe impedir antes de llegar aquí.
+   */
+  async broadcastSystemCommand(payload: Record<string, unknown>): Promise<void> {
+    if (!this.operatorTransport) {
+      this.operatorTransport = this.makeTransport('operator-cli');
+      await this.operatorTransport.connect();
+    }
+    await this.operatorTransport.publish(`targets/v1/system/${this.systemId}/command`, payload, {
+      qos: 1,
+      retain: false,
+    });
   }
 
   startAutoplayer(opts?: Partial<Omit<AutoplayerOptions, 'systemId' | 'transport' | 'modules' | 'clock' | 'rng'>>): Autoplayer {

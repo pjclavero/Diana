@@ -7,7 +7,20 @@ import type { ModuleSimulator } from './moduleSimulator.js';
 import { topics } from './topics.js';
 import type { HitEventPayload } from './types.js';
 
-export type GameMode = 'random' | 'sequence' | 'all_against_clock' | 'reaction';
+/**
+ * 'memory' y 'no_shoot' se añadieron al contrato (hallazgo H-03) como
+ * modos de partida futuros (dosier §16.5/§16.6). No se implementan aquí
+ * todavía: el motor los trata igual que 'sequence' (activa la primera
+ * diana pendiente en orden), lo que basta para que el simulador nunca los
+ * rechace por esquema. Implementarlos de verdad queda pendiente.
+ */
+export type GameMode =
+  | 'random'
+  | 'sequence'
+  | 'all_against_clock'
+  | 'reaction'
+  | 'memory'
+  | 'no_shoot';
 
 export interface GameTargetRef {
   module_id: string;
@@ -336,6 +349,21 @@ export class Coordinator {
     return this.consolidateHit(hit);
   }
 
+  /**
+   * H-01 (dictamen del supervisor, cerrado en contracts/mqtt/README.md §4
+   * "Por dónde viaja T2"): ningún módulo escribe jamás en el tópico de
+   * otro. El coordinador YA NO reescribe el `hit` de un satélite.
+   *
+   *   - Detector = un satélite: su hit-event original (coordinator=null)
+   *     es la única publicación en module/{satelite}/hit. T2 viaja sólo en
+   *     system/{sys}/game/event (kind=target_hit o penalty_applied) con
+   *     `hit_event_id` enlazando al hit original; el backend une por
+   *     event_id.
+   *   - Detector = el propio coordinador: SÍ puede volver a publicar en su
+   *     PROPIO tópico (module/{coordinador}/hit) con el bloque
+   *     `coordinator` relleno — mismo módulo, mismo cliente MQTT, no hay
+   *     violación de ACL.
+   */
   private async consolidateHit(hit: HitEventPayload): Promise<void> {
     const isDuplicate = this.seenEventIds.has(hit.event_id);
     if (isDuplicate) {
@@ -350,20 +378,22 @@ export class Coordinator {
     const roundStart = this.game?.roundStartDeviceUs ?? hit.device.event_us;
     const elapsedUs = Math.max(0, hit.device.event_us + offset - roundStart);
 
-    const consolidated: HitEventPayload = {
-      ...hit,
-      coordinator: {
-        recv_us: recvUs,
-        elapsed_us: elapsedUs,
-        clock_offset_us: offset,
-        offset_uncertainty_us: 50,
-      },
-    };
-    assertValid('hit-event.schema.json', consolidated);
-    await this.transport.publish(topics.moduleHit(hit.module_id), consolidated, {
-      qos: 1,
-      retain: false,
-    });
+    if (hit.module_id === this.coordinatorModuleId) {
+      const consolidated: HitEventPayload = {
+        ...hit,
+        coordinator: {
+          recv_us: recvUs,
+          elapsed_us: elapsedUs,
+          clock_offset_us: offset,
+          offset_uncertainty_us: 50,
+        },
+      };
+      assertValid('hit-event.schema.json', consolidated);
+      await this.transport.publish(topics.moduleHit(hit.module_id), consolidated, {
+        qos: 1,
+        retain: false,
+      });
+    }
 
     if (hit.classification === 'crosstalk_rejected') {
       return; // diagnóstico, no puntúa (README §2, hitClassification).
@@ -377,10 +407,13 @@ export class Coordinator {
         t.module_id === hit.module_id && t.target_index === hit.target_index;
       this.game.remaining = this.game.remaining.filter((t) => !isSame(t));
       this.game.active = this.game.active.filter((t) => !isSame(t));
-      await this.publishGameEvent('target_hit', hit.event_id, {
-        module_id: hit.module_id,
-        target_index: hit.target_index,
-      });
+      await this.publishGameEvent(
+        'target_hit',
+        hit.event_id,
+        { module_id: hit.module_id, target_index: hit.target_index },
+        undefined,
+        elapsedUs,
+      );
 
       if (this.game.remaining.length === 0) {
         await this.finishGame('round_finished');
@@ -401,6 +434,7 @@ export class Coordinator {
         hit.event_id,
         { module_id: hit.module_id, target_index: hit.target_index },
         hit.classification,
+        elapsedUs,
       );
       await this.publishGameState(this.game.phase);
     }
@@ -458,6 +492,16 @@ export class Coordinator {
     hitEventId: string | null,
     target?: GameTargetRef,
     detail?: string,
+    /**
+     * T2 ya calculado a partir de T1 del hit-event original (ver
+     * consolidateHit). Cuando se define, PREVALECE sobre el reloj de
+     * llegada del coordinador: es la única fuente de `elapsed_us` para
+     * target_hit/penalty_applied, tanto si el detector fue un satélite
+     * como si fue el propio coordinador (ADR-0002: el tiempo de juego lo
+     * calcula el coordinador a partir de T1, nunca a partir de cuándo le
+     * llegó el mensaje).
+     */
+    elapsedUsOverride?: number,
   ): Promise<void> {
     if (!this.game) return;
     const payload = {
@@ -469,9 +513,10 @@ export class Coordinator {
       kind,
       coordinator_module_id: this.coordinatorModuleId,
       elapsed_us:
-        this.game.roundStartDeviceUs !== null
+        elapsedUsOverride ??
+        (this.game.roundStartDeviceUs !== null
           ? Math.max(0, this.clock.nowUs() - this.game.roundStartDeviceUs)
-          : 0,
+          : 0),
       device: {
         boot_id: this.knownModules.get(this.coordinatorModuleId)?.getBootId() ?? seededUuid(this.rng),
         uptime_us: this.clock.nowUs(),

@@ -40,7 +40,19 @@ function findContractsDir(): string {
 
 let cachedAjv: Ajv2020 | null = null;
 const validators = new Map<string, ValidateFunction>();
+// filename ("hit-event.schema.json") -> $id real del documento.
+const idByFilename = new Map<string, string>();
 
+/**
+ * Registra cada esquema ÚNICAMENTE bajo su propio `$id` (hallazgo H-02 del
+ * supervisor: registrar además por nombre de fichero o por una base
+ * "mqtt/common.schema.json" enmascararía un `$ref` roto y dejaría pasar en
+ * ajv lo que fallaría en cualquier otra herramienta). Desde el cambio de
+ * contrato, los `$ref` de mqtt/*.schema.json son relativos
+ * ("../schemas/common.schema.json#/...") y resuelven solos contra el `$id`
+ * real de common.schema.json sin necesidad de atajos. Mismo criterio que
+ * contracts/validate.py (load_registry).
+ */
 function buildAjv(): Ajv2020 {
   if (cachedAjv) return cachedAjv;
 
@@ -55,20 +67,16 @@ function buildAjv(): Ajv2020 {
 
   const commonPath = join(contractsDir, 'schemas', 'common.schema.json');
   const common = JSON.parse(readFileSync(commonPath, 'utf-8'));
-  // Los esquemas de mqtt/ referencian "common.schema.json#/..." de forma
-  // relativa a su propio $id (que vive bajo .../contracts/mqtt/). Hay que
-  // registrar el mismo documento bajo esa base resuelta, además de su
-  // propio $id real bajo .../contracts/schemas/, igual que hace
-  // contracts/validate.py.
-  ajv.addSchema(common, common.$id);
-  ajv.addSchema(common, 'common.schema.json');
-  ajv.addSchema(common, 'https://diana.seccionnueve/contracts/mqtt/common.schema.json');
+  if (!common.$id) throw new Error('common.schema.json no declara $id');
+  ajv.addSchema(common); // clave = common.$id
 
   const mqttDir = join(contractsDir, 'mqtt');
   for (const file of readdirSync(mqttDir)) {
     if (!file.endsWith('.schema.json')) continue;
     const schema = JSON.parse(readFileSync(join(mqttDir, file), 'utf-8'));
-    ajv.addSchema(schema, file);
+    if (!schema.$id) throw new Error(`${file} no declara $id`);
+    ajv.addSchema(schema); // clave = schema.$id
+    idByFilename.set(file, schema.$id);
   }
 
   cachedAjv = ajv;
@@ -94,9 +102,13 @@ function getValidator(schemaName: SchemaName): ValidateFunction {
   let v = validators.get(schemaName);
   if (!v) {
     const ajv = buildAjv();
-    const found = ajv.getSchema(schemaName);
-    if (!found) {
+    const id = idByFilename.get(schemaName);
+    if (!id) {
       throw new Error(`Esquema no encontrado: ${schemaName}`);
+    }
+    const found = ajv.getSchema(id);
+    if (!found) {
+      throw new Error(`Esquema registrado pero no resoluble por $id: ${schemaName} (${id})`);
     }
     v = found;
     validators.set(schemaName, v);

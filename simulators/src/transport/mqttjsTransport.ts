@@ -12,6 +12,14 @@ export interface MqttJsTransportOptions {
 /**
  * Transporte contra un broker Mosquitto real, usando mqtt.js.
  *
+ * Convención fijada por infraestructura (H-06 del dictamen del supervisor):
+ * el `client_id` MQTT DEBE ser exactamente igual al `module_id`, sin
+ * prefijo — la ACL de Mosquitto se ha escrito asumiendo esa igualdad
+ * (`infrastructure/mosquitto/acl`). `Simulation.addModule()` (ver
+ * simulation.ts) construye este transporte con `clientId = entry.moduleId`
+ * directamente, sin componer ningún prefijo; no cambiar eso sin coordinar
+ * con infraestructura.
+ *
  * NO se ha ejecutado contra un broker real en este entorno de desarrollo
  * (no hay daemon Mosquitto disponible aquí). La ruta de pruebas de este
  * paquete usa exclusivamente MemoryTransport. WP-08 deberá validar esta
