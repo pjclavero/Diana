@@ -24,7 +24,7 @@ las convenciones del homelab documentadas en `s9-server`.
 | VMID | 109 |
 | Nombre | `diana-server` |
 | IP LAN | 192.168.1.209/24, gw 192.168.1.1 |
-| Recursos | 4 vCPU · 4 GB RAM · 50 GB |
+| Recursos | 4 vCPU · 4 GB RAM (balloon mínimo 1 GB) · 50 GB |
 | Almacenamiento | `local-lvm`, `discard=on` |
 | Red | `net0` virtio sobre `vmbr0` |
 | Sistema | Debian 12 cloud-init (misma plantilla que VM107/108) |
@@ -33,8 +33,29 @@ las convenciones del homelab documentadas en `s9-server`.
 
 La convención VMID→IP (10x → .20x) se respeta: 109 → .209.
 
-## Riesgo aceptado
+## Memoria: decisión con el usuario
 
-El nodo tenía ~7 GB de RAM disponibles con todas las VM en marcha. La VM pide 4 GB, lo
-que deja un margen estrecho. Se verifica el margen real antes de arrancar y se documenta.
-No se reduce la memoria de ninguna VM existente.
+La medición real del nodo desaconsejaba asignar 4 GB fijos:
+
+```
+31,9 GB físicos · 25,1 GB en uso · 6,8 GB disponibles
+4,4 GB de swap ya en uso
+37,8 GB asignados a las VM en marcha (VM108 pide 16 GB ella sola)
+KSM compartiendo ~1,73 M páginas (≈6,7 GB)
+```
+
+El nodo ya está sobrecomprometido y se sostiene sobre KSM y swap. Añadir 4 GB rígidos
+podía degradar servicios de producción (Nextcloud, web-hosting, knowledge).
+
+Consultado el usuario, la decisión es **`memory=4096` con `balloon=1024`**: la VM ve y
+puede usar sus 4 GB cuando hay memoria libre, y el hipervisor recupera hasta 3 GB cuando
+hay presión. Se cumple el requisito de 4 GB del encargo sin poner en riesgo el resto del
+homelab.
+
+No se reduce la memoria de ninguna VM existente, ni se apaga ninguna.
+
+## Copias
+
+La VM 109 se añade a la lista `vmid` del job existente `backup-daily-critical`
+(02:00, `serverJ-backups`, `keep-daily=7,keep-weekly=4`). Es un cambio aditivo sobre
+`/etc/pve/jobs.cfg`, con copia previa del fichero y sin alterar la política de las demás.
