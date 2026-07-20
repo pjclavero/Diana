@@ -6,8 +6,8 @@ Firmware de los módulos de dianas 3×3. Implementa WP-04.
 
 | Parte | Estado |
 |---|---|
-| Lógica de negocio (`components/diana_core`) | **compilada y probada en host**, 338 comprobaciones en verde |
-| Mensajes MQTT generados | **validados contra los JSON Schema congelados** de `contracts/mqtt/` |
+| Lógica de negocio (`components/diana_core`) | **compilada y probada en host**, 389 comprobaciones en verde |
+| Mensajes MQTT generados | **validados contra los JSON Schema congelados** de `contracts/mqtt/` (18 mensajes) |
 | Capa de plataforma ESP-IDF (`components/diana_platform_esp`) | **escrita, NUNCA compilada**: no hay ESP-IDF en el entorno de desarrollo |
 | Aplicación (`main/`) | **escrita, NUNCA compilada** |
 | Pinout (`boards/`) | **propuesta preliminar**, ningún pin verificado sobre hardware |
@@ -47,8 +47,8 @@ Compila con `-Wall -Wextra -Werror -Wconversion`, ejecuta la suite en C y luego
 valida contra los esquemas congelados:
 
 ```
- TOTAL: 338 comprobaciones, 338 correctas, 0 fallidas
- 15 mensajes generados por el firmware comprobados
+ TOTAL: 389 comprobaciones, 389 correctas, 0 fallidas
+ 18 mensajes generados por el firmware comprobados
  CONTRATO: conforme
 ```
 
@@ -84,6 +84,30 @@ firmware/esp32/
 └── build-host/                 salida de la compilación en PC (ignorada por git)
 ```
 
+## Divergencia abierta con el contrato
+
+Una sola, y deliberada. El firmware es **más estricto** que el contrato en un
+punto, siguiendo la corrección (c) del hallazgo H-05:
+
+| | Contrato | Firmware |
+|---|---|---|
+| `expires_in_ms` de `reboot`, `set_maintenance`, `start_calibration` | hasta 600 000 ms | **máximo 15 000 ms** |
+
+Diez minutos de validez para un `reboot` (caso T18 de la auditoría) es una
+ventana de reproducción grande para una orden que deja el módulo fuera de
+servicio. El firmware la acota y **rechaza explícitamente** con motivo trazable
+en `last_command.detail`, en vez de aceptar en silencio.
+
+Consecuencia a tener en cuenta: un backend que emita hoy un `reboot` con 600 000
+ms recibirá un rechazo. **Requiere ratificación en `contracts/mqtt/README.md`**;
+si el contrato decide otro techo, se cambia la constante
+`DIANA_CMD_CRITICAL_MAX_EXPIRES_MS` y basta.
+
+Nota aparte: `contracts/mqtt/README.md` §6 todavía dice que la caducidad se mide
+«desde la recepción del canal». El firmware ya implementa la corrección de H-05
+(medir contra `issued_at_ms`), así que el texto del contrato va por detrás del
+código en ese punto concreto.
+
 ## El contrato manda
 
 `contracts/` está **congelado**. El firmware deriva de él, no lo copia a mano:
@@ -105,9 +129,18 @@ firmware/esp32/
 - **`local_sequence` se persiste por bloques reservados** (64 por defecto). Al
   arrancar se reserva un bloque entero, así que un corte de corriente puede
   hacer que la secuencia salte hacia delante, pero **nunca** que se repita.
-- **La caducidad de comandos se mide sobre el reloj monotónico** desde la
-  recepción, no restando `issued_at_ms` de la hora local: un módulo con el reloj
-  atrasado no debe poder aceptar órdenes viejas.
+- **La caducidad de comandos se mide contra `issued_at_ms`** (hallazgo H-05).
+  Medida desde la recepción, QoS 1 reiniciaba la ventana en cada reentrega y no
+  protegía de nada. Esto obliga a hora de pared: el módulo arranca SNTP al
+  obtener IP y, si no la consigue, acepta el comando **declarándolo** y se apoya
+  en el nonce persistido.
+- **El último nonce por emisor se persiste en NVS.** Una caché en RAM se perdía
+  al reiniciar y reabría la ventana de reproducción entera.
+- **Ningún módulo escribe en el tópico de otro** (hallazgo H-01). El coordinador
+  no reescribe el `hit` del satélite: publica T2 en `system/…/game/event` con
+  `hit_event_id`. Impuesto en código, no sólo documentado.
+- **`client_id` MQTT = `module_id`**, sin prefijo: la ACL del broker depende de
+  esa igualdad exacta.
 - **La cola guarda estructuras, no JSON.** Así el reenvío marca `replay=true`
   sin tocar el `event_id`.
 - **La OTA falla cerrada**: sin verificador de firma disponible, se rechaza. Y

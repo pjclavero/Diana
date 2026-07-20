@@ -45,6 +45,19 @@ bool diana_topic_retain(diana_topic t)
     return RETAIN[t];
 }
 
+static const char *const SYS_SUFFIX[DIANA_SYS_TOPIC_COUNT] = {
+    "game/event", "game/state", "command", "status",
+};
+
+size_t diana_system_topic_build(char *buf, size_t cap, diana_system_topic t,
+                                const char *system_id)
+{
+    if ((int)t < 0 || t >= DIANA_SYS_TOPIC_COUNT || !system_id) return 0;
+    int n = snprintf(buf, cap, "targets/v1/system/%s/%s", system_id, SYS_SUFFIX[t]);
+    if (n < 0 || (size_t)n >= cap) return 0;
+    return (size_t)n;
+}
+
 /* ------------------------------------------------------------- presencia */
 
 size_t diana_presence_lwt_json(const char *module_id, char *buf, size_t cap)
@@ -316,6 +329,56 @@ size_t diana_config_reported_json(const diana_config *cfg, const char *module_id
 
     if (applied_at && applied_at[0]) diana_json_str(&j, "applied_at", applied_at);
     else diana_json_null(&j, "applied_at");
+
+    diana_json_obj_close(&j);
+    return diana_json_ok(&j) ? diana_json_len(&j) : 0;
+}
+
+/* ------------------------------------------------------------- game-event */
+
+size_t diana_game_event_target_hit(const diana_hal *hal,
+                                   diana_module_role own_role,
+                                   const diana_game_event_hit *in,
+                                   char *buf, size_t cap)
+{
+    /* Solo el coordinador publica en system/…/game/event. */
+    if (own_role != DIANA_ROLE_PRINCIPAL) return 0;
+    /* Un target_hit sin enlace al hit original seria T2 huerfano: el backend no
+     * podria unirlo con T1 y el tiempo de juego quedaria sin respaldo. */
+    if (!in->hit_event_id || !in->hit_event_id[0]) return 0;
+    if (!in->system_id || !in->coordinator_module_id) return 0;
+    if (!in->game_id || !in->round_id) return 0;
+
+    char event_id[DIANA_UUID_LEN];
+    diana_uuid4(hal, event_id);
+
+    diana_json j;
+    diana_json_init(&j, buf, cap);
+    diana_json_obj_open(&j);
+    diana_json_int(&j, "schema_version", DIANA_SCHEMA_VERSION);
+    diana_json_str(&j, "system_id", in->system_id);
+    /* event_id propio del coordinador: NO se reutiliza el del detector. */
+    diana_json_str(&j, "event_id", event_id);
+    diana_json_str(&j, "game_id", in->game_id);
+    diana_json_str(&j, "round_id", in->round_id);
+    diana_json_str(&j, "kind", "target_hit");
+    diana_json_str(&j, "coordinator_module_id", in->coordinator_module_id);
+    /* T2: el tiempo de juego que ve el jugador, calculado por el coordinador. */
+    diana_json_uint(&j, "elapsed_us", in->elapsed_us);
+
+    diana_json_key(&j, "device");
+    diana_json_obj_open(&j);
+    diana_json_str(&j, "boot_id", in->device.boot_id);
+    diana_json_uint(&j, "uptime_us", in->device.uptime_us);
+    diana_json_uint(&j, "event_us", in->device.event_us);
+    diana_json_obj_close(&j);
+
+    /* Enlace con T1 del detector. */
+    diana_json_str(&j, "hit_event_id", in->hit_event_id);
+    if (in->detector_module_id)
+        diana_json_str(&j, "module_id", in->detector_module_id);
+    diana_json_int(&j, "target_index", in->target_index);
+    if (in->detail && in->detail[0]) diana_json_str(&j, "detail", in->detail);
 
     diana_json_obj_close(&j);
     return diana_json_ok(&j) ? diana_json_len(&j) : 0;

@@ -107,7 +107,9 @@ void app_main(void)
     diana_module_fsm_init(&a->fsm, a->boot_us);
     diana_target_set_init(&a->targets, a->boot_us);
     diana_sensor_state_init(&a->sensors);
-    diana_command_guard_init(&a->guard);
+    /* El guardian carga de NVS el ultimo nonce por emisor: sin eso, cada
+     * reinicio reabriria la ventana de reproduccion (H-05 b). */
+    diana_command_guard_init(&a->guard, &a->hal);
 
     /* Identidad: boot_id nuevo, local_sequence reservada (ADR-0003). */
     if (diana_identity_load(&a->id, &a->hal, DIANA_FIRMWARE_VERSION) != DIANA_HAL_OK) {
@@ -150,8 +152,10 @@ void app_main(void)
 
     char uri[128], user[80];
     snprintf(uri, sizeof(uri), "mqtt://%s:1883", CONFIG_DIANA_BROKER_HOST);
+    /* Usuario 'module-{id}', client_id '{id}' a secas: son cosas distintas y el
+     * contrato §8 fija ambas. La ACL depende de la segunda. */
     snprintf(user, sizeof(user), "module-%s", a->id.module_id);
-    diana_platform_mqtt_start(a->pf, uri, user, a->id.mqtt_pass,
+    diana_platform_mqtt_start(a->pf, a->id.module_id, uri, user, a->id.mqtt_pass,
                               a->topic_presence, lwt);
     diana_platform_mqtt_subscribe(a->pf, a->id.module_id);
 

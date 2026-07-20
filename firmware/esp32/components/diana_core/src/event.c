@@ -35,9 +35,27 @@ static void fill_common(diana_hit_event *ev, const diana_hal *hal,
             ev->device.epoch_ms = e;
         }
     }
-    /* Un satelite publica coordinator=null: T2 no es suyo (ADR-0002). */
+    /* Por defecto, coordinator=null. Solo el coordinador puede rellenarlo, y
+     * solo sobre SU PROPIO impacto: diana_hit_event_attach_coordinator(). */
     ev->has_coordinator = false;
     ev->replay = false;
+}
+
+bool diana_hit_event_attach_coordinator(diana_hit_event *ev,
+                                        diana_module_role own_role,
+                                        const char *own_module_id,
+                                        const diana_coordinator_time *t2)
+{
+    /* H-01: ningun modulo escribe en el topico de otro. Un coordinador que
+     * quisiera "enriquecer" el hit de un satelite tendria que republicarlo bajo
+     * module/{satelite}/hit, cosa que la ACL prohibe y que aqui se impide. */
+    if (own_role != DIANA_ROLE_PRINCIPAL) return false;
+    if (!own_module_id || strcmp(ev->module_id, own_module_id) != 0) return false;
+    if (!t2) return false;
+
+    ev->coordinator = *t2;
+    ev->has_coordinator = true;
+    return true;
 }
 
 void diana_hit_event_build(diana_hit_event *ev, const diana_hal *hal,

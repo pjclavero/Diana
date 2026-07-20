@@ -14,6 +14,7 @@
 #include "esp_system.h"
 #include "esp_task_wdt.h"
 #include "esp_timer.h"
+#include <sys/time.h>
 
 static const char *TAG = "diana.hal";
 

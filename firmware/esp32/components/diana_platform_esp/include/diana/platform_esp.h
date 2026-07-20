@@ -33,9 +33,15 @@ typedef struct diana_platform diana_platform;
  */
 int diana_platform_init(diana_platform **out, diana_hal *hal);
 
-/** Registra el Last Will ANTES de conectar y conecta al broker. */
-int diana_platform_mqtt_start(diana_platform *p, const char *uri,
-                              const char *user, const char *pass,
+/**
+ * Registra el Last Will ANTES de conectar y conecta al broker.
+ * @param client_id  DEBE ser igual al module_id, sin prefijo: la ACL de
+ *                   Mosquitto usa el patron %c para acotar cada modulo a su
+ *                   propio subarbol (contrato §8).
+ * @param user       usuario MQTT, 'module-{module_id}' (contrato §8).
+ */
+int diana_platform_mqtt_start(diana_platform *p, const char *client_id,
+                              const char *uri, const char *user, const char *pass,
                               const char *lwt_topic, const char *lwt_payload);
 
 /** Suscribe a los topicos de entrada del modulo (command, config, ota, game). */

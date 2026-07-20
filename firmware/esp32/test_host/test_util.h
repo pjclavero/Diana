@@ -72,6 +72,7 @@ int run_crosstalk(void);
 int run_command(void);
 int run_reconnect(void);
 int run_contract(void);
+int run_coordination(void);
 int run_led(void);
 int run_ota(void);
 

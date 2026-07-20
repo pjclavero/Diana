@@ -85,18 +85,40 @@ comparador → ISR (IRAM)                 registra (canal, esp_timer_get_time())
 El `t_us` que acaba en `device.event_us` es el de la **interrupción**, no el del
 momento en que la tarea llega a procesarlo. Es T1 del ADR-0002.
 
-## 5. Modelo temporal (ADR-0002)
+## 5. Modelo temporal (ADR-0002) y frontera de escritura (H-01)
 
 El firmware sólo es dueño de T1. Concretamente:
 
 - Rellena `device.boot_id`, `device.uptime_us` y `device.event_us`.
 - `device.epoch_ms` sólo si hay hora sincronizada; es informativo y **nunca**
   sustituye a `event_us`.
-- Un satélite publica siempre `coordinator: null`. El bloque `coordinator` (T2)
-  lo rellena el módulo principal al consolidar.
 - El firmware no conoce ni puede escribir `received_at` ni `persisted_at`: no
   existen en su código. Hay una prueba que comprueba que no aparecen en el
   payload.
+
+### Por dónde viaja T2
+
+**Ningún módulo escribe jamás en el tópico de otro módulo.** El coordinador no
+reescribe el `hit` de un satélite: bajo una ACL estricta eso es inejecutable.
+
+| Quién detecta | T1 | T2 |
+|---|---|---|
+| Un satélite | `module/{satélite}/hit` con `coordinator: null` | `system/{sys}/game/event`, `kind=target_hit`, enlazado por `hit_event_id` |
+| El coordinador | `module/{coordinador}/hit` con `coordinator` relleno | el mismo mensaje |
+
+La regla está impuesta **en código**, no sólo documentada:
+
+- `diana_hit_event_build()` deja siempre `coordinator: null`.
+- `diana_hit_event_attach_coordinator()` se niega a rellenar T2 si el módulo no
+  es principal **o** si el evento pertenece a otro `module_id`.
+- `diana_game_event_target_hit()` se niega a generar el mensaje si el emisor no
+  es el coordinador, o si falta el `hit_event_id` que lo enlaza con T1: un T2
+  huérfano que el backend no pudiera unir a su T1 no aporta nada.
+- El `game-event` lleva `event_id` **propio** del coordinador, distinto del
+  `hit_event_id` del detector: son dos eventos y el backend deduplica por
+  `event_id`.
+
+Todo ello está cubierto por la suite `coordination`.
 
 ## 6. Idempotencia (ADR-0003)
 
@@ -128,11 +150,43 @@ El firmware sólo es dueño de T1. Concretamente:
 - Credenciales MQTT en NVS cifrada (`CONFIG_NVS_ENCRYPTION`), nunca publicadas
   ni registradas. Hay una prueba que comprueba que la contraseña no aparece en
   el payload de presencia.
-- Comandos: caducidad, `command_id` repetido (caché de 128) y nonce monotónico
-  por emisor. Un comando dirigido a otro `module_id` se rechaza.
+- **`client_id` MQTT = `module_id`**, sin prefijo. La ACL de Mosquitto usa el
+  patrón `%c` para acotar cada módulo a su subárbol; si el `client_id` no
+  coincide exactamente, el broker deniega todas sus publicaciones. El firmware
+  lo fija explícitamente en vez de dejar el valor por defecto de esp-mqtt
+  (`ESP32_xxxxxx`), que rompería la ACL. El **usuario** sigue siendo
+  `module-{module_id}`: son dos cosas distintas.
 - `schema_version` superior a la soportada se rechaza y se registra.
 - OTA: firma verificada por el propio ESP-IDF antes de activar; el firmware no
   reimplementa criptografía. Sin verificador disponible, **se rechaza**.
+
+### Caducidad de comandos y anti-reproducción (H-05)
+
+La redacción original medía la caducidad *desde la recepción del canal*. Eso no
+protegía de nada: con QoS 1 cada reentrega reinicia la ventana, y un comando
+capturado hoy y reinyectado mañana llega con sus 5 s intactos.
+
+Ahora se mide contra `issued_at_ms`, que es del emisor y no se reinicia:
+
+| Situación | Comportamiento |
+|---|---|
+| Con hora sincronizada | `edad = ahora − issued_at_ms`; si supera `expires_in_ms` → `expired` |
+| Emitido en el futuro > 30 s | `rejected`: reloj descuadrado o sobre falsificado |
+| **Sin** hora sincronizada | Se **acepta**, y el veredicto lo declara en `last_command.detail`. No se finge una comprobación no hecha |
+| Retenido por el propio firmware | Guarda monotónica adicional sobre `recv_us`, para no actuar sobre órdenes que se quedaron en nuestra cola |
+
+Esto introduce una **dependencia operativa nueva: el módulo necesita SNTP**
+(normalmente el propio backend; no hace falta salida a Internet). Sin él, el
+firmware cae permanentemente en el camino degradado. Se arranca al obtener IP.
+
+La defensa **real** contra reproducción es el nonce, y por eso ahora se
+**persiste en NVS** por emisor, con el mismo rigor que `local_sequence`: una
+caché en RAM se perdía al reiniciar y reabría la ventana entera. La suite
+comprueba que un nonce ya consumido sigue rechazándose *después* de reiniciar.
+
+Además, las acciones críticas (`reboot`, `set_maintenance`, `start_calibration`)
+tienen un techo de validez de 15 s, más estricto que los 600 000 ms que admite
+el contrato. **Pendiente de ratificar en el contrato** (ver README del firmware).
 
 ## 9. Lo que esta arquitectura NO resuelve todavía
 

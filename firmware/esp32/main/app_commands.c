@@ -52,7 +52,38 @@ static bool parse_envelope(const cJSON *root, diana_command *out)
 
     if (diana_issuer_parse(is->valuestring, &out->issuer) != 0) return false;
     if (diana_command_action_parse(ac->valuestring, &out->action) != 0) return false;
+
+    /* Presencia de params, para que el core valide lo obligatorio de cada
+     * accion (H-07). El core no parsea JSON: se le entregan los indicadores. */
+    const cJSON *pr = cJSON_GetObjectItemCaseSensitive(root, "params");
+    if (cJSON_IsObject(pr)) {
+        out->has_params = true;
+        const cJSON *tg = cJSON_GetObjectItemCaseSensitive(pr, "targets");
+        if (cJSON_IsArray(tg)) {
+            out->param_targets = true;
+            int n = cJSON_GetArraySize(tg);
+            out->param_targets_count = (uint8_t)(n < 0 ? 0 : (n > 255 ? 255 : n));
+        }
+        out->param_state = cJSON_IsString(
+            cJSON_GetObjectItemCaseSensitive(pr, "state"));
+        out->param_duration_ms = cJSON_IsNumber(
+            cJSON_GetObjectItemCaseSensitive(pr, "duration_ms"));
+        out->param_enabled = cJSON_IsBool(
+            cJSON_GetObjectItemCaseSensitive(pr, "enabled"));
+    }
     return true;
+}
+
+/** Reloj para la caducidad: monotónico + hora de pared si la hay (H-05). */
+static diana_command_clock clock_now(diana_app *a, uint64_t recv_us)
+{
+    diana_command_clock c;
+    c.recv_us = recv_us;
+    c.now_us = a->hal.now_us(a->hal.ctx);
+    /* 0 si el modulo no ha sincronizado hora: el core lo trata explicitamente
+     * y lo dice en el veredicto, en vez de fingir la comprobacion. */
+    c.epoch_ms = a->hal.epoch_ms ? a->hal.epoch_ms(a->hal.ctx) : 0;
+    return c;
 }
 
 static void apply_set_targets(diana_app *a, const cJSON *params)
@@ -183,8 +214,9 @@ static void handle_ota(diana_app *a, const cJSON *root, uint64_t recv_us)
         (void)ac;
     }
     /* La validacion de sobre (caducidad/nonce/duplicado) se aplica igual. */
-    diana_command_verdict v = diana_command_validate(
-        &a->guard, &cmd, a->id.module_id, recv_us, a->hal.now_us(a->hal.ctx));
+    diana_command_clock clk = clock_now(a, recv_us);
+    diana_command_verdict v =
+        diana_command_validate(&a->guard, &cmd, a->id.module_id, &clk);
     if (v.result != DIANA_CMD_RESULT_ACCEPTED) {
         remember_verdict(a, cmd.command_id, v);
         return;
@@ -240,9 +272,9 @@ void diana_handle_message(diana_app *a, const diana_platform_rx *rx)
             cJSON_Delete(root);
             return;
         }
-        diana_command_verdict v = diana_command_validate(
-            &a->guard, &cmd, a->id.module_id, rx->recv_us,
-            a->hal.now_us(a->hal.ctx));
+        diana_command_clock clk = clock_now(a, rx->recv_us);
+        diana_command_verdict v =
+            diana_command_validate(&a->guard, &cmd, a->id.module_id, &clk);
 
         if (v.result == DIANA_CMD_RESULT_ACCEPTED) {
             execute(a, &cmd, root);

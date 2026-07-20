@@ -72,8 +72,16 @@ targets/v1/module/<module_id>/command
 ```
 
 El `nonce` **debe ser mayor** que el último aceptado de ese emisor, o el módulo
-lo rechazará (protección de reenvío). Si no sabe cuál fue, consulte
-`status.last_command` o use un valor claramente alto.
+lo rechazará (protección de reenvío). Ese contador **sobrevive a los reinicios**:
+está persistido en NVS, así que reiniciar el módulo no lo pone a cero. Si no sabe
+cuál fue el último, consulte `status.last_command` o use un valor claramente alto.
+
+`issued_at_ms` debe ser la hora **real** de emisión: la caducidad se mide contra
+ella. Un `issued_at_ms` antiguo produce `expired`; uno más de 30 s en el futuro
+produce `rejected` por descuadre de reloj.
+
+Para `reboot` el `expires_in_ms` no puede pasar de **15 000 ms**: es una acción
+crítica y el firmware acota su ventana de validez.
 
 Conserva identidad, calibración y cola de eventos.
 
@@ -160,7 +168,11 @@ el backend deduplicará incorrectamente.
 - **No borre la NVS "por si acaso".** Pierde la calibración, que cuesta un banco
   de pruebas por módulo.
 - **No reutilice un `nonce`.** El módulo rechazará el comando y parecerá que
-  está colgado cuando no lo está.
+  está colgado cuando no lo está. Reiniciarlo tampoco ayuda: el nonce está
+  persistido.
+- **No dé por hecho que el módulo tiene hora.** Si `last_command.detail` dice
+  «caducidad no verificada», es que no hay SNTP: revise el servidor NTP antes de
+  fiarse de la protección por caducidad.
 - **No fuerce dos módulos a PRINCIPAL.** El sistema no permite empezar partida
   con dos coordinadores forzados (dosier §6.3), y el síntoma es confuso.
 - **No dé por bueno un umbral que "parece que va".** Sin el procedimiento de

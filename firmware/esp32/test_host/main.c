@@ -58,6 +58,7 @@ int main(void)
         {"crosstalk",    run_crosstalk},
         {"command",      run_command},
         {"reconnect",    run_reconnect},
+        {"coordination", run_coordination},
         {"led",          run_led},
         {"ota",          run_ota},
         {"contract",     run_contract},

@@ -13,6 +13,7 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_mac.h"
+#include "esp_netif_sntp.h"
 
 static const char *TAG = "diana.eth";
 
@@ -46,6 +47,38 @@ static void eth_event_handler(void *arg, esp_event_base_t base, int32_t id,
     }
 }
 
+/**
+ * Arranca el cliente SNTP.
+ *
+ * NO es un adorno: desde el hallazgo H-05, la caducidad de comandos se mide
+ * contra `issued_at_ms`, que es hora de PARED. Sin SNTP, epoch_ms() devuelve
+ * siempre 0 y el modulo cae permanentemente en el camino degradado ("caducidad
+ * no verificada, defensa por nonce"). Es decir: sin esto, la comprobacion de
+ * caducidad no se ejecutaria nunca.
+ *
+ * El servidor NTP es el propio backend en la red local: la instalacion no tiene
+ * por que tener salida a Internet.
+ */
+static void start_sntp(void)
+{
+    esp_sntp_config_t cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG(CONFIG_DIANA_NTP_HOST);
+    cfg.start = true;
+    cfg.server_from_dhcp = true;      /* si el DHCP ofrece NTP, se usa */
+    cfg.renew_servers_after_new_IP = true;
+    cfg.sync_cb = NULL;
+
+    esp_err_t err = esp_netif_sntp_init(&cfg);
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+        /* Sin hora, el modulo SIGUE operando: la defensa contra reproduccion
+         * pasa a ser el nonce persistido, y cada comando aceptado lo declara
+         * en su veredicto. No se bloquea el arranque por esto. */
+        ESP_LOGW(TAG, "SNTP no disponible: la caducidad de comandos no se "
+                      "podra verificar (defensa por nonce persistido)");
+        return;
+    }
+    ESP_LOGI(TAG, "SNTP arrancado contra %s", CONFIG_DIANA_NTP_HOST);
+}
+
 static void got_ip_handler(void *arg, esp_event_base_t base, int32_t id,
                            void *data)
 {
@@ -55,6 +88,9 @@ static void got_ip_handler(void *arg, esp_event_base_t base, int32_t id,
     snprintf(p->ip, sizeof(p->ip), IPSTR, IP2STR(&ev->ip_info.ip));
     p->has_ip = true;
     ESP_LOGI(TAG, "IP %s", p->ip);
+
+    /* La hora solo puede sincronizarse cuando hay IP. */
+    start_sntp();
 }
 
 int diana_pf_net_init(struct diana_platform *p)

@@ -8,7 +8,7 @@ sin comprobar. Ningún valor de este documento debe tratarse como calibrado.
 
 | Ámbito | Estado |
 |---|---|
-| Lógica de negocio | probada en PC, 338 comprobaciones |
+| Lógica de negocio | probada en PC, 389 comprobaciones |
 | Conformidad con el contrato MQTT | validada contra los esquemas reales |
 | Compilación con ESP-IDF | **nunca ejecutada** |
 | Cualquier cosa con hardware | **nunca ejecutada** |
@@ -80,6 +80,9 @@ diseño de agrupación hay que replantearlo, no ajustarlo.
 
 | Qué | Criterio |
 |---|---|
+| **SNTP** | el módulo debe obtener hora tras conseguir IP. Sin ella, la caducidad de comandos **no se verifica**: se acepta declarándolo y la defensa queda sólo en el nonce. Comprobar que `epoch_ms` deja de ser 0 y cuánto tarda |
+| **`client_id` = `module_id`** | conectar con un `client_id` distinto y comprobar que Mosquitto **deniega** las publicaciones: si no lo hace, la ACL no está aplicando el patrón `%c` |
+| **Nonce persistido** | aceptar un comando, reiniciar el módulo y reinyectar el mismo comando: debe rechazarse. Es la prueba de que la NVS conserva el nonce |
 | SPI del W5500 a 20 MHz | sin errores de trama; subir hasta encontrar el límite y bajar con margen |
 | DHCP | concesión en < 5 s |
 | IP estática | aplicada antes de arrancar el driver, sin conflicto |

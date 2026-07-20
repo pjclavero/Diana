@@ -13,5 +13,5 @@ idf_component_register(
     REQUIRES diana_hal diana_core
              driver esp_eth esp_netif esp_event mqtt nvs_flash
              esp_adc esp_timer app_update spi_flash esp_partition
-             esp_hw_support led_strip
+             esp_hw_support led_strip lwip
 )

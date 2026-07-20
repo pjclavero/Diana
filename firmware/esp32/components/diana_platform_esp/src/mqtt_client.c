@@ -69,8 +69,8 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t id,
     }
 }
 
-int diana_platform_mqtt_start(struct diana_platform *p, const char *uri,
-                              const char *user, const char *pass,
+int diana_platform_mqtt_start(struct diana_platform *p, const char *client_id,
+                              const char *uri, const char *user, const char *pass,
                               const char *lwt_topic, const char *lwt_payload)
 {
     p->rx_queue = xQueueCreate(16, sizeof(diana_platform_rx));
@@ -80,6 +80,14 @@ int diana_platform_mqtt_start(struct diana_platform *p, const char *uri,
     cfg.broker.address.uri = uri;
     cfg.credentials.username = user;
     cfg.credentials.authentication.password = pass;
+
+    /* client_id == module_id, sin prefijo (contrato §8). La ACL de Mosquitto
+     * usa el patron %c para acotar cada modulo a su propio subarbol: si el
+     * client_id no coincide exactamente con el module_id, el broker denegara
+     * todas las publicaciones del modulo. NO se deja el valor por defecto de
+     * esp-mqtt ('ESP32_xxxxxx'), que rompería la ACL. */
+    cfg.credentials.client_id = client_id;
+    cfg.credentials.set_null_client_id = false;
 
     /* Last Will: contrato §3. QoS 1, retain=true, payload con online=false y
      * reason=lwt. Se registra en CONNECT, antes de cualquier publicacion. */

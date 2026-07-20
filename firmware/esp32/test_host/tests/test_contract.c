@@ -157,7 +157,9 @@ int run_contract(void)
           "sin calibrar => calibrated_at null, no una fecha inventada");
     dump_message("module-config.schema.json", "config_reported", buf);
 
-    SECTION("hit-event completo, con coordinador (caso del modulo principal)");
+    SECTION("hit-event completo del COORDINADOR sobre su propio impacto");
+    /* H-01: el bloque coordinator solo va embebido cuando el detector ES el
+     * coordinador. Aqui module-03 actua como principal sobre su propio hit. */
     diana_hit_group grp;
     diana_piezo_trigger trigs[2] = {{7, 1832456712, 2710}, {4, 1832457332, 410}};
     diana_sensor_classify(&cfg, trigs, 2, &grp);
@@ -172,13 +174,17 @@ int run_contract(void)
     ev.position_y = 0;
     ev.has_rotation = true;
     ev.rotation = 90;
-    /* T2: lo rellena el PRINCIPAL al consolidar, nunca el backend. */
-    ev.has_coordinator = true;
-    ev.coordinator.recv_us = 1832459000;
-    ev.coordinator.elapsed_us = 4210556;
-    ev.coordinator.clock_offset_us = -312;
-    ev.coordinator.has_uncertainty = true;
-    ev.coordinator.offset_uncertainty_us = 90;
+
+    diana_coordinator_time t2 = {
+        .recv_us = 1832459000,
+        .elapsed_us = 4210556,
+        .clock_offset_us = -312,   /* 0 si el propio principal detecto */
+        .has_uncertainty = true,
+        .offset_uncertainty_us = 90,
+    };
+    CHECK(diana_hit_event_attach_coordinator(&ev, DIANA_ROLE_PRINCIPAL,
+                                             id.module_id, &t2),
+          "el coordinador adjunta T2 a su propio impacto");
 
     CHECK_EQ_INT(diana_hit_event_check(&ev), 0, "el evento pasa la comprobacion local");
     n = diana_hit_event_to_json(&ev, buf, sizeof(buf));

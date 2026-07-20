@@ -3,9 +3,26 @@
  * @brief Construccion y serializacion de eventos de impacto (hit-event.schema.json).
  *
  * Modelo temporal ADR-0002: el firmware SOLO rellena el bloque 'device' (T1).
- * El bloque 'coordinator' (T2) lo rellena el modulo principal al consolidar; un
- * satelite publica siempre coordinator=null. El firmware NUNCA escribe
- * received_at ni persisted_at: no existen en el payload.
+ * El firmware NUNCA escribe received_at ni persisted_at: no existen en el
+ * payload.
+ *
+ * ---------------------------------------------------------------------------
+ * DONDE VIAJA T2 (hallazgo H-01 del supervisor)
+ * ---------------------------------------------------------------------------
+ * NINGUN modulo escribe jamas en el topico de otro modulo. El coordinador, por
+ * tanto, NO reescribe el hit de un satelite:
+ *
+ *   - Detecta un SATELITE  -> publica en module/{suyo}/hit con coordinator=null.
+ *                             El coordinador publica T2 aparte, en
+ *                             system/{sys}/game/event con kind=target_hit y
+ *                             hit_event_id apuntando al hit original.
+ *   - Detecta el COORDINADOR -> publica en module/{suyo}/hit con el bloque
+ *                             coordinator relleno: es su propio topico y su
+ *                             propio T2, asi que va embebido.
+ *
+ * El guardian diana_hit_event_attach_coordinator() impone esa regla en codigo:
+ * se niega a rellenar T2 si el evento no es del propio modulo o si el modulo no
+ * es el coordinador. Asi la ACL estricta de Mosquitto es ejecutable.
  *
  * Idempotencia ADR-0003: event_id se genera aqui, en el modulo detector, y es
  * estable entre reintentos. local_sequence viene de la identidad persistida.
@@ -96,6 +113,22 @@ bool diana_hit_event_build_rejected(diana_hit_event *ev, const diana_hal *hal,
                                     const diana_hit_group *group, uint8_t nth,
                                     diana_target_state state_before,
                                     uint64_t now_us);
+
+/**
+ * Adjunta T2 al evento. SOLO es legitimo cuando el modulo que detecto el
+ * impacto es el propio coordinador (hallazgo H-01).
+ *
+ * Devuelve false —y no toca el evento— si:
+ *   - el modulo no tiene rol principal, o
+ *   - el evento pertenece a otro module_id.
+ *
+ * Para el impacto de un satelite, el coordinador NO llama a esto: publica T2 en
+ * system/{sys}/game/event mediante diana_game_event_target_hit().
+ */
+bool diana_hit_event_attach_coordinator(diana_hit_event *ev,
+                                        diana_module_role own_role,
+                                        const char *own_module_id,
+                                        const diana_coordinator_time *t2);
 
 /**
  * Serializa a JSON conforme a hit-event.schema.json.

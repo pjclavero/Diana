@@ -15,6 +15,7 @@
 #include <stdint.h>
 
 #include "diana/config.h"
+#include "diana/event.h"
 #include "diana/hal.h"
 #include "diana/identity.h"
 #include "diana/module_fsm.h"
@@ -43,6 +44,22 @@ size_t diana_topic_build(char *buf, size_t cap, diana_topic t,
                          const char *module_id);
 int  diana_topic_qos(diana_topic t);
 bool diana_topic_retain(diana_topic t);
+
+/**
+ * Tópicos de sistema. SOLO el coordinador publica en game/event y game/state;
+ * el backend es el unico que escribe system/…/command y system/…/status.
+ */
+typedef enum {
+    DIANA_SYS_TOPIC_GAME_EVENT = 0,
+    DIANA_SYS_TOPIC_GAME_STATE,
+    DIANA_SYS_TOPIC_COMMAND,
+    DIANA_SYS_TOPIC_STATUS,
+    DIANA_SYS_TOPIC_COUNT
+} diana_system_topic;
+
+/** Construye 'targets/v1/system/{system_id}/...'. 0 si no cabe. */
+size_t diana_system_topic_build(char *buf, size_t cap, diana_system_topic t,
+                                const char *system_id);
 
 /* ------------------------------------------------------------- presencia */
 
@@ -120,6 +137,38 @@ size_t diana_diagnostic_json(const diana_diagnostic *d, const diana_identity *id
 
 size_t diana_config_reported_json(const diana_config *cfg, const char *module_id,
                                   const char *applied_at, char *buf, size_t cap);
+
+/* ------------------------------------------------------------- game-event
+ * Via por la que el COORDINADOR aporta T2 al impacto de un SATELITE sin
+ * escribir en el topico ajeno (hallazgo H-01). */
+
+typedef struct {
+    const char *system_id;
+    const char *coordinator_module_id; /* el propio, es quien publica */
+    const char *game_id;
+    const char *round_id;
+    /* Enlace al hit-event original del detector. */
+    const char *hit_event_id;
+    const char *detector_module_id;
+    uint8_t     target_index;
+    /* T2 consolidado por el coordinador. */
+    uint64_t    elapsed_us;
+    /* T1 del propio coordinador en el instante de consolidar. */
+    diana_device_time device;
+    const char *detail;                /* opcional */
+} diana_game_event_hit;
+
+/**
+ * Construye el game-event kind=target_hit que transporta T2 del impacto de un
+ * satelite. Genera event_id propio (el del coordinador), distinto del
+ * hit_event_id, que es el del detector.
+ *
+ * Devuelve 0 si el emisor no es el coordinador o si falta el enlace.
+ */
+size_t diana_game_event_target_hit(const diana_hal *hal,
+                                   diana_module_role own_role,
+                                   const diana_game_event_hit *in,
+                                   char *buf, size_t cap);
 
 #define DIANA_MSG_JSON_MAX 3072
 

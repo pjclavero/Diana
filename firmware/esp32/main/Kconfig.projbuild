@@ -1,0 +1,33 @@
+menu "Diana · configuracion del modulo"
+
+config DIANA_BROKER_HOST
+    string "Host del broker MQTT"
+    default "192.168.1.209"
+    help
+      Direccion del broker Mosquitto en la red local. El modulo se conecta con
+      usuario 'module-{module_id}' y client_id igual al 'module_id' (contrato
+      MQTT §8): la ACL del broker depende de esa igualdad.
+
+config DIANA_NTP_HOST
+    string "Host NTP"
+    default "192.168.1.209"
+    help
+      Servidor de hora, normalmente el propio backend: la instalacion no
+      necesita salida a Internet.
+
+      IMPORTANTE: la caducidad de comandos se mide contra 'issued_at_ms', que es
+      hora de pared (hallazgo H-05). Sin hora sincronizada el modulo SIGUE
+      operando, pero no puede verificar la caducidad: la defensa contra
+      reproduccion pasa a ser unicamente el nonce persistido, y cada comando
+      aceptado lo declara en 'last_command.detail'.
+
+config DIANA_QUEUE_DROP_OLDEST
+    bool "Cola llena: descartar el evento mas antiguo"
+    default y
+    help
+      Politica cuando la cola local de eventos no confirmados se llena.
+      Activado  : se descarta el mas antiguo y se conserva el reciente.
+      Desactivado: se rechaza el nuevo y se conserva el historico.
+      En ambos casos se emite un diagnostico 'queue_overflow'.
+
+endmenu
