@@ -1,0 +1,140 @@
+referencia,hoja,valor,encapsulado,funcion,critico
+J1,08,"Bornero bloqueable 2 vias 5.08 mm >=8 A",THT,Entrada 12 V DC,si
+SW1,01,"Interruptor bipolar 250 V / 6 A",Panel,Corte general,no
+F1,01,"Fusible T 3.15 A 250 V + portafusibles",THT 5x20,Proteccion de sobrecorriente,si
+NTC1,01,"NTC 10 ohm / 2 A inrush limiter",THT,Limitacion de inrush,no
+Q1,01,"MOSFET canal P Vds>=30V Rds(on)<=30 mohm",SOT-23,Proteccion de polaridad inversa,si
+R1,01,100k 1%,0603,Pull-down de puerta de Q1,no
+D2,01,"Zener 12 V 500 mW",SOD-123,Proteccion Vgs de Q1,no
+D1,01,"TVS SMBJ15A 600 W unidireccional",SMB,Proteccion de sobretension,si
+L1,01,"10 uH / 3 A",1210,Filtro de entrada,no
+C1,01,"470 uF / 25 V electrolitico",THT D10,Bulk de entrada,no
+C2,01,"10 uF / 25 V X7R",1210,Filtro de entrada,no
+C3,01,100n,0603,Filtro HF,no
+U1,01,"Buck sincrono 12V->5V >=6 A eff>=0.93",segun fabricante,Convertidor principal,si
+L2,01,"Inductancia de U1 Isat>=9 A",segun fabricante,Lazo de U1,si
+C4,01,"1000 uF / 10 V low-ESR <=30 mohm",THT D10,Bulk del bus LED,si
+C5,01,"1000 uF / 10 V low-ESR <=30 mohm",THT D10,Bulk del bus LED,si
+C6,01,"22 uF / 10 V X7R",1210,Salida de U1 HF,no
+C7,01,100n,0603,Salida de U1 HF,no
+U2,01,"Buck sincrono 5V->3.3V 1 A fsw>=1 MHz",segun fabricante,Riel de logica,si
+C8,01,"10 uF / 10 V X7R",0805,Entrada de U2,no
+C9,01,"22 uF / 10 V X7R",0805,Salida de U2,no
+FB1,01,"Ferrita 600 ohm @100 MHz >=500 mA",0805,Aislamiento de +3V3A,si
+C10,01,"10 uF / 10 V X7R",0805,Bulk de +3V3A,no
+C11,01,100n,0603,HF de +3V3A,no
+R6,01,100k 1%,0603,Divisor de medida de 12 V,no
+R7,01,10k 1%,0603,Divisor de medida de 12 V,no
+C12,01,100n,0603,Filtro del divisor de 12 V,no
+R8,01,22k 1%,0603,Divisor de medida de 5 V,no
+R9,01,10k 1%,0603,Divisor de medida de 5 V,no
+C13,01,100n,0603,Filtro del divisor de 5 V,no
+D3,01,"LED verde 3 mm",THT,Indicador POWER,no
+R10,01,1k5,0603,Limitadora de D3,no
+U10,02,ESP32-S3-WROOM-1-N16R8,Modulo SMD,Controlador,si
+U11,02,W5500,LQFP-48,Ethernet,si
+Y1,02,"Cristal 25.000 MHz +-30 ppm CL 12 pF",3225,Reloj del W5500,si
+C20,02,22p NP0,0603,Carga de Y1,no
+C21,02,22p NP0,0603,Carga de Y1,no
+R20,02,10k,0603,Pull-up de W5500_RSTn,no
+R21,02,10k,0603,Pull-up de W5500_INTn,no
+C22,02,100n,0603,RC de reset del W5500,no
+R22,02,22R,0603,Serie en SCLK,no
+R23,02,22R,0603,Serie en MOSI,no
+R24,02,22R,0603,Serie en nCS_W5500,no
+R25,02,49R9 1%,0603,Terminacion TXP,si
+R26,02,49R9 1%,0603,Terminacion TXN,si
+R27,02,49R9 1%,0603,Terminacion RXP,si
+R28,02,49R9 1%,0603,Terminacion RXN,si
+C23,02,"10 nF / 2 kV X7R",1206,Terminacion Bob Smith,si
+D20,02,"Array TVS 4 canales Ethernet C<=3 pF",SOT-23-6,ESD del puerto,si
+L20,02,"Ferrita 600 ohm @100 MHz",0805,Aislamiento del W5500,no
+C24-C31,02,"8 x 100n",0402,Desacoplo del W5500,si
+C32,02,"22 uF / 10 V X7R",0805,Bulk del W5500,no
+C33,02,"10 uF / 10 V X7R",0805,Bulk del ESP32-S3,no
+C34,02,100n,0402,Desacoplo del ESP32-S3,no
+C35,02,100n,0402,Desacoplo del ESP32-S3,no
+R29,02,10k,0603,Pull-up de EN,si
+C36,02,1u,0603,RC de EN tau 10 ms,si
+R30,02,10k,0603,Pull-up de IO0,si
+C37,02,100n,0603,Antirrebote de SW_BOOT,no
+R31,02,10k,0603,Pull-down de IO45 (VDD_SPI),si
+SW_RST,02,"Pulsador tactil 6x6",SMD,Reset,no
+SW_BOOT,02,"Pulsador tactil 6x6",SMD,Descarga de firmware,no
+Rn1 (n=1..9),03,1M 1%,0805,Resistencia de descarga del piezo,si
+Rn2a (n=1..9),03,33k 1%,0805,"Serie limitadora mitad 1 - 0805 por tension 150 V",si
+Rn2b (n=1..9),03,33k 1%,0805,"Serie limitadora mitad 2 - 0805 por tension 150 V",si
+Dn1 (n=1..9),03,BAT54S,SOT-23,Clamp positivo y negativo,si
+Rn3 (n=1..9),03,1M 1%,0603,Descarga del nodo recortado,no
+Un_A (n=1..9),03,"MCP6004 (3 CI para 9 secciones)",SOIC-14,Seguidor de tension,si
+Dn2 (n=1..9),03,BAT54,SOT-23,Rectificador de envolvente,si
+Cn1 (n=1..9),03,"47n X7R 50 V",0603,Condensador de envolvente,si
+Rn4 (n=1..9),03,220k 1%,0603,Descarga de envolvente,si
+Rn5 (n=1..9),03,10k 1%,0603,Entrada del comparador,si
+Un_C (n=1..9),03,"LM339 (3 CI para 9 secciones)",SOIC-14,Comparador colector abierto,si
+Rn6 (n=1..9),03,1M 1%,0603,Realimentacion positiva (histeresis),si
+Rn7 (n=1..9),03,10k,0603,Pull-up de la salida del comparador,no
+Cn2 (n=1..9),03,1n,0603,Filtro de VREF_TH,no
+U40,04,74HC165,SOIC-16,Registro de desplazamiento bits 0-7,si
+U41,04,74HC165,SOIC-16,Registro de desplazamiento bit 8,si
+D40-D48,04,"9 x BAT54",SOT-23,OR cableado hacia IRQ_ANY,si
+R40,04,4k7,0603,Pull-up de IRQ_ANY,si
+R41,04,47k 1%,0603,Filtro del PWM de umbral,no
+C40,04,1u X7R,0603,Filtro del PWM de umbral,no
+U42,04,"MCP6004 (seccion sobrante)",-,Seguidor de VREF_TH,no
+C41-C44,04,"4 x 100n",0603,Desacoplo,no
+U50,05,ADS7953SBDBT,TSSOP-30,ADC SPI 16 canales 12 bit,si
+C50,05,"10 uF / 10 V X7R",0805,Bulk de U50,no
+C51,05,100n,0603,Desacoplo de U50,no
+C52,05,1u,0603,Referencia interna de U50,no
+R50,05,10k,0603,Pull-up de nCS_ADC,no
+R51-R61,05,"11 x 1k 1%",0603,Serie de proteccion de entrada,no
+R51b-R61b,05,"11 x 1k 1%",0603,Divisor 2:1 por saturacion de referencia,si
+C53-C63,05,"11 x 1n NP0",0603,Anti-alias 159 kHz,no
+D50-D55,05,"6 x BAV99",SOT-23,Clamp de entradas del ADC,si
+U51,05,CD74HC4067M (DNP),SOIC-24,Multiplexor - opcion A alternativa,no
+U60,06,74AHCT125PW,TSSOP-14,Conversion de nivel 3.3 -> 5 V,si
+R60,06,470R 1%,0603,Serie de datos de la fila 1,si
+R61,06,470R 1%,0603,Serie de datos de la fila 2,si
+R62,06,470R 1%,0603,Serie de datos de la fila 3,si
+R63,06,10k,0603,Pull-down del canal 4 no usado,no
+C62,06,"470 uF / 10 V low-ESR",THT D8,Bulk de la fila 1,si
+C63,06,"470 uF / 10 V low-ESR",THT D8,Bulk de la fila 2,si
+C64,06,"470 uF / 10 V low-ESR",THT D8,Bulk de la fila 3,si
+C65,06,100n,0603,Desacoplo de U60,no
+C66,06,"10 uF X7R",0805,Bulk de U60,no
+F60,06,"PTC rearmable Ihold 2.0 A Itrip 4.0 A",1812,Proteccion de la fila 1,si
+F61,06,"PTC rearmable Ihold 2.0 A Itrip 4.0 A",1812,Proteccion de la fila 2,si
+F62,06,"PTC rearmable Ihold 2.0 A Itrip 4.0 A",1812,Proteccion de la fila 3,si
+D60,06,"Schottky 3 A / 40 V",SMA,Proteccion inversa de la fila 1,no
+D61,06,"Schottky 3 A / 40 V",SMA,Proteccion inversa de la fila 2,no
+D62,06,"Schottky 3 A / 40 V",SMA,Proteccion inversa de la fila 3,no
+SW70,07,"Selector rotativo 1 polo 3 posiciones",Panel,SATELITE / AUTO / PRINCIPAL,si
+SW71,07,"Pulsador NA 12 mm",Panel,Identificacion,no
+R70,07,10k,0603,Pull-up de SEL_A,no
+R71,07,10k,0603,Pull-up de SEL_B,no
+R72,07,10k,0603,Pull-up de BTN_ID,no
+R73,07,100R,0603,Serie de proteccion de SEL_A,no
+R74,07,100R,0603,Serie de proteccion de SEL_B,no
+R75,07,100R,0603,Serie de proteccion de BTN_ID,no
+C70,07,100n,0603,Antirrebote de SEL_A tau 1.0 ms,no
+C71,07,100n,0603,Antirrebote de SEL_B tau 1.0 ms,no
+C72,07,100n,0603,Antirrebote de BTN_ID tau 1.0 ms,no
+D70,07,"LED verde 3 mm",Panel,Estado,no
+D71,07,"LED ambar 3 mm",Panel,Mantenimiento,no
+R76,07,330R,0603,Limitadora de D70 (3.9 mA),no
+R77,07,330R,0603,Limitadora de D71 (3.9 mA),no
+D72,07,"Array TVS 5 canales SRV05-4",SOT-23-6,ESD del mazo de la tapa,si
+J2,08,"RJ45 con magnetismos HR911105A",THT,Ethernet,si
+J10,08,"JST VH 4 vias 3.96 mm",THT,Fila LED superior,si
+J11,08,"JST VH 4 vias 3.96 mm",THT,Fila LED central,si
+J12,08,"JST VH 4 vias 3.96 mm",THT,Fila LED inferior,si
+J13,08,"JST VH 2 vias 3.96 mm",THT,Reinyeccion fila 1,no
+J14,08,"JST VH 2 vias 3.96 mm",THT,Reinyeccion fila 2,no
+J15,08,"JST VH 2 vias 3.96 mm",THT,Reinyeccion fila 3,no
+J20,08,"JST XH 6 vias 2.50 mm",THT,Piezos CH1-CH3,si
+J21,08,"JST XH 6 vias 2.50 mm",THT,Piezos CH4-CH6,si
+J22,08,"JST XH 6 vias 2.50 mm",THT,Piezos CH7-CH9,si
+J30,08,"Cabecera 6 vias 2.54 mm polarizada",THT,Programacion UART,no
+J31,08,"Cabecera 6 vias 2.54 mm polarizada",THT,Mazo a la tapa,no
+TP1-TP74,varias,"Pin de prueba 1 mm",THT,Puntos de prueba,no
