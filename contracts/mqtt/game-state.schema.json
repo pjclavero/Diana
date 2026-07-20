@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diana.seccionnueve/contracts/mqtt/game-state.schema.json",
+  "title": "Estado de partida",
+  "description": "targets/v1/system/{system_id}/game/state · QoS 1 · retain=true. Publicado por el coordinador.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "system_id": {
+      "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "game_id": {
+      "$ref": "common.schema.json#/$defs/uuid"
+    },
+    "round_id": {
+      "$ref": "common.schema.json#/$defs/uuid"
+    },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "armed",
+        "countdown",
+        "running",
+        "paused",
+        "finished",
+        "aborted"
+      ]
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "random",
+        "sequence",
+        "all_against_clock",
+        "reaction"
+      ]
+    },
+    "coordinator_module_id": {
+      "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "elapsed_us": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "T2. Autoridad temporal de la partida: el coordinador, no el backend."
+    },
+    "targets_remaining": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 81
+    },
+    "targets_hit": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 81
+    },
+    "penalties": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "active_targets": {
+      "type": "array",
+      "maxItems": 81,
+      "items": {
+        "type": "object",
+        "properties": {
+          "module_id": {
+            "$ref": "common.schema.json#/$defs/identifier"
+          },
+          "target_index": {
+            "$ref": "common.schema.json#/$defs/targetIndex"
+          },
+          "state": {
+            "$ref": "common.schema.json#/$defs/targetState"
+          }
+        },
+        "required": [
+          "module_id",
+          "target_index",
+          "state"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "device": {
+      "$ref": "common.schema.json#/$defs/deviceTime"
+    }
+  },
+  "required": [
+    "schema_version",
+    "system_id",
+    "game_id",
+    "round_id",
+    "phase",
+    "mode",
+    "coordinator_module_id",
+    "elapsed_us",
+    "targets_remaining",
+    "targets_hit",
+    "penalties",
+    "device"
+  ],
+  "additionalProperties": false
+}

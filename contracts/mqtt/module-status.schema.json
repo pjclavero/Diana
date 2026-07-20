@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diana.seccionnueve/contracts/mqtt/module-status.schema.json",
+  "title": "Estado del módulo",
+  "description": "targets/v1/module/{module_id}/status · QoS 1 · retain=true. Estado observable consolidado.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "module_id": {
+      "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "system_id": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/identifier"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "state": {
+      "$ref": "common.schema.json#/$defs/moduleState"
+    },
+    "selector": {
+      "$ref": "common.schema.json#/$defs/selectorPosition"
+    },
+    "role": {
+      "$ref": "common.schema.json#/$defs/moduleRole"
+    },
+    "position": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/modulePosition"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "rotation": {
+      "$ref": "common.schema.json#/$defs/moduleRotation"
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9,
+      "description": "Estado de las 9 dianas en orden de índice 1..9.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "target_index": {
+            "$ref": "common.schema.json#/$defs/targetIndex"
+          },
+          "state": {
+            "$ref": "common.schema.json#/$defs/targetState"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "target_index",
+          "state",
+          "enabled"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "queue_depth": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Eventos pendientes de confirmación en la cola local NVS."
+    },
+    "last_command": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "command_id": {
+              "$ref": "common.schema.json#/$defs/uuid"
+            },
+            "result": {
+              "type": "string",
+              "enum": [
+                "accepted",
+                "rejected",
+                "expired",
+                "duplicate",
+                "failed"
+              ]
+            },
+            "detail": {
+              "type": "string",
+              "maxLength": 120
+            }
+          },
+          "required": [
+            "command_id",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "firmware_version": {
+      "$ref": "common.schema.json#/$defs/semver"
+    },
+    "uptime_s": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "schema_version",
+    "module_id",
+    "state",
+    "selector",
+    "role",
+    "targets",
+    "queue_depth",
+    "firmware_version",
+    "uptime_s"
+  ],
+  "additionalProperties": false
+}

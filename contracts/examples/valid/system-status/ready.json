@@ -1,0 +1,12 @@
+{
+  "_schema": "system-status.schema.json",
+  "schema_version": 1,
+  "system_id": "system-a",
+  "state": "ready",
+  "coordinator_module_id": "module-01",
+  "modules_expected": 9,
+  "modules_online": 9,
+  "conflicts": [],
+  "active_game_id": null,
+  "backend_time_ms": 1784500003000
+}

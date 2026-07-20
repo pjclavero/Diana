@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diana.seccionnueve/contracts/mqtt/module-command.schema.json",
+  "title": "Comando a módulo",
+  "description": "targets/v1/module/{module_id}/command · QoS 1 · retain=false. Caduca según expires_in_ms.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "command_id": {
+      "$ref": "common.schema.json#/$defs/uuid"
+    },
+    "issued_at_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "expires_in_ms": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 600000
+    },
+    "nonce": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "issuer": {
+      "type": "string",
+      "enum": [
+        "backend",
+        "coordinator",
+        "operator-cli"
+      ]
+    },
+    "module_id": {
+      "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "identify",
+        "set_targets",
+        "set_all_targets",
+        "reboot",
+        "start_calibration",
+        "abort_calibration",
+        "self_test",
+        "led_test",
+        "flush_queue",
+        "set_maintenance",
+        "clear_error"
+      ]
+    },
+    "params": {
+      "type": "object",
+      "description": "Parámetros dependientes de 'action'. Validados por el firmware según la acción.",
+      "properties": {
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 120000
+        },
+        "state": {
+          "$ref": "common.schema.json#/$defs/targetState"
+        },
+        "targets": {
+          "type": "array",
+          "maxItems": 9,
+          "items": {
+            "type": "object",
+            "properties": {
+              "target_index": {
+                "$ref": "common.schema.json#/$defs/targetIndex"
+              },
+              "state": {
+                "$ref": "common.schema.json#/$defs/targetState"
+              }
+            },
+            "required": [
+              "target_index",
+              "state"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "game_id": {
+          "oneOf": [
+            {
+              "$ref": "common.schema.json#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "round_id": {
+          "oneOf": [
+            {
+              "$ref": "common.schema.json#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "command_id",
+    "issued_at_ms",
+    "expires_in_ms",
+    "nonce",
+    "issuer",
+    "module_id",
+    "action"
+  ],
+  "additionalProperties": false
+}

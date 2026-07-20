@@ -1,0 +1,14 @@
+{
+  "_schema": "module-command.schema.json",
+  "schema_version": 1,
+  "command_id": "ad506082-af5e-4d6c-bf71-5e6f70819203",
+  "issued_at_ms": 1784500000000,
+  "expires_in_ms": 5000,
+  "nonce": 42,
+  "issuer": "backend",
+  "module_id": "module-03",
+  "action": "identify",
+  "params": {
+    "duration_ms": 4000
+  }
+}

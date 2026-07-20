@@ -1,0 +1,25 @@
+{
+  "_schema": "module-command.schema.json",
+  "schema_version": 1,
+  "command_id": "6f1c2c4e-6b1a-4f2e-9b3d-1a2b3c4d5e6f",
+  "issued_at_ms": 1784500001000,
+  "expires_in_ms": 2000,
+  "nonce": 43,
+  "issuer": "coordinator",
+  "module_id": "module-03",
+  "action": "set_targets",
+  "params": {
+    "targets": [
+      {
+        "target_index": 7,
+        "state": "active"
+      },
+      {
+        "target_index": 4,
+        "state": "safe"
+      }
+    ],
+    "game_id": "7a2d3d5f-7c2b-4a3f-8c4e-2b3c4d5e6f70",
+    "round_id": "8b3e4e60-8d3c-4b4a-9d5f-3c4d5e6f7081"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "_schema": "module-telemetry.schema.json",
+  "schema_version": 1,
+  "module_id": "module-03",
+  "uptime_s": 3600,
+  "free_heap_bytes": 214000,
+  "min_free_heap_bytes": 198000,
+  "cpu_load_pct": 12.5,
+  "temperature_c": 41.2,
+  "voltage_5v_mv": 4980,
+  "voltage_12v_mv": 12080,
+  "link_up": true,
+  "mqtt_reconnects": 0,
+  "queue_depth": 0,
+  "led_chains": [
+    {
+      "chain": 0,
+      "ok": true,
+      "current_ma": 380
+    },
+    {
+      "chain": 1,
+      "ok": true,
+      "current_ma": 380
+    },
+    {
+      "chain": 2,
+      "ok": true,
+      "current_ma": 380
+    }
+  ],
+  "device": {
+    "boot_id": "9c4f5f71-9e4d-4c5b-ae60-4d5e6f708192",
+    "uptime_us": 3600000000
+  }
+}

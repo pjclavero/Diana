@@ -1,0 +1,26 @@
+{
+  "_schema": "game-state.schema.json",
+  "schema_version": 1,
+  "system_id": "system-a",
+  "game_id": "7a2d3d5f-7c2b-4a3f-8c4e-2b3c4d5e6f70",
+  "round_id": "8b3e4e60-8d3c-4b4a-9d5f-3c4d5e6f7081",
+  "phase": "running",
+  "mode": "random",
+  "coordinator_module_id": "module-01",
+  "elapsed_us": 4210556,
+  "targets_remaining": 5,
+  "targets_hit": 4,
+  "penalties": 1,
+  "active_targets": [
+    {
+      "module_id": "module-01",
+      "target_index": 3,
+      "state": "active"
+    }
+  ],
+  "device": {
+    "boot_id": "9c4f5f71-9e4d-4c5b-ae60-4d5e6f708192",
+    "uptime_us": 1832456789,
+    "event_us": 1832456712
+  }
+}

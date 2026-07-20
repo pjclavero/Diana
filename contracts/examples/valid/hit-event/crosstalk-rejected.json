@@ -1,0 +1,29 @@
+{
+  "_schema": "hit-event.schema.json",
+  "schema_version": 1,
+  "event_id": "7a2d3d5f-7c2b-4a3f-8c4e-2b3c4d5e6f70",
+  "system_id": "system-a",
+  "module_id": "module-03",
+  "target_index": 4,
+  "local_sequence": 1843,
+  "device": {
+    "boot_id": "9c4f5f71-9e4d-4c5b-ae60-4d5e6f708192",
+    "uptime_us": 1832457400,
+    "event_us": 1832457332
+  },
+  "coordinator": null,
+  "amplitude": 410,
+  "threshold": 920,
+  "noise_floor": 140,
+  "neighbours": [
+    {
+      "target_index": 7,
+      "amplitude": 2710,
+      "delta_us": -620
+    }
+  ],
+  "target_state_before": "active",
+  "classification": "crosstalk_rejected",
+  "classification_reason": "amplitud 0.15x del canal 7 dentro de ventana 1ms",
+  "firmware_version": "0.1.0"
+}

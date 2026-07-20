@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diana.seccionnueve/contracts/mqtt/system-status.schema.json",
+  "title": "Estado del sistema",
+  "description": "targets/v1/system/{system_id}/status · QoS 1 · retain=true. Publicado por el backend.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "system_id": {
+      "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "idle",
+        "configuring",
+        "ready",
+        "game_running",
+        "degraded",
+        "maintenance"
+      ]
+    },
+    "coordinator_module_id": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/identifier"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "modules_expected": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9
+    },
+    "modules_online": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "dual_principal",
+          "duplicate_position",
+          "no_principal",
+          "schema_mismatch",
+          "firmware_mismatch"
+        ]
+      }
+    },
+    "active_game_id": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "backend_time_ms": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "schema_version",
+    "system_id",
+    "state",
+    "modules_expected",
+    "modules_online",
+    "conflicts"
+  ],
+  "additionalProperties": false
+}

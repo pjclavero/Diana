@@ -1,0 +1,7 @@
+{
+  "_schema": "module-presence.schema.json",
+  "schema_version": 1,
+  "module_id": "module-03",
+  "online": false,
+  "reason": "lwt"
+}

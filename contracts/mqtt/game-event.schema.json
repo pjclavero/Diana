@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diana.seccionnueve/contracts/mqtt/game-event.schema.json",
+  "title": "Evento de partida",
+  "description": "targets/v1/system/{system_id}/game/event · QoS 1 · retain=false. Hitos consolidados por el coordinador.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "system_id": {
+      "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "event_id": {
+      "$ref": "common.schema.json#/$defs/eventId"
+    },
+    "game_id": {
+      "$ref": "common.schema.json#/$defs/uuid"
+    },
+    "round_id": {
+      "$ref": "common.schema.json#/$defs/uuid"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "round_armed",
+        "countdown_started",
+        "round_started",
+        "target_activated",
+        "target_hit",
+        "penalty_applied",
+        "round_paused",
+        "round_resumed",
+        "round_finished",
+        "round_aborted",
+        "coordinator_lost",
+        "module_lost"
+      ]
+    },
+    "coordinator_module_id": {
+      "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "elapsed_us": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "device": {
+      "$ref": "common.schema.json#/$defs/deviceTime"
+    },
+    "hit_event_id": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/eventId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Enlace al hit-event original cuando kind es target_hit o penalty_applied."
+    },
+    "module_id": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/identifier"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "target_index": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/targetIndex"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "detail": {
+      "type": "string",
+      "maxLength": 240
+    }
+  },
+  "required": [
+    "schema_version",
+    "system_id",
+    "event_id",
+    "game_id",
+    "round_id",
+    "kind",
+    "coordinator_module_id",
+    "elapsed_us",
+    "device"
+  ],
+  "additionalProperties": false
+}

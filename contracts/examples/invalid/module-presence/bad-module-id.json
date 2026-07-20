@@ -1,0 +1,8 @@
+{
+  "_schema": "module-presence.schema.json",
+  "_reason": "module_id con '/' rompe el arbol de topicos MQTT.",
+  "schema_version": 1,
+  "module_id": "module/03",
+  "online": true,
+  "reason": "connect"
+}

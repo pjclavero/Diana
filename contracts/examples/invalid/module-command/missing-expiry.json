@@ -1,0 +1,11 @@
+{
+  "_schema": "module-command.schema.json",
+  "_reason": "Falta expires_in_ms: todo comando debe caducar (contrato 6).",
+  "schema_version": 1,
+  "command_id": "ad506082-af5e-4d6c-bf71-5e6f70819203",
+  "issued_at_ms": 1784500000000,
+  "nonce": 42,
+  "issuer": "backend",
+  "module_id": "module-03",
+  "action": "identify"
+}

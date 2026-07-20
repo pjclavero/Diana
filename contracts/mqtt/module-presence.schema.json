@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diana.seccionnueve/contracts/mqtt/module-presence.schema.json",
+  "title": "Presencia de módulo",
+  "description": "targets/v1/module/{module_id}/presence · QoS 1 · retain=true. Es también el payload del Last Will.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "module_id": {
+      "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "online": {
+      "type": "boolean"
+    },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "connect",
+        "shutdown",
+        "lwt"
+      ]
+    },
+    "boot_id": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "firmware_version": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/semver"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "hardware_revision": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 32
+    },
+    "mac": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^([0-9A-F]{2}:){5}[0-9A-F]{2}$"
+    },
+    "ip": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "ipv4"
+    },
+    "serial": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 64
+    }
+  },
+  "required": [
+    "schema_version",
+    "module_id",
+    "online",
+    "reason"
+  ],
+  "additionalProperties": false
+}

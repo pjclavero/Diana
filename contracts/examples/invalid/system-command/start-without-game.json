@@ -1,0 +1,12 @@
+{
+  "_schema": "system-command.schema.json",
+  "_reason": "action=start_game exige el bloque 'game'.",
+  "schema_version": 1,
+  "command_id": "7a2d3d5f-7c2b-4a3f-8c4e-2b3c4d5e6f70",
+  "issued_at_ms": 1784500004000,
+  "expires_in_ms": 10000,
+  "nonce": 45,
+  "issuer": "backend",
+  "system_id": "system-a",
+  "action": "start_game"
+}

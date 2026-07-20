@@ -1,0 +1,20 @@
+{
+  "_schema": "module-config.schema.json",
+  "_reason": "calibration debe traer las 9 dianas.",
+  "schema_version": 1,
+  "module_id": "module-03",
+  "config_version": 1,
+  "led_brightness_max": 120,
+  "telemetry_interval_ms": 1000,
+  "calibration": [
+    {
+      "target_index": 1,
+      "threshold": 900,
+      "hysteresis": 80,
+      "blanking_us": 60000,
+      "group_window_us": 2000,
+      "neighbour_ratio": 0.3,
+      "enabled": true
+    }
+  ]
+}

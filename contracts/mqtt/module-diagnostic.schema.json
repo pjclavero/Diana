@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diana.seccionnueve/contracts/mqtt/module-diagnostic.schema.json",
+  "title": "Diagnóstico de módulo",
+  "description": "targets/v1/module/{module_id}/diagnostic · QoS 1 · retain=false. Incidencias y resultados de pruebas.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "module_id": {
+      "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "event_id": {
+      "$ref": "common.schema.json#/$defs/eventId"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "boot",
+        "reset_reason",
+        "sensor_error",
+        "led_chain_error",
+        "low_voltage",
+        "over_temperature",
+        "queue_overflow",
+        "mqtt_disconnect",
+        "calibration_result",
+        "self_test_result",
+        "schema_rejected",
+        "command_rejected",
+        "ota_result"
+      ]
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "info",
+        "warning",
+        "error",
+        "critical"
+      ]
+    },
+    "message": {
+      "type": "string",
+      "maxLength": 240
+    },
+    "device": {
+      "$ref": "common.schema.json#/$defs/deviceTime"
+    },
+    "detail": {
+      "type": "object",
+      "description": "Cuerpo libre acotado, dependiente de 'kind'. Sin secretos ni credenciales.",
+      "additionalProperties": true
+    },
+    "firmware_version": {
+      "$ref": "common.schema.json#/$defs/semver"
+    }
+  },
+  "required": [
+    "schema_version",
+    "module_id",
+    "event_id",
+    "kind",
+    "severity",
+    "message",
+    "device",
+    "firmware_version"
+  ],
+  "additionalProperties": false
+}

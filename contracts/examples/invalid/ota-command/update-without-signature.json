@@ -1,0 +1,19 @@
+{
+  "_schema": "ota-command.schema.json",
+  "_reason": "action=update sin campo 'signature' en firmware: OTA debe ir firmada (dosier 23.3).",
+  "schema_version": 1,
+  "command_id": "ad506082-af5e-4d6c-bf71-5e6f70819203",
+  "issued_at_ms": 1784500002000,
+  "expires_in_ms": 600000,
+  "nonce": 44,
+  "issuer": "backend",
+  "module_id": "module-03",
+  "action": "update",
+  "firmware": {
+    "version": "0.2.0",
+    "url": "http://192.168.1.209/fw.bin",
+    "size_bytes": 1024,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target_board": "esp32s3-w5500-protoA"
+  }
+}

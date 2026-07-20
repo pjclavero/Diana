@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diana.seccionnueve/contracts/mqtt/hit-event.schema.json",
+  "title": "Evento de impacto",
+  "description": "targets/v1/module/{module_id}/hit · QoS 1 · retain=false. Publicado por el módulo que detecta el impacto. Reenviado por el coordinador con el bloque 'coordinator' relleno.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "$ref": "common.schema.json#/$defs/schemaVersion" },
+    "event_id": { "$ref": "common.schema.json#/$defs/eventId" },
+    "system_id": { "$ref": "common.schema.json#/$defs/identifier" },
+    "module_id": { "$ref": "common.schema.json#/$defs/identifier" },
+    "game_id": { "$ref": "common.schema.json#/$defs/uuid" },
+    "round_id": { "$ref": "common.schema.json#/$defs/uuid" },
+    "target_index": { "$ref": "common.schema.json#/$defs/targetIndex" },
+    "module_position": { "$ref": "common.schema.json#/$defs/modulePosition" },
+    "module_rotation": { "$ref": "common.schema.json#/$defs/moduleRotation" },
+    "local_sequence": { "type": "integer", "minimum": 0 },
+    "device": { "$ref": "common.schema.json#/$defs/deviceTime" },
+    "coordinator": {
+      "oneOf": [
+        { "$ref": "common.schema.json#/$defs/coordinatorTime" },
+        { "type": "null" }
+      ],
+      "description": "null cuando el satélite publica el evento crudo; relleno por el principal al consolidar."
+    },
+    "amplitude": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 65535,
+      "description": "Lectura de la envolvente por el ADC, en cuentas crudas."
+    },
+    "threshold": { "type": "integer", "minimum": 0, "maximum": 65535 },
+    "noise_floor": { "type": "integer", "minimum": 0, "maximum": 65535 },
+    "neighbours": {
+      "type": "array",
+      "maxItems": 8,
+      "description": "Canales vecinos activados dentro de la ventana de agrupación, para auditar la decisión de crosstalk.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "target_index": { "$ref": "common.schema.json#/$defs/targetIndex" },
+          "amplitude": { "type": "integer", "minimum": 0, "maximum": 65535 },
+          "delta_us": { "type": "integer" }
+        },
+        "required": ["target_index", "amplitude", "delta_us"],
+        "additionalProperties": false
+      }
+    },
+    "target_state_before": { "$ref": "common.schema.json#/$defs/targetState" },
+    "classification": { "$ref": "common.schema.json#/$defs/hitClassification" },
+    "classification_reason": {
+      "type": "string",
+      "maxLength": 120,
+      "description": "Motivo legible de la clasificación. Obligatorio si classification no es valid_hit."
+    },
+    "firmware_version": { "$ref": "common.schema.json#/$defs/semver" },
+    "replay": {
+      "type": "boolean",
+      "default": false,
+      "description": "true si el evento sale de la cola local tras una desconexión. No implica duplicado."
+    }
+  },
+  "required": [
+    "schema_version", "event_id", "system_id", "module_id",
+    "target_index", "local_sequence", "device",
+    "amplitude", "threshold", "target_state_before",
+    "classification", "firmware_version"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": { "classification": { "not": { "const": "valid_hit" } } },
+        "required": ["classification"]
+      },
+      "then": { "required": ["classification_reason"] }
+    }
+  ]
+}

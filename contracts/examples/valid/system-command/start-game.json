@@ -1,0 +1,61 @@
+{
+  "_schema": "system-command.schema.json",
+  "schema_version": 1,
+  "command_id": "7a2d3d5f-7c2b-4a3f-8c4e-2b3c4d5e6f70",
+  "issued_at_ms": 1784500004000,
+  "expires_in_ms": 10000,
+  "nonce": 45,
+  "issuer": "backend",
+  "system_id": "system-a",
+  "action": "start_game",
+  "game": {
+    "game_id": "7a2d3d5f-7c2b-4a3f-8c4e-2b3c4d5e6f70",
+    "round_id": "8b3e4e60-8d3c-4b4a-9d5f-3c4d5e6f7081",
+    "mode": "random",
+    "countdown_ms": 3000,
+    "time_limit_ms": 60000,
+    "penalty_ms": 2000,
+    "strict_order": false,
+    "targets": [
+      {
+        "module_id": "module-01",
+        "target_index": 1
+      },
+      {
+        "module_id": "module-01",
+        "target_index": 2
+      },
+      {
+        "module_id": "module-01",
+        "target_index": 3
+      },
+      {
+        "module_id": "module-01",
+        "target_index": 4
+      },
+      {
+        "module_id": "module-01",
+        "target_index": 5
+      },
+      {
+        "module_id": "module-01",
+        "target_index": 6
+      },
+      {
+        "module_id": "module-01",
+        "target_index": 7
+      },
+      {
+        "module_id": "module-01",
+        "target_index": 8
+      },
+      {
+        "module_id": "module-01",
+        "target_index": 9
+      }
+    ],
+    "sequence": null,
+    "reaction_delay_ms": null,
+    "seed": 20260720
+  }
+}

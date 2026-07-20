@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diana.seccionnueve/contracts/mqtt/system-command.schema.json",
+  "title": "Comando de sistema",
+  "description": "targets/v1/system/{system_id}/command · QoS 1 · retain=false. Del backend al coordinador.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "command_id": {
+      "$ref": "common.schema.json#/$defs/uuid"
+    },
+    "issued_at_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "expires_in_ms": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 600000
+    },
+    "nonce": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "issuer": {
+      "type": "string",
+      "enum": [
+        "backend",
+        "coordinator",
+        "operator-cli"
+      ]
+    },
+    "system_id": {
+      "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "arm_game",
+        "start_game",
+        "pause_game",
+        "resume_game",
+        "abort_game",
+        "end_game",
+        "set_topology",
+        "identify_all",
+        "all_safe"
+      ]
+    },
+    "game": {
+      "type": "object",
+      "properties": {
+        "game_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "round_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "random",
+            "sequence",
+            "all_against_clock",
+            "reaction"
+          ]
+        },
+        "countdown_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60000
+        },
+        "time_limit_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "penalty_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "strict_order": {
+          "type": "boolean",
+          "default": false
+        },
+        "targets": {
+          "type": "array",
+          "maxItems": 81,
+          "description": "Dianas participantes, en coordenadas de módulo + índice local.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "module_id": {
+                "$ref": "common.schema.json#/$defs/identifier"
+              },
+              "target_index": {
+                "$ref": "common.schema.json#/$defs/targetIndex"
+              }
+            },
+            "required": [
+              "module_id",
+              "target_index"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "sequence": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "maxItems": 81,
+          "description": "Orden explícito para el modo 'sequence'.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "module_id": {
+                "$ref": "common.schema.json#/$defs/identifier"
+              },
+              "target_index": {
+                "$ref": "common.schema.json#/$defs/targetIndex"
+              }
+            },
+            "required": [
+              "module_id",
+              "target_index"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "reaction_delay_ms": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "description": "[min, max] del retardo aleatorio del modo 'reaction'."
+        },
+        "seed": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Semilla del generador para reproducibilidad determinista en pruebas."
+        }
+      },
+      "required": [
+        "game_id",
+        "round_id",
+        "mode",
+        "targets"
+      ],
+      "additionalProperties": false
+    },
+    "topology": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "maxItems": 9,
+      "items": {
+        "type": "object",
+        "properties": {
+          "module_id": {
+            "$ref": "common.schema.json#/$defs/identifier"
+          },
+          "position": {
+            "$ref": "common.schema.json#/$defs/modulePosition"
+          },
+          "rotation": {
+            "$ref": "common.schema.json#/$defs/moduleRotation"
+          }
+        },
+        "required": [
+          "module_id",
+          "position",
+          "rotation"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "command_id",
+    "issued_at_ms",
+    "expires_in_ms",
+    "nonce",
+    "issuer",
+    "system_id",
+    "action"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "enum": [
+              "arm_game",
+              "start_game"
+            ]
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "then": {
+        "required": [
+          "game"
+        ]
+      }
+    }
+  ]
+}

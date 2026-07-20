@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diana.seccionnueve/contracts/schemas/common.schema.json",
+  "title": "Definiciones comunes Diana v1",
+  "$defs": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1,
+      "description": "Versión del esquema del payload. Un receptor rechaza versiones superiores."
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{2,62}$",
+      "description": "Identificador seguro para tópicos MQTT: minúsculas, sin +, # ni /."
+    },
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "eventId": {
+      "description": "UUIDv4 o ULID generado por el módulo detector. Estable entre reintentos.",
+      "type": "string",
+      "oneOf": [
+        { "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" },
+        { "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" }
+      ]
+    },
+    "targetIndex": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9,
+      "description": "Posición local de la diana dentro del módulo 3x3 (1..9, orden lectura)."
+    },
+    "modulePosition": {
+      "type": "object",
+      "description": "Coordenada del módulo en la matriz 3x3 (dosier 6.1).",
+      "properties": {
+        "x": { "type": "integer", "minimum": -1, "maximum": 1 },
+        "y": { "type": "integer", "minimum": -1, "maximum": 1 }
+      },
+      "required": ["x", "y"],
+      "additionalProperties": false
+    },
+    "moduleRotation": {
+      "type": "integer",
+      "enum": [0, 90, 180, 270]
+    },
+    "moduleRole": {
+      "type": "string",
+      "enum": ["principal", "satellite", "auto"],
+      "description": "Rol efectivo. 'auto' sólo aparece como posición del selector, nunca como rol resuelto."
+    },
+    "selectorPosition": {
+      "type": "string",
+      "enum": ["SATELITE", "AUTO", "PRINCIPAL"]
+    },
+    "targetState": {
+      "type": "string",
+      "enum": [
+        "off", "safe", "active", "hit", "countdown",
+        "penalty", "error", "calibration", "locked",
+        "sensor_error", "maintenance", "disabled"
+      ],
+      "description": "Estados de la máquina de estados de diana (dosier 13.4). Colores en docs/firmware/led-states.md."
+    },
+    "moduleState": {
+      "type": "string",
+      "enum": [
+        "boot", "selftest", "network", "registering", "ready",
+        "calibration", "maintenance", "game_prepare", "game_countdown",
+        "game_active", "game_paused", "game_finished", "error"
+      ]
+    },
+    "hitClassification": {
+      "type": "string",
+      "enum": [
+        "valid_hit",
+        "hit_on_safe",
+        "hit_on_already_hit",
+        "out_of_order",
+        "crosstalk_rejected",
+        "ambiguous",
+        "during_pause",
+        "calibration_hit",
+        "early_shot"
+      ],
+      "description": "Clasificación del impacto (dosier 17.1). 'crosstalk_rejected' se transmite para diagnóstico y no puntúa."
+    },
+    "deviceTime": {
+      "type": "object",
+      "description": "T1 · tiempo capturado por el ESP32. Nunca lo reescribe el servidor.",
+      "properties": {
+        "boot_id": { "$ref": "#/$defs/uuid" },
+        "uptime_us": { "type": "integer", "minimum": 0 },
+        "event_us": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Reloj monotónico local en el instante de la interrupción del comparador."
+        },
+        "epoch_ms": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "Hora de pared si el módulo la ha sincronizado. Informativa; nunca sustituye a event_us."
+        }
+      },
+      "required": ["boot_id", "uptime_us", "event_us"],
+      "additionalProperties": false
+    },
+    "coordinatorTime": {
+      "type": "object",
+      "description": "T2 · consolidación del módulo principal.",
+      "properties": {
+        "recv_us": { "type": "integer", "minimum": 0 },
+        "elapsed_us": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Tiempo de juego mostrado al jugador, medido desde el inicio de ronda por el coordinador."
+        },
+        "clock_offset_us": {
+          "type": "integer",
+          "description": "Desfase estimado satélite - principal. 0 si el propio principal detectó el impacto."
+        },
+        "offset_uncertainty_us": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["recv_us", "elapsed_us", "clock_offset_us"],
+      "additionalProperties": false
+    },
+    "commandEnvelope": {
+      "type": "object",
+      "description": "Campos obligatorios de todo comando (dosier 23.3, contrato 6).",
+      "properties": {
+        "command_id": { "$ref": "#/$defs/uuid" },
+        "issued_at_ms": { "type": "integer", "minimum": 0 },
+        "expires_in_ms": { "type": "integer", "minimum": 100, "maximum": 600000, "default": 5000 },
+        "nonce": { "type": "integer", "minimum": 0 },
+        "issuer": { "type": "string", "enum": ["backend", "coordinator", "operator-cli"] }
+      },
+      "required": ["command_id", "issued_at_ms", "expires_in_ms", "nonce", "issuer"]
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

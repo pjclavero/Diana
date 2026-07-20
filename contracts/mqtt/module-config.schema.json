@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diana.seccionnueve/contracts/mqtt/module-config.schema.json",
+  "title": "Configuración de módulo",
+  "description": "targets/v1/module/{module_id}/config/desired (backend→módulo) y /config/reported (módulo→backend). QoS 1 · retain=true en ambos. 'reported' refleja lo aplicado realmente y puede diferir de 'desired'.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "module_id": {
+      "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "config_version": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Monotónico. El módulo ignora una config con versión menor a la aplicada."
+    },
+    "system_id": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/identifier"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "position": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/modulePosition"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "rotation": {
+      "$ref": "common.schema.json#/$defs/moduleRotation"
+    },
+    "friendly_name": {
+      "type": "string",
+      "maxLength": 64
+    },
+    "led_brightness_max": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 255,
+      "description": "Límite global de brillo (presupuesto de potencia, dosier 10.4)."
+    },
+    "telemetry_interval_ms": {
+      "type": "integer",
+      "minimum": 200,
+      "maximum": 60000
+    },
+    "network": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "dhcp",
+            "static"
+          ]
+        },
+        "ip": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "ipv4"
+        },
+        "netmask": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "ipv4"
+        },
+        "gateway": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "ipv4"
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "additionalProperties": false
+    },
+    "calibration": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9,
+      "items": {
+        "type": "object",
+        "properties": {
+          "target_index": {
+            "$ref": "common.schema.json#/$defs/targetIndex"
+          },
+          "threshold": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "hysteresis": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "noise_floor": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "blanking_us": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 500000,
+            "description": "Bloqueo tras impacto válido. Ensayo inicial 30-100 ms (dosier 9.6)."
+          },
+          "group_window_us": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 50000,
+            "description": "Ventana de agrupación para crosstalk. Ensayo inicial 1-3 ms."
+          },
+          "neighbour_ratio": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Un vecino por debajo de este cociente de amplitud se descarta."
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "calibrated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "target_index",
+          "threshold",
+          "hysteresis",
+          "blanking_us",
+          "group_window_us",
+          "neighbour_ratio",
+          "enabled"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "applied_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "Sólo en /config/reported."
+    }
+  },
+  "required": [
+    "schema_version",
+    "module_id",
+    "config_version",
+    "led_brightness_max",
+    "telemetry_interval_ms",
+    "calibration"
+  ],
+  "additionalProperties": false
+}

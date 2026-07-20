@@ -1,0 +1,52 @@
+# Secretos — nunca en git
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+!**/testdata/*.pem
+secrets/
+*.htpasswd
+mosquitto/passwd
+
+# Node
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+.npm/
+.pnpm-store/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# ESP-IDF
+firmware/esp32/build/
+firmware/esp32/sdkconfig
+firmware/esp32/sdkconfig.old
+firmware/esp32/managed_components/
+firmware/esp32/dependencies.lock
+
+# KiCad
+*-backups/
+*.kicad_prl
+fp-info-cache
+*.bak
+*~
+
+# Datos y volúmenes locales
+data/
+backups/*.sql
+backups/*.dump
+exports/
+
+# Herramientas
+.DS_Store
+.idea/
+.vscode/
+*.log

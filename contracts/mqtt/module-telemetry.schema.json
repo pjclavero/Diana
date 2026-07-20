@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diana.seccionnueve/contracts/mqtt/module-telemetry.schema.json",
+  "title": "Telemetría de módulo",
+  "description": "targets/v1/module/{module_id}/telemetry · QoS 0 · retain=false. Frecuencia por defecto 1 Hz. Puede perderse sin consecuencias.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "module_id": {
+      "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "uptime_s": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "free_heap_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "min_free_heap_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "cpu_load_pct": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "temperature_c": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": -40,
+      "maximum": 125
+    },
+    "voltage_5v_mv": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 15000
+    },
+    "voltage_12v_mv": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 30000
+    },
+    "link_up": {
+      "type": "boolean"
+    },
+    "mqtt_reconnects": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "queue_depth": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "led_chains": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "Estado de las tres cadenas LED por filas (dosier 10.2).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "chain": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "current_ma": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          }
+        },
+        "required": [
+          "chain",
+          "ok"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "device": {
+      "type": "object",
+      "properties": {
+        "boot_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "uptime_us": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "boot_id",
+        "uptime_us"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "module_id",
+    "uptime_s",
+    "free_heap_bytes",
+    "link_up",
+    "queue_depth",
+    "device"
+  ],
+  "additionalProperties": false
+}

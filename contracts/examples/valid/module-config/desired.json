@@ -1,0 +1,122 @@
+{
+  "_schema": "module-config.schema.json",
+  "schema_version": 1,
+  "module_id": "module-03",
+  "config_version": 7,
+  "system_id": "system-a",
+  "position": {
+    "x": -1,
+    "y": 0
+  },
+  "rotation": 90,
+  "friendly_name": "Modulo izquierda",
+  "led_brightness_max": 120,
+  "telemetry_interval_ms": 1000,
+  "network": {
+    "mode": "dhcp",
+    "ip": null,
+    "netmask": null,
+    "gateway": null
+  },
+  "calibration": [
+    {
+      "target_index": 1,
+      "threshold": 901,
+      "hysteresis": 80,
+      "noise_floor": 140,
+      "blanking_us": 60000,
+      "group_window_us": 2000,
+      "neighbour_ratio": 0.35,
+      "enabled": true,
+      "calibrated_at": "2026-07-20T10:00:00Z"
+    },
+    {
+      "target_index": 2,
+      "threshold": 902,
+      "hysteresis": 80,
+      "noise_floor": 140,
+      "blanking_us": 60000,
+      "group_window_us": 2000,
+      "neighbour_ratio": 0.35,
+      "enabled": true,
+      "calibrated_at": "2026-07-20T10:00:00Z"
+    },
+    {
+      "target_index": 3,
+      "threshold": 903,
+      "hysteresis": 80,
+      "noise_floor": 140,
+      "blanking_us": 60000,
+      "group_window_us": 2000,
+      "neighbour_ratio": 0.35,
+      "enabled": true,
+      "calibrated_at": "2026-07-20T10:00:00Z"
+    },
+    {
+      "target_index": 4,
+      "threshold": 904,
+      "hysteresis": 80,
+      "noise_floor": 140,
+      "blanking_us": 60000,
+      "group_window_us": 2000,
+      "neighbour_ratio": 0.35,
+      "enabled": true,
+      "calibrated_at": "2026-07-20T10:00:00Z"
+    },
+    {
+      "target_index": 5,
+      "threshold": 905,
+      "hysteresis": 80,
+      "noise_floor": 140,
+      "blanking_us": 60000,
+      "group_window_us": 2000,
+      "neighbour_ratio": 0.35,
+      "enabled": true,
+      "calibrated_at": "2026-07-20T10:00:00Z"
+    },
+    {
+      "target_index": 6,
+      "threshold": 906,
+      "hysteresis": 80,
+      "noise_floor": 140,
+      "blanking_us": 60000,
+      "group_window_us": 2000,
+      "neighbour_ratio": 0.35,
+      "enabled": true,
+      "calibrated_at": "2026-07-20T10:00:00Z"
+    },
+    {
+      "target_index": 7,
+      "threshold": 907,
+      "hysteresis": 80,
+      "noise_floor": 140,
+      "blanking_us": 60000,
+      "group_window_us": 2000,
+      "neighbour_ratio": 0.35,
+      "enabled": true,
+      "calibrated_at": "2026-07-20T10:00:00Z"
+    },
+    {
+      "target_index": 8,
+      "threshold": 908,
+      "hysteresis": 80,
+      "noise_floor": 140,
+      "blanking_us": 60000,
+      "group_window_us": 2000,
+      "neighbour_ratio": 0.35,
+      "enabled": true,
+      "calibrated_at": "2026-07-20T10:00:00Z"
+    },
+    {
+      "target_index": 9,
+      "threshold": 909,
+      "hysteresis": 80,
+      "noise_floor": 140,
+      "blanking_us": 60000,
+      "group_window_us": 2000,
+      "neighbour_ratio": 0.35,
+      "enabled": true,
+      "calibrated_at": "2026-07-20T10:00:00Z"
+    }
+  ]
+}
