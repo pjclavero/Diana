@@ -1,0 +1,76 @@
+{
+  "board": {
+    "design_settings": {
+      "defaults": {
+        "board_outline_line_width": 0.1,
+        "copper_line_width": 0.2,
+        "copper_text_size_h": 1.5,
+        "copper_text_size_v": 1.5,
+        "copper_text_thickness": 0.3,
+        "silk_line_width": 0.15,
+        "silk_text_size_h": 1.0,
+        "silk_text_size_v": 1.0
+      },
+      "rules": {
+        "min_clearance": 0.2,
+        "min_track_width": 0.25,
+        "min_via_diameter": 0.6,
+        "min_through_hole_diameter": 0.3
+      }
+    }
+  },
+  "meta": {
+    "filename": "diana-module-3x3.kicad_pro",
+    "version": 1
+  },
+  "net_settings": {
+    "classes": [
+      {
+        "name": "Default",
+        "clearance": 0.2,
+        "track_width": 0.25,
+        "via_diameter": 0.6,
+        "via_drill": 0.3
+      },
+      {
+        "name": "POWER_LED",
+        "clearance": 0.4,
+        "track_width": 2.0,
+        "via_diameter": 1.2,
+        "via_drill": 0.6
+      },
+      {
+        "name": "POWER_12V",
+        "clearance": 0.5,
+        "track_width": 1.2,
+        "via_diameter": 1.0,
+        "via_drill": 0.5
+      },
+      {
+        "name": "PIEZO_HV",
+        "clearance": 0.8,
+        "track_width": 0.3,
+        "via_diameter": 0.6,
+        "via_drill": 0.3
+      },
+      {
+        "name": "ETHERNET",
+        "clearance": 0.2,
+        "track_width": 0.25,
+        "via_diameter": 0.6,
+        "via_drill": 0.3
+      }
+    ]
+  },
+  "schematic": {
+    "annotate_start_num": 0,
+    "legacy_lib_dir": "",
+    "legacy_lib_list": []
+  },
+  "sheets": [],
+  "text_variables": {
+    "ESTADO": "SIN VALIDAR - ERC NO EJECUTADO",
+    "WP": "WP-06",
+    "AVISO": "No apto para fabricacion"
+  }
+}

@@ -1,0 +1,74 @@
+red,hoja,clase_de_red,conexiones,notas
++12V_IN,01,POWER_12V,J1.1 / SW1.1,Antes del fusible
++12V_SW,01,POWER_12V,SW1.2 / NTC1.1,
++12V_NTC,01,POWER_12V,NTC1.2 / F1.1,
++12V_FUSE,01,POWER_12V,F1.2 / Q1.S,
++12V_F,01,POWER_12V,Q1.D / D1.K / L1.1 / C1.+ / R6.1 / TP1,2.26 A maximos
++12V_FILT,01,POWER_12V,L1.2 / C2.1 / C3.1 / U1.VIN,
+Q1_GATE,01,Default,Q1.G / R1.1 / D2.K,R1.2 y D2.A a GND_PWR
++5V_LED,01|06,POWER_LED,U1.VOUT / C4.+ / C5.+ / C6.1 / C7.1 / F60.1 / F61.1 / F62.1 / TP2 / TP60,4.32 A maximos
++5V_LOG,01|06,POWER_LED,U1.VOUT / U2.VIN / C8.1 / U60.14 / C65.1 / C66.1 / R8.1 / TP3,Mismo riel electrico que +5V_LED separado topologicamente
++3V3,01|02|04|05|07,Default,U2.VOUT / C9.1 / FB1.1 / U10.3V3 / Rn7(x9).2 / R40.2 / R70.1 / R71.1 / R72.1 / U40.16 / U41.16 / LM339x3.V+ / TP4,0.45 A maximos
++3V3A,01|03|04|05,Default,FB1.2 / C10.1 / C11.1 / MCP6004x3.V+ / U50.AVDD / Dn1(x9).K_sup / U51.VCC / TP5,Analogico tras ferrita
++3V3_ETH,02,Default,L20.2 / C32.1 / C24-C31.1 / U11.VCC(todos) / TP10,
+VSENSE_12V,01|02|05,Default,R6.2 / R7.1 / C12.1 / U10.IO1 / U50.CH9,12.0 V -> 1.091 V
+VSENSE_5V,01|05,Default,R8.2 / R9.1 / C13.1 / U50.CH10,5.00 V -> 1.563 V
+GND_PWR,01|06|08,POWER_LED,J1.2 / SW1.3 / C1.- / C4.- / C5.- / D1.A / U1.GND / U1.PAD / C62.- / C63.- / C64.- / J10.4 / J11.4 / J12.4 / J13.2 / J14.2 / J15.2 / U60.7 / TP6,Retorno de LED - poligono >= 2.0 mm
+GND_LOG,01|02|04|05|07,Default,U2.GND / U10.GND / U11.GND / U11.PAD / U40.8 / U41.8 / C70.2 / C71.2 / C72.2 / J31.6 / TP7,Unido a GND_PWR solo en el pad de U1
+GND_ANA,01|03|04|05|08,Default,Rn1(x9).2 / Rn3(x9).2 / Cn1(x9).2 / Rn4(x9).2 / Dn1(x9).A_inf / U50.AGND / C40.2 / J20.2+4+6 / J21.2+4+6 / J22.2+4+6,Unido a GND_PWR solo en el pad de U1
+CHASSIS,02|08,Default,C23.2 / carcasa metalica de J2 / pantalla de RJ45,Aislado - solo acoplado por 10 nF 2 kV
+SPI_SCLK,02|05,Default,U10.IO12 / R22.1 ; R22.2 / U11.SCLK / U50.SCLK / TP11,20 MHz - R22 = 22 ohm serie
+SPI_MOSI,02|05,Default,U10.IO11 / R23.1 ; R23.2 / U11.MOSI / U50.DIN,R23 = 22 ohm serie
+SPI_MISO,02|05,Default,U10.IO13 / U11.MISO / U50.DOUT,Dos esclavos - verificar liberacion del bus
+nCS_W5500,02,Default,U10.IO10 / R24.1 ; R24.2 / U11.SCSn / TP12,Activo bajo
+nCS_ADC,05,Default,U10.IO14 / U50.CSn / R50.1 / TP50,Activo bajo - pull-up 10k
+W5500_INTn,02,Default,U10.IO9 / U11.INTn / R21.1 / TP13,Colector abierto - pull-up 10k
+W5500_RSTn,02,Default,U10.IO8 / U11.RSTn / R20.1 / C22.1 / TP14,Bajo >= 500 us
+ETH_TXP,02|08,ETHERNET,U11.TXP / R25.1 / D20.ch1 / J2.1,Par diferencial 100 ohm
+ETH_TXN,02|08,ETHERNET,U11.TXN / R26.1 / D20.ch2 / J2.2,Par diferencial 100 ohm
+ETH_RXP,02|08,ETHERNET,U11.RXP / R27.1 / D20.ch3 / J2.3,Par diferencial 100 ohm
+ETH_RXN,02|08,ETHERNET,U11.RXN / R28.1 / D20.ch4 / J2.6,Par diferencial 100 ohm
+BOB,02,Default,R25.2 / R26.2 / R27.2 / R28.2 / C23.1,Terminacion Bob Smith
+XTAL1,02,Default,U11.XI / Y1.1 / C20.1,25 MHz
+XTAL2,02,Default,U11.XO / Y1.2 / C21.1,25 MHz
+IO0_BOOT,02,Default,U10.IO0 / R30.1 / C37.1 / SW_BOOT.1 / J30.5,Pull-up 10k + pulsador
+EN_RESET,02,Default,U10.EN / R29.1 / C36.1 / SW_RST.1 / J30.6,RC tau = 10 ms
+U0TXD,02|08,Default,U10.IO43 / J30.3,
+U0RXD,02|08,Default,U10.IO44 / J30.4,
+PZn_P (n=1..9),03|08,PIEZO_HV,J2x.pin_impar / Rn1.1 / Rn2a.1 / TP_PZn,Hasta 150 V (H) - cable apantallado obligatorio
+PZn_MID (n=1..9),03,PIEZO_HV,Rn2a.2 / Rn2b.1,
+CLMPn (n=1..9),03,PIEZO_HV,Rn2b.2 / Dn1.A_sup / Dn1.K_inf / Rn3.1 / Un_A.IN+ / TP_CLMPn,Recortado a -0.35 .. +3.65 V
+BUFn (n=1..9),03,Default,Un_A.OUT / Un_A.IN- / Dn2.A,Seguidor - realimentacion unitaria
+ENVn (n=1..9),03|04|05,Default,Dn2.K / Cn1.1 / Rn4.1 / Rn5.1 / R5x.1 / TP_ENVn,tau = 10.34 ms
+CMPn_IN (n=1..9),03,Default,Rn5.2 / Un_C.IN+ / Rn6.1,
+VREF_TH,03|04|05,Default,Un_C(x9).IN- / Cn2.1 / U42.OUT / U42.IN- / U50.CH11 / TP44,Comun a los 9 canales
+VREF_PWM,04,Default,U10.IO21 / R41.1,PWM filtrado
+VREF_FILT,04,Default,R41.2 / C40.1 / U42.IN+,tau = 47 ms
+CMP_OUTn (n=1..9),03|04,Default,Un_C.OUT / Rn6.2 / Rn7.1 / U40.[A-H] o U41.A / D4x.K / TP_CMPn,Colector abierto activo bajo
+IRQ_ANY,04,Default,D40.A ... D48.A / R40.1 / U10.IO7 / TP40,OR cableado - nivel bajo 0.50 V margen 0.325 V
+SR_LOAD,04,Default,U10.IO47 / U40.1 / U41.1 / TP41,SH/LD activo bajo
+SR_CLK,04,Default,U10.IO48 / U40.2 / U41.2 / TP42,
+SR_DATA,04,Default,U10.IO38 / U41.9 / TP43,QH del segundo 74HC165
+SR_CHAIN,04,Default,U40.9 / U41.10,QH de U40 a SER de U41
+LED_D1_3V3,02|06,Default,U10.IO4 / U60.2,RMT
+LED_D2_3V3,02|06,Default,U10.IO5 / U60.5,RMT
+LED_D3_3V3,02|06,Default,U10.IO6 / U60.9,RMT
+LED_D1_5V,06|08,Default,U60.3 / R60.1 ; R60.2 / J10.3 / TP61,470 ohm serie
+LED_D2_5V,06|08,Default,U60.6 / R61.1 ; R61.2 / J11.3 / TP62,470 ohm serie
+LED_D3_5V,06|08,Default,U60.8 / R62.1 ; R62.2 / J12.3 / TP63,470 ohm serie
++5V_ROW1,06|08,POWER_LED,F60.2 / C62.+ / D60.K / J10.1 / J10.2 / J13.1 / TP64,1.44 A
++5V_ROW2,06|08,POWER_LED,F61.2 / C63.+ / D61.K / J11.1 / J11.2 / J14.1 / TP65,1.44 A
++5V_ROW3,06|08,POWER_LED,F62.2 / C64.+ / D62.K / J12.1 / J12.2 / J15.1 / TP66,1.44 A
+SEL_A,07,Default,U10.IO15 / R70.2 / C70.1 / D72.ch1 / R73.1 ; R73.2 / J31.1 / TP70,Pull-up 10k activo bajo
+SEL_B,07,Default,U10.IO16 / R71.2 / C71.1 / D72.ch2 / R74.1 ; R74.2 / J31.2 / TP71,Pull-up 10k activo bajo
+BTN_ID,07,Default,U10.IO17 / R72.2 / C72.1 / D72.ch3 / R75.1 ; R75.2 / J31.3 / TP72,Pull-up 10k activo bajo
+ST_LED_G,07,Default,U10.IO18 / R76.1 ; R76.2 / D70.A ; D70.K / J31.4 / TP73,3.9 mA
+ST_LED_A,07,Default,U10.IO39 / R77.1 ; R77.2 / D71.A ; D71.K / J31.5 / TP74,3.9 mA - consume MTCK de JTAG
+MUX_S0..S3,05,Default,U51.S0..S3 (DNP - solo opcion A),No poblado con la opcion B
+MUX_AOUT,05,Default,U51.COM / R70b.1 ; R70b.2 / C70b.1 / U10.ADC1 (DNP),No poblado con la opcion B
+RESERVA_IO2,02,Default,U10.IO2 / TP19,ADC1_CH1 libre
+RESERVA_IO40,02,Default,U10.IO40 / TP16,JTAG MTDO
+RESERVA_IO41,02,Default,U10.IO41 / TP17,JTAG MTDI
+RESERVA_IO42,02,Default,U10.IO42 / TP18,JTAG MTMS
+NO_CONECTAR,02,-,U10.IO3 / U10.IO35 / U10.IO36 / U10.IO37 / U10.IO46,Strapping y PSRAM octal - NO RUTAR
+IO45_PULLDOWN,02,Default,U10.IO45 / R31.1 ; R31.2 a GND_LOG,VDD_SPI debe estar BAJO en el arranque

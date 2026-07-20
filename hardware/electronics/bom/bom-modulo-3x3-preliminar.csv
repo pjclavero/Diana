@@ -1,0 +1,59 @@
+item,categoria,referencias,cantidad,valor,encapsulado,alternativa_1,alternativa_2,critico,notas_disponibilidad
+1,Semiconductor,U10,1,ESP32-S3-WROOM-1-N16R8,"Modulo SMD",ESP32-S3-WROOM-1-N16R2,ESP32-S3-WROOM-1-N8,si,"La variante R2 (PSRAM quad) libera IO35-IO37 y da +3 GPIO. Verificar variante antes de fijar el pinout."
+2,Semiconductor,U11,1,W5500,LQFP-48,"Modulo WIZnet W5500 preensamblado",ENC28J60 (NO recomendado - sin pila TCP/IP),si,"Un modulo preensamblado con RJ45 y magnetismos elimina el riesgo de layout del PHY en el primer prototipo."
+3,Semiconductor,U1,1,"Buck sincrono 12V->5V >=6 A",segun fabricante,"TPS54620 (6 A VQFN)","Modulo DC-DC 12V->5V 6 A preensamblado",si,"eff >= 0.93 OBLIGATORIO (calculo 04). Verificar la curva a 12 Vin y 4.87 A, no la de media carga."
+4,Semiconductor,U2,1,"Buck sincrono 5V->3.3V 1 A",segun fabricante,"TPS62163","AMS1117-3.3 (LDO - 0.765 W de disipacion)",si,"El LDO cabe termicamente (Tj 86 C) pero disipa 4.6 veces mas."
+5,Semiconductor,U50,1,ADS7953SBDBT,TSSOP-30,"2 x MCP3208-BI/SL (cuesta 1 CS extra)","CD74HC4067M + ADC del ESP32-S3 (opcion A - reserva de GPIO = 0)",si,"El MCP3208 es mucho mas facil de conseguir y usa Vdd como referencia (evita el problema de saturacion de 2.5 V)."
+6,Semiconductor,U60,1,74AHCT125PW,TSSOP-14,74AHCT125N (DIP-14),74HCT245 (bidireccional - 8 canales),si,"HCT es obligatorio: VIH 2.0 V con Vcc 5 V. Una familia HC NO sirve (VIH 3.5 V)."
+7,Semiconductor,U40;U41,2,74HC165,SOIC-16,74HCT165,"9 x 74HC74 (biestables - mas caro y mas area)",si,"Muy disponible."
+8,Semiconductor,"Un_A (9 secciones)",3,MCP6004,SOIC-14,TLV9004,LM324 (NO rail-to-rail - degrada el margen bajo),si,"Rail-to-rail imprescindible: la envolvente trabaja cerca de 0 V."
+9,Semiconductor,"Un_C (9 secciones)",3,LM339,SOIC-14,LM393 (doble - harian falta 5),TLV3502 (mas rapido - salida push-pull NO sirve para el OR),si,"COLECTOR ABIERTO OBLIGATORIO. Una salida push-pull impide el OR cableado de la hoja 04."
+10,Semiconductor,Q1,1,"MOSFET canal P Vds>=30V Rds(on)<=30 mohm",SOT-23,AO3401A,SI2301CDS,si,"Caida 68 mV a 2.26 A frente a 0.9 V de un Schottky."
+11,Semiconductor,D1,1,SMBJ15A,SMB,SMAJ15A (400 W),P6KE15A (THT),si,"Vr 15 V - Vc 24.4 V."
+12,Semiconductor,"Dn1 (9)",9,BAT54S,SOT-23,BAT54SW (SOT-323),"2 x BAT54 discretos",si,"PROTECCION DEL ESP32. No sustituir por diodos de silicio (Vf 0.7 V da un clamp de 4.0 V)."
+13,Semiconductor,"Dn2 (9)",9,BAT54,SOT-23,1N5819 (THT),BAT85,si,"Vf baja para el rectificador de envolvente."
+14,Semiconductor,D40-D48,9,BAT54,SOT-23,"3 x BAT54S (dobles)",BAV70,si,"Vf 0.30 V - determina el margen de nivel bajo de IRQ_ANY."
+15,Semiconductor,D50-D55,6,BAV99,SOT-23,BAV70,"diodos discretos 1N4148",no,"Clamp de las entradas del ADC."
+16,Semiconductor,D20,1,"Array TVS 4 canales Ethernet C<=3 pF",SOT-23-6,SP3012-04UTG,PESD5V0S4UD,si,"C <= 3 pF obligatorio para no degradar 100BASE-TX."
+17,Semiconductor,D72,1,SRV05-4,SOT-23-6,USBLC6-4SC6,PESD5V0S5UD,si,"ESD del mazo a la tapa - via de entrada mas probable."
+18,Semiconductor,D2,1,"Zener 12 V 500 mW",SOD-123,BZX84C12,1N4742A (THT),no,
+19,Semiconductor,D60-D62,3,"Schottky 3 A / 40 V",SMA,SS34,SK34,no,
+20,Semiconductor,D3;D70;D71,3,"LED 3 mm (verde x2, ambar x1)",THT/Panel,"LED 5 mm",-,no,
+21,Pasivo,C4;C5,2,"1000 uF / 10 V low-ESR ESR<=30 mohm","THT D10 x 20",Panasonic FR / Nichicon HE,"3 x 680 uF (ESR combinada 3 x 40 = 13 mohm)",si,"ESR <= 26.2 mohm combinada es REQUISITO DE COMPRA (calculo 01). Un electrolitico generico de 0.15 ohm NO cumple."
+22,Pasivo,C62-C64,3,"470 uF / 10 V low-ESR","THT D8",Panasonic FR,"2 x 220 uF en paralelo",si,"Bulk local de cada punto de inyeccion de fila."
+23,Pasivo,C1,1,"470 uF / 25 V electrolitico","THT D10",-,-,no,
+24,Pasivo,"Rn2a;Rn2b (18)",18,"33k 1% 0805 (>=150 V)",0805,"2 x 33k 1206 (200 V)","68k 1206 unico si esta calificado a 200 V",si,"EL ENCAPSULADO ES CRITICO. Un 0603 (50 V) NO sirve: ve hasta 150 V. Verificar la tension de trabajo en la hoja de datos, no solo el valor."
+25,Pasivo,"Rn1 (9)",9,"1M 1% 0805",0805,"1M 0603 (si se confirma <=50 V tras el piezo - NO recomendado)",-,si,"En paralelo con el piezo: ve la tension completa."
+26,Pasivo,"Cn1 (9)",9,"47n X7R 50 V",0603,"2 x 22n en paralelo","47n 0805",si,"Define tau = 10.34 ms. NP0 seria mejor (menor deriva) pero el tamano crece."
+27,Pasivo,"Rn4 (9)",9,"220k 1%",0603,-,-,si,"Con Cn1 define la constante de envolvente."
+28,Pasivo,"Rn5;Rn6;Rn7 (27)",27,"10k / 1M / 10k 1%",0603,-,-,si,"Rn5 y Rn6 definen la histeresis (33.0 mV)."
+29,Pasivo,R25-R28,4,"49R9 1%",0603,"49R9 0402","100R 1% (par en paralelo)",si,"Tolerancia 1% obligatoria para la terminacion Ethernet."
+30,Pasivo,C23,1,"10 nF / 2 kV X7R",1206,"10 nF / 3 kV 1808","2 x 22 nF / 1 kV en serie",si,"La tension de 2 kV es el aislamiento del puerto. Un 50 V NO sirve."
+31,Pasivo,R60-R62,3,"470R 1%",0603,330R,-,si,"Rango 330-470 ohm del dosier 10.3. Colocar a <10 mm del 74AHCT125."
+32,Pasivo,Y1,1,"Cristal 25.000 MHz +-30 ppm CL 12 pF",3225,"Cristal 25 MHz 5032","Oscilador MEMS 25 MHz",si,"Obligatorio para el W5500. Los 22 pF de carga deben ajustarse a CL real."
+33,Pasivo,FB1;L20,2,"Ferrita 600 ohm @100 MHz >=500 mA",0805,BLM21PG600SN1,-,si,"Aislan +3V3A y +3V3_ETH."
+34,Pasivo,F60-F62,3,"PTC rearmable Ihold 2.0 A Itrip 4.0 A / 6 V",1812,"MF-MSMF200","Fusible de vidrio 2 A (no rearmable)",si,"Resistencia de 25-50 mohm que se suma a la caida. Verificar."
+35,Pasivo,L1,1,"10 uH / 3 A",1210,-,-,no,
+36,Pasivo,"resistencias generales",~40,"varios 0603 1%",0603,-,-,no,"10k, 100k, 22R, 100R, 330R, 1k, 1k5, 22k, 47k, 4k7."
+37,Pasivo,"condensadores generales",~45,"varios 100n / 1u / 10u / 22u",0402/0603/0805,-,-,no,"Al menos 1 x 100n por pin de alimentacion de cada CI."
+38,Electromecanico,F1,1,"Fusible T 3.15 A 250 V + portafusibles","THT 5x20","T 3 A","T 4 A (mas margen, menos proteccion)",si,"Calculo: 2.26 A nominal -> 3.15 A ~ 140%."
+39,Electromecanico,SW1,1,"Interruptor bipolar 250 V / 6 A con piloto",Panel,-,-,si,"Dosier 11.3."
+40,Electromecanico,SW70,1,"Selector rotativo 1 polo 3 posiciones con tope",Panel,"Conmutador deslizante 3 posiciones",-,si,"Dosier 6.3."
+41,Electromecanico,SW71,1,"Pulsador NA 12 mm",Panel,"Pulsador tactil con capuchon",-,no,
+42,Electromecanico,"SW_RST;SW_BOOT",2,"Pulsador tactil 6x6",SMD/THT,-,-,no,
+43,Electromecanico,NTC1,1,"NTC 10 ohm / 2 A inrush limiter",THT,-,-,no,
+44,Conector,J1,1,"Bornero bloqueable 2 vias 5.08 mm >=8 A",THT,"XT30 (RECOMENDADO: inversion mecanicamente imposible)","Phoenix MSTB 2.5",si,
+45,Conector,J2,1,"RJ45 con magnetismos y LED",THT,HR911105A,J0011D01BNL,si,"Verificar si termina internamente los pares no usados antes de duplicar la terminacion."
+46,Conector,J10-J12,3,"JST VH 4 vias 3.96 mm (7 A/via)",THT,"JST VH 5 vias (retorno doblado)","Bornero de tornillo 4 vias 5.08 mm",si,"Pin 4 (retorno) lleva 1.44 A - el mas cargado."
+47,Conector,J13-J15,3,"JST VH 2 vias 3.96 mm",THT,-,-,no,"Reinyeccion en el extremo lejano."
+48,Conector,J20-J22,3,"JST XH 6 vias 2.50 mm",THT,"Molex KK 6 vias","Bornero de tornillo 6 vias",si,
+49,Conector,J30;J31,2,"Cabecera 6 vias 2.54 mm polarizada",THT,"JST PH 6 vias (mejor polarizacion)",-,no,"J30 debe estar retranqueado y serigrafiado SERVICE - 3V3 ONLY."
+50,Cable,-,9,"Coaxial fino apantallado tipo RG-174, <=0.5 m","-","Cable de microfono 2 cond + malla",-,si,"APANTALLAMIENTO INDIVIDUAL POR CANAL OBLIGATORIO: la senal es de alta impedancia y hasta 150 V."
+51,Cable,-,6,"0.75 mm2 rojo/negro","-","1.0 mm2",-,si,"Mazos de alimentacion de fila. Caida 0.067 V a 1 m."
+52,Cable,-,3,"0.25 mm2 blanco","-",-,-,no,"Dato de las cadenas LED."
+53,Transductor,PZ1-PZ9,9,"Disco piezoelectrico D27-35 mm con cable","-","D35 mm (mayor sensibilidad)","D20 mm",si,"MEDIR Cp y el pico en circuito abierto antes de fijar la proteccion."
+54,Optoelectronica,-,72,"LED RGB direccionable 5 V, 8 por diana","-","WS2812B","SK6812 (mejor a baja corriente)",si,"60 mA en blanco maximo es hipotesis de catalogo: MEDIR."
+55,Alimentacion,-,1,"Fuente externa CERTIFICADA 12 V / 3 A","-","12 V / 4 A (mas margen de inrush)",-,si,"Dosier 11.3: para prototipos, fuente externa certificada obligatoria. Carga prevista 75%."
+56,PCB,-,1,"PCB principal 4 capas, cobre 1 oz min","-","2 oz (permite pistas de la mitad de anchura)","2 capas (NO recomendado: sin plano de retorno para Ethernet)",si,"4 capas necesarias para el plano de retorno de los pares Ethernet y la separacion de masas."
+57,Mecanica,-,9,"Disco de policarbonato 200 mm, 2/3/4 mm","-","Metacrilato (solo prototipo visual)",-,si,"Los tres grosores se ensayan (dosier 7.3)."
+58,Mecanica,-,36,"Silentblock M4 caucho Shore A 40-55","-","Arandela elastomerica","Junta de goma",si,"4 por diana. k objetivo ~2300 N/m por apoyo (fn 30 Hz)."
