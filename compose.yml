@@ -1,0 +1,519 @@
+# ==============================================================================
+# Diana · compose.yml — stack de producción/base
+# ==============================================================================
+# WP-01 (infraestructura Docker). Ver docs/coordination/WORK_PACKAGES.md.
+#
+# IMPORTANTE — dependencias de otros paquetes en curso:
+#   Los contextos de build server/backend, server/frontend, server/worker y
+#   simulators/target-module los rellenan WP-02, WP-03 y WP-05 en paralelo.
+#   Hoy están vacíos. Este fichero referencia sus rutas correctas y sus
+#   Dockerfile esperados (server/backend/Dockerfile, etc.) pero NO los crea:
+#   `docker compose config` valida sintaxis/interpolación sin necesitar que
+#   existan; `docker compose build`/`up` SÍ los necesitará y no es tarea de
+#   WP-01 (lo ejecuta WP-08 en la VM, una vez todos los paquetes converjan).
+#
+# Perfiles:
+#   (sin perfil)  → stack completo de producción/desarrollo base: proxy,
+#                   frontend, backend, worker, postgres, mosquitto, migrate,
+#                   backup.
+#   simulator     → añade `device-simulator` (simulators/target-module).
+#   dev           → añade `seed` (datos de prueba). Combinar con
+#                   compose.dev.yml para puertos de depuración y bind mounts.
+#   test          → añade postgres-test/mosquitto-test (efímeros) y
+#                   test-runner (contracts/validate.py y suites de pruebas).
+#   monitoring    → añade `cadvisor` (ver infrastructure/monitoring/README.md).
+#
+# Recursos: la VM destino tiene 4 vCPU / 4 GB. Los límites de abajo sólo
+# reservan según necesidad real y dejan margen (ver informe final del agente
+# para el desglose de la suma).
+# ==============================================================================
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # ----------------------------------------------------------------------------
+  # Proxy (nginx) — único punto de entrada HTTP/HTTPS
+  # ----------------------------------------------------------------------------
+  proxy:
+    image: nginxinc/nginx-unprivileged:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    ports:
+      - "${PROXY_HTTP_PORT:-8080}:8080"
+      # HTTPS preparado y desactivado por defecto (ver infrastructure/proxy/nginx.conf).
+      # - "${PROXY_HTTPS_PORT:-8443}:8443"
+    volumes:
+      - ./infrastructure/proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+      - proxy_certs:/etc/nginx/certs:ro
+    networks:
+      - edge
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+    logging: *default-logging
+
+  # ----------------------------------------------------------------------------
+  # Frontend (React + Vite, servido por su propio servidor estático)
+  # ----------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./server/frontend
+      dockerfile: Dockerfile
+    image: diana/frontend:local
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+      VITE_WS_BASE_URL: ${VITE_WS_BASE_URL:-/ws}
+    networks:
+      - edge
+    healthcheck:
+      # ⚠ COORDINACIÓN PENDIENTE (WP-03): se asume un endpoint /health servido
+      # por el propio contenedor frontend (convención habitual de servidor
+      # estático/Vite). No confirmado contra código real de server/frontend
+      # (el contexto está vacío al escribir esto). Si WP-03 usa otra ruta o
+      # puerto, este test debe ajustarse antes de integrar las ramas.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8081/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+    logging: *default-logging
+
+  # ----------------------------------------------------------------------------
+  # Backend (NestJS: API REST + WebSocket + ingesta MQTT)
+  # ----------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./server/backend
+      dockerfile: Dockerfile
+    image: diana/backend:local
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${BACKEND_PORT:-3000}
+      DATABASE_URL: ${DATABASE_URL}
+      MQTT_HOST: ${MQTT_HOST:-mosquitto}
+      MQTT_PORT: ${MQTT_PORT:-1883}
+      MQTT_USERNAME: ${MQTT_BACKEND_USERNAME:-backend}
+      MQTT_PASSWORD: ${MQTT_BACKEND_PASSWORD}
+      SESSION_SECRET: ${BACKEND_SESSION_SECRET}
+      CORS_ORIGIN: ${BACKEND_CORS_ORIGIN:-http://localhost:8080}
+      LOG_LEVEL: ${BACKEND_LOG_LEVEL:-info}
+      TZ: UTC
+    volumes:
+      - diana_exports:/app/exports
+      - diana_firmware:/app/firmware
+    networks:
+      - edge
+      - internal
+    healthcheck:
+      # ⚠ COORDINACIÓN PENDIENTE (WP-02): se asume un endpoint /health en el
+      # backend NestJS (convención habitual, p.ej. @nestjs/terminus), puerto
+      # BACKEND_PORT. No confirmado contra código real (server/backend está
+      # vacío al escribir esto). WP-02 debe exponerlo tal cual o avisar si
+      # cambia de ruta/puerto; verificar al integrar las ramas.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:${BACKEND_PORT:-3000}/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+    logging: *default-logging
+
+  # ----------------------------------------------------------------------------
+  # Worker (informes y tareas diferidas, proceso separado del backend)
+  # ----------------------------------------------------------------------------
+  worker:
+    build:
+      context: ./server/worker
+      dockerfile: Dockerfile
+    image: diana/worker:local
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      DATABASE_URL: ${DATABASE_URL}
+      MQTT_HOST: ${MQTT_HOST:-mosquitto}
+      MQTT_PORT: ${MQTT_PORT:-1883}
+      MQTT_USERNAME: ${MQTT_BACKEND_USERNAME:-backend}
+      MQTT_PASSWORD: ${MQTT_BACKEND_PASSWORD}
+      REPORTS_CRON: ${WORKER_REPORTS_CRON:-0 3 * * *}
+      LOG_LEVEL: ${WORKER_LOG_LEVEL:-info}
+      TZ: UTC
+    volumes:
+      - diana_exports:/app/exports
+    networks:
+      - internal
+    healthcheck:
+      # ⚠ COORDINACIÓN PENDIENTE (WP-02): se asume que el worker expone una
+      # sonda de vida mínima en un puerto HTTP interno (o un fichero de
+      # heartbeat). Es un placeholder sin confirmar contra código real
+      # (server/worker está vacío al escribir esto). WP-02 debe confirmar el
+      # mecanismo real y ajustar este test antes de integrar las ramas.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3100/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+    logging: *default-logging
+
+  # ----------------------------------------------------------------------------
+  # Migraciones (Prisma) — job de arranque, no un servicio persistente
+  # ----------------------------------------------------------------------------
+  migrate:
+    build:
+      context: ./server/backend
+      dockerfile: Dockerfile
+    image: diana/backend:local
+    command: ["npx", "prisma", "migrate", "deploy"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      TZ: UTC
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    logging: *default-logging
+
+  # ----------------------------------------------------------------------------
+  # PostgreSQL — NO expuesto al host
+  # ----------------------------------------------------------------------------
+  postgres:
+    image: postgres:16.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-diana}
+      POSTGRES_USER: ${POSTGRES_USER:-diana_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./infrastructure/postgres/init.d:/docker-entrypoint-initdb.d:ro
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf", "-c", "hba_file=/var/lib/postgresql/data/pg_hba.conf"]
+    networks:
+      - internal
+    # Sin `ports:`: postgres no se publica al host, ni siquiera en dev
+    # (compose.dev.yml usa un puerto de depuración explícito y documentado).
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-diana_app} -d ${POSTGRES_DB:-diana}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+    logging: *default-logging
+
+  # ----------------------------------------------------------------------------
+  # Mosquitto — sólo el puerto MQTT 1883 se publica al host (lo necesitan los
+  # módulos ESP32 físicos de la LAN). El puerto WebSocket (9001) queda interno.
+  # ----------------------------------------------------------------------------
+  mosquitto:
+    image: eclipse-mosquitto:2.0.18
+    restart: unless-stopped
+    ports:
+      - "${MQTT_PORT:-1883}:1883"
+    volumes:
+      - ./infrastructure/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./infrastructure/mosquitto/acl:/mosquitto/config/acl:ro
+      - ./infrastructure/mosquitto/passwd:/mosquitto/config/passwd:ro
+      - mosquitto_data:/mosquitto/data
+    environment:
+      MQTT_HEALTHCHECK_USERNAME: ${MQTT_HEALTHCHECK_USERNAME:-healthcheck}
+      MQTT_HEALTHCHECK_PASSWORD: ${MQTT_HEALTHCHECK_PASSWORD}
+      TZ: UTC
+    networks:
+      - internal
+    healthcheck:
+      # Requiere el usuario 'healthcheck' generado con
+      # infrastructure/mosquitto/generate-users.sh (ver infrastructure/mosquitto/acl).
+      test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -p 1883 -u \"$$MQTT_HEALTHCHECK_USERNAME\" -P \"$$MQTT_HEALTHCHECK_PASSWORD\" -t _health/probe -C 1 -W 3 -i healthcheck_probe || exit 1"]
+      interval: 15s
+      timeout: 6s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    logging: *default-logging
+
+  # ----------------------------------------------------------------------------
+  # Backup — pg_dump programado, sin puertos publicados
+  # ----------------------------------------------------------------------------
+  backup:
+    image: postgres:16.4-alpine
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/entrypoints/cron-loop-entrypoint.sh"]
+    environment:
+      CRON_SCHEDULE: ${BACKUP_CRON:-30 2 * * *}
+      CRON_COMMAND: "/scripts/backup.sh"
+      RUN_ON_START: "0"
+      PGHOST: ${POSTGRES_HOST:-postgres}
+      PGPORT: ${POSTGRES_PORT:-5432}
+      PGUSER: ${POSTGRES_USER:-diana_app}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:-diana}
+      BACKUP_ROOT: /backups
+      BACKUP_RETENTION_DAILY: ${BACKUP_RETENTION_DAILY:-7}
+      BACKUP_RETENTION_WEEKLY: ${BACKUP_RETENTION_WEEKLY:-4}
+      BACKUP_RETENTION_MONTHLY: ${BACKUP_RETENTION_MONTHLY:-6}
+      TZ: UTC
+    volumes:
+      - diana_backups:/backups
+      - ./infrastructure/backups/backup.sh:/scripts/backup.sh:ro
+      - ./infrastructure/backups/restore.sh:/scripts/restore.sh:ro
+      - ./infrastructure/docker/cron-loop-entrypoint.sh:/entrypoints/cron-loop-entrypoint.sh:ro
+    networks:
+      - internal
+    healthcheck:
+      # El proceso es un bucle en primer plano; comprobamos que sigue vivo.
+      test: ["CMD-SHELL", "pgrep -f cron-loop-entrypoint.sh || exit 1"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+    logging: *default-logging
+
+  # ----------------------------------------------------------------------------
+  # Simulador de módulos — perfil `simulator` (WP-05, simulators/target-module)
+  # ----------------------------------------------------------------------------
+  device-simulator:
+    profiles: ["simulator"]
+    build:
+      context: ./simulators/target-module
+      dockerfile: Dockerfile
+    image: diana/device-simulator:local
+    restart: "no"
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    environment:
+      MQTT_HOST: ${MQTT_HOST:-mosquitto}
+      MQTT_PORT: ${MQTT_PORT:-1883}
+      SIMULATOR_MODULE_COUNT: ${SIMULATOR_MODULE_COUNT:-3}
+      SIMULATOR_SEED: ${SIMULATOR_SEED:-42}
+      SIMULATOR_MODULE_PREFIX: ${SIMULATOR_MODULE_PREFIX:-sim}
+      TZ: UTC
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    logging: *default-logging
+
+  # ----------------------------------------------------------------------------
+  # Datos de prueba — perfil `dev` (siembra la base tras `migrate`)
+  # ----------------------------------------------------------------------------
+  seed:
+    profiles: ["dev"]
+    build:
+      context: ./server/backend
+      dockerfile: Dockerfile
+    image: diana/backend:local
+    # Asume un script `db:seed` en server/backend/package.json (convención
+    # Prisma habitual). WP-02 debe proveerlo o este comando se ajustará.
+    command: ["npm", "run", "db:seed"]
+    restart: "no"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: ${DATABASE_URL}
+      TZ: UTC
+    networks:
+      - internal
+    logging: *default-logging
+
+  # ----------------------------------------------------------------------------
+  # Perfil `test` — base de datos y broker efímeros + ejecución de pruebas
+  # ----------------------------------------------------------------------------
+  postgres-test:
+    profiles: ["test"]
+    image: postgres:16.4-alpine
+    restart: "no"
+    tmpfs:
+      - /var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: diana_test
+      POSTGRES_USER: diana_test
+      POSTGRES_PASSWORD: diana_test
+      TZ: UTC
+      PGTZ: UTC
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U diana_test -d diana_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    logging: *default-logging
+
+  mosquitto-test:
+    profiles: ["test"]
+    image: eclipse-mosquitto:2.0.18
+    restart: "no"
+    tmpfs:
+      - /mosquitto/data
+    volumes:
+      - ./infrastructure/mosquitto/mosquitto.test.conf:/mosquitto/config/mosquitto.conf:ro
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -p 1883 -t '$$SYS/broker/version' -C 1 -W 3 -i healthcheck_probe || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+    logging: *default-logging
+
+  test-runner:
+    profiles: ["test"]
+    image: python:3.12-slim
+    restart: "no"
+    working_dir: /workspace
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      mosquitto-test:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://diana_test:diana_test@postgres-test:5432/diana_test
+      MQTT_HOST: mosquitto-test
+      MQTT_PORT: 1883
+      TZ: UTC
+    volumes:
+      - ./:/workspace:ro
+    command: ["sh", "-c", "pip install --quiet --no-cache-dir jsonschema referencing && python3 contracts/validate.py"]
+    networks:
+      - internal
+    logging: *default-logging
+
+  # ----------------------------------------------------------------------------
+  # Monitorización ligera — perfil `monitoring` (opcional, ver
+  # infrastructure/monitoring/README.md)
+  # ----------------------------------------------------------------------------
+  cadvisor:
+    profiles: ["monitoring"]
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    restart: unless-stopped
+    ports:
+      - "${MONITORING_HTTP_PORT:-9090}:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+    logging: *default-logging
+
+networks:
+  # Red de borde: proxy <-> frontend/backend. El proxy es el único servicio
+  # con puertos publicados al host (además de mosquitto:1883).
+  edge:
+    driver: bridge
+  # Red interna: backend/worker/migrate/backup <-> postgres/mosquitto. Ningún
+  # servicio de esta red publica puertos al host salvo mosquitto (1883,
+  # necesario para los módulos físicos de la LAN).
+  internal:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    name: diana_postgres_data
+  mosquitto_data:
+    name: diana_mosquitto_data
+  diana_backups:
+    name: diana_backups
+  proxy_certs:
+    name: diana_proxy_certs
+  diana_exports:
+    name: diana_exports
+  diana_firmware:
+    name: diana_firmware

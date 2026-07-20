@@ -1,0 +1,87 @@
+# ==============================================================================
+# Diana · compose.dev.yml — override de desarrollo
+# ==============================================================================
+# Uso: docker compose -f compose.yml -f compose.dev.yml --profile dev up
+#
+# Añade, respecto a compose.yml:
+#   - Puertos de depuración (Node --inspect, servidor Vite).
+#   - Bind mounts de código fuente para recarga en caliente.
+#   - Publicación EXPLÍCITA y documentada de postgres/mosquitto al host,
+#     sólo para desarrollo local (nunca así en producción: compose.yml base
+#     no publica esos puertos a propósito).
+#   - `RUN_ON_START=1` en backup, para no esperar al cron en un entorno de
+#     desarrollo.
+#
+# NO cambia imágenes, healthchecks ni límites de recursos: los hereda de
+# compose.yml. Sólo añade lo necesario para iterar rápido en local.
+# ==============================================================================
+
+services:
+  backend:
+    build:
+      target: development
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+    command: ["npm", "run", "start:debug"]
+    ports:
+      # Puerto de depuración Node (--inspect). No se publica en compose.yml base.
+      - "9229:9229"
+    volumes:
+      - ./server/backend/src:/app/src:ro
+      - ./contracts:/app/contracts:ro
+      # node_modules se queda dentro del contenedor (no se pisa con el bind mount)
+      - backend_node_modules:/app/node_modules
+
+  worker:
+    build:
+      target: development
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+    command: ["npm", "run", "start:debug"]
+    ports:
+      - "9230:9230"
+    volumes:
+      - ./server/worker/src:/app/src:ro
+      - worker_node_modules:/app/node_modules
+
+  frontend:
+    build:
+      target: development
+    environment:
+      NODE_ENV: development
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
+    ports:
+      # Servidor de desarrollo Vite con HMR. En producción el frontend se
+      # sirve compilado y estático detrás del proxy (puerto interno 8081).
+      - "5173:5173"
+    volumes:
+      - ./server/frontend/src:/app/src:ro
+      - ./server/frontend/public:/app/public:ro
+      - frontend_node_modules:/app/node_modules
+
+  postgres:
+    # Publicación EXPLÍCITA sólo en dev: permite conectar un cliente SQL
+    # local (DBeaver, psql, TablePlus...) directamente a la base. compose.yml
+    # base NO publica este puerto.
+    ports:
+      - "${POSTGRES_DEV_HOST_PORT:-5433}:5432"
+
+  mosquitto:
+    # En dev, además del 1883 (ya publicado en compose.yml base), se publica
+    # el listener WebSocket para probar clientes MQTT-over-WS desde el
+    # navegador sin pasar por el proxy.
+    ports:
+      - "${MQTT_WS_PORT:-9001}:9001"
+
+  backup:
+    environment:
+      # No esperar al cron programado: útil para probar el script de backup
+      # inmediatamente al levantar el entorno de desarrollo.
+      RUN_ON_START: "1"
+
+volumes:
+  backend_node_modules:
+  worker_node_modules:
+  frontend_node_modules:
