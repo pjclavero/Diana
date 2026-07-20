@@ -6,13 +6,13 @@
   "type": "object",
   "properties": {
     "schema_version": {
-      "$ref": "common.schema.json#/$defs/schemaVersion"
+      "$ref": "../schemas/common.schema.json#/$defs/schemaVersion"
     },
     "module_id": {
-      "$ref": "common.schema.json#/$defs/identifier"
+      "$ref": "../schemas/common.schema.json#/$defs/identifier"
     },
     "event_id": {
-      "$ref": "common.schema.json#/$defs/eventId"
+      "$ref": "../schemas/common.schema.json#/$defs/eventId"
     },
     "kind": {
       "type": "string",
@@ -46,7 +46,7 @@
       "maxLength": 240
     },
     "device": {
-      "$ref": "common.schema.json#/$defs/deviceTime"
+      "$ref": "../schemas/common.schema.json#/$defs/deviceTime"
     },
     "detail": {
       "type": "object",
@@ -54,7 +54,7 @@
       "additionalProperties": true
     },
     "firmware_version": {
-      "$ref": "common.schema.json#/$defs/semver"
+      "$ref": "../schemas/common.schema.json#/$defs/semver"
     }
   },
   "required": [

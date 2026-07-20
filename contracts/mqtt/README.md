@@ -75,6 +75,19 @@ Se distinguen **cuatro** marcas y ninguna sustituye a otra:
 | T3 · recepción MQTT | backend, al llegar el mensaje | columna BD, nunca en el payload | `received_at` |
 | T4 · persistencia | backend, al confirmar el INSERT | columna BD | `persisted_at` |
 
+### Por dónde viaja T2
+
+Ningún módulo escribe jamás en el tópico de otro módulo. El coordinador, por tanto, **no**
+reescribe el `hit` de un satélite:
+
+| Quién detecta | Dónde va T1 | Dónde va T2 |
+|---|---|---|
+| Un satélite | `module/{satelite}/hit` con `coordinator: null` | `system/{sys}/game/event` con `kind=target_hit`, enlazado por `hit_event_id` |
+| El propio coordinador | `module/{coordinador}/hit` con el bloque `coordinator` relleno | el mismo mensaje |
+
+El backend une ambos por `event_id`. Así la ACL puede ser estricta —cada módulo escribe
+sólo lo suyo— sin dejar inejecutable la consolidación temporal.
+
 Reglas:
 
 - `elapsed_us` (tiempo de juego mostrado al jugador) lo calcula **el coordinador** a partir de T1, no el backend.
@@ -115,8 +128,28 @@ El resultado se reporta en `module/…/status` con `last_command`.
 ## 8. Seguridad
 
 - Mosquitto sin acceso anónimo. Un usuario por módulo (`module-{module_id}`).
-- ACL: cada módulo escribe sólo bajo `targets/v1/module/{su_id}/#` y lee sólo `…/command`, `…/config/desired`, `…/ota` y `targets/v1/system/+/game/state`.
-- El backend es el único con permiso de escritura sobre `system/#` y `…/config/desired`.
+- El `client_id` MQTT de un módulo **debe ser igual a su `module_id`**, sin prefijo. La ACL
+  se apoya en esa igualdad (patrón `%c`) para acotar cada módulo a su propio subárbol.
+- ACL de un módulo, enumerada tópico a tópico (no basta con `module/{su_id}/#`):
+
+  | Tópico | Permiso |
+  |---|---|
+  | `targets/v1/module/{su_id}/presence` | escritura |
+  | `targets/v1/module/{su_id}/status` | escritura |
+  | `targets/v1/module/{su_id}/telemetry` | escritura |
+  | `targets/v1/module/{su_id}/hit` | escritura |
+  | `targets/v1/module/{su_id}/diagnostic` | escritura |
+  | `targets/v1/module/{su_id}/config/reported` | escritura |
+  | `targets/v1/module/{su_id}/command` | **sólo lectura** |
+  | `targets/v1/module/{su_id}/config/desired` | **sólo lectura** |
+  | `targets/v1/module/{su_id}/ota` | **sólo lectura** |
+  | `targets/v1/system/+/game/state` | sólo lectura |
+
+- Un comodín de escritura sobre `module/{su_id}/#` sería **incorrecto**: permitiría a un
+  módulo comprometido escribir su propio `config/desired` y auto-otorgarse configuración,
+  o publicar en su canal `ota`. La escritura se concede tópico a tópico.
+- El backend es el único con permiso de escritura sobre `system/#`, `…/config/desired`
+  y `…/ota`. El coordinador puede escribir `module/+/command` y `system/…/game/*`.
 - Ver `infrastructure/mosquitto/acl` y `docs/security/threat-model.md`.
 
 ## 9. Validación

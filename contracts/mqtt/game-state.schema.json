@@ -6,16 +6,16 @@
   "type": "object",
   "properties": {
     "schema_version": {
-      "$ref": "common.schema.json#/$defs/schemaVersion"
+      "$ref": "../schemas/common.schema.json#/$defs/schemaVersion"
     },
     "system_id": {
-      "$ref": "common.schema.json#/$defs/identifier"
+      "$ref": "../schemas/common.schema.json#/$defs/identifier"
     },
     "game_id": {
-      "$ref": "common.schema.json#/$defs/uuid"
+      "$ref": "../schemas/common.schema.json#/$defs/uuid"
     },
     "round_id": {
-      "$ref": "common.schema.json#/$defs/uuid"
+      "$ref": "../schemas/common.schema.json#/$defs/uuid"
     },
     "phase": {
       "type": "string",
@@ -34,11 +34,13 @@
         "random",
         "sequence",
         "all_against_clock",
-        "reaction"
+        "reaction",
+        "memory",
+        "no_shoot"
       ]
     },
     "coordinator_module_id": {
-      "$ref": "common.schema.json#/$defs/identifier"
+      "$ref": "../schemas/common.schema.json#/$defs/identifier"
     },
     "elapsed_us": {
       "type": "integer",
@@ -66,13 +68,13 @@
         "type": "object",
         "properties": {
           "module_id": {
-            "$ref": "common.schema.json#/$defs/identifier"
+            "$ref": "../schemas/common.schema.json#/$defs/identifier"
           },
           "target_index": {
-            "$ref": "common.schema.json#/$defs/targetIndex"
+            "$ref": "../schemas/common.schema.json#/$defs/targetIndex"
           },
           "state": {
-            "$ref": "common.schema.json#/$defs/targetState"
+            "$ref": "../schemas/common.schema.json#/$defs/targetState"
           }
         },
         "required": [
@@ -84,7 +86,7 @@
       }
     },
     "device": {
-      "$ref": "common.schema.json#/$defs/deviceTime"
+      "$ref": "../schemas/common.schema.json#/$defs/deviceTime"
     }
   },
   "required": [

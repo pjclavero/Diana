@@ -6,10 +6,10 @@
   "type": "object",
   "properties": {
     "schema_version": {
-      "$ref": "common.schema.json#/$defs/schemaVersion"
+      "$ref": "../schemas/common.schema.json#/$defs/schemaVersion"
     },
     "command_id": {
-      "$ref": "common.schema.json#/$defs/uuid"
+      "$ref": "../schemas/common.schema.json#/$defs/uuid"
     },
     "issued_at_ms": {
       "type": "integer",
@@ -18,11 +18,13 @@
     "expires_in_ms": {
       "type": "integer",
       "minimum": 100,
-      "maximum": 600000
+      "maximum": 600000,
+      "description": "Vida del comando en milisegundos, medida desde issued_at_ms del emisor y NO desde la recepción: si se midiera desde la recepción, el temporizador se reiniciaría en cada reentrega de QoS 1 y no protegería contra reproducción (dosier 23.3). El receptor descarta el comando si (ahora - issued_at_ms) > expires_in_ms."
     },
     "nonce": {
       "type": "integer",
-      "minimum": 0
+      "minimum": 0,
+      "description": "Contador monotónico por emisor. El receptor lo PERSISTE en NVS, igual que local_sequence, y rechaza todo nonce menor o igual al último aceptado. Sin persistencia, un reinicio reabriría la ventana de reproducción."
     },
     "issuer": {
       "type": "string",
@@ -33,7 +35,7 @@
       ]
     },
     "system_id": {
-      "$ref": "common.schema.json#/$defs/identifier"
+      "$ref": "../schemas/common.schema.json#/$defs/identifier"
     },
     "action": {
       "type": "string",
@@ -53,10 +55,10 @@
       "type": "object",
       "properties": {
         "game_id": {
-          "$ref": "common.schema.json#/$defs/uuid"
+          "$ref": "../schemas/common.schema.json#/$defs/uuid"
         },
         "round_id": {
-          "$ref": "common.schema.json#/$defs/uuid"
+          "$ref": "../schemas/common.schema.json#/$defs/uuid"
         },
         "mode": {
           "type": "string",
@@ -64,8 +66,11 @@
             "random",
             "sequence",
             "all_against_clock",
-            "reaction"
-          ]
+            "reaction",
+            "memory",
+            "no_shoot"
+          ],
+          "description": "Modos del dosier 16.1-16.6. 'duelo' (16.7) queda declarado fuera de alcance inicial. Añadir un modo NO debe exigir tocar el núcleo del motor."
         },
         "countdown_ms": {
           "type": "integer",
@@ -96,10 +101,10 @@
             "type": "object",
             "properties": {
               "module_id": {
-                "$ref": "common.schema.json#/$defs/identifier"
+                "$ref": "../schemas/common.schema.json#/$defs/identifier"
               },
               "target_index": {
-                "$ref": "common.schema.json#/$defs/targetIndex"
+                "$ref": "../schemas/common.schema.json#/$defs/targetIndex"
               }
             },
             "required": [
@@ -120,10 +125,10 @@
             "type": "object",
             "properties": {
               "module_id": {
-                "$ref": "common.schema.json#/$defs/identifier"
+                "$ref": "../schemas/common.schema.json#/$defs/identifier"
               },
               "target_index": {
-                "$ref": "common.schema.json#/$defs/targetIndex"
+                "$ref": "../schemas/common.schema.json#/$defs/targetIndex"
               }
             },
             "required": [
@@ -173,13 +178,13 @@
         "type": "object",
         "properties": {
           "module_id": {
-            "$ref": "common.schema.json#/$defs/identifier"
+            "$ref": "../schemas/common.schema.json#/$defs/identifier"
           },
           "position": {
-            "$ref": "common.schema.json#/$defs/modulePosition"
+            "$ref": "../schemas/common.schema.json#/$defs/modulePosition"
           },
           "rotation": {
-            "$ref": "common.schema.json#/$defs/moduleRotation"
+            "$ref": "../schemas/common.schema.json#/$defs/moduleRotation"
           }
         },
         "required": [

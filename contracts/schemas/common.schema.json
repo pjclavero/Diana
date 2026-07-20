@@ -21,8 +21,12 @@
       "description": "UUIDv4 o ULID generado por el módulo detector. Estable entre reintentos.",
       "type": "string",
       "oneOf": [
-        { "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" },
-        { "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" }
+        {
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        {
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        }
       ]
     },
     "targetIndex": {
@@ -35,40 +39,83 @@
       "type": "object",
       "description": "Coordenada del módulo en la matriz 3x3 (dosier 6.1).",
       "properties": {
-        "x": { "type": "integer", "minimum": -1, "maximum": 1 },
-        "y": { "type": "integer", "minimum": -1, "maximum": 1 }
+        "x": {
+          "type": "integer",
+          "minimum": -1,
+          "maximum": 1
+        },
+        "y": {
+          "type": "integer",
+          "minimum": -1,
+          "maximum": 1
+        }
       },
-      "required": ["x", "y"],
+      "required": [
+        "x",
+        "y"
+      ],
       "additionalProperties": false
     },
     "moduleRotation": {
       "type": "integer",
-      "enum": [0, 90, 180, 270]
+      "enum": [
+        0,
+        90,
+        180,
+        270
+      ]
     },
     "moduleRole": {
       "type": "string",
-      "enum": ["principal", "satellite", "auto"],
+      "enum": [
+        "principal",
+        "satellite",
+        "auto"
+      ],
       "description": "Rol efectivo. 'auto' sólo aparece como posición del selector, nunca como rol resuelto."
     },
     "selectorPosition": {
       "type": "string",
-      "enum": ["SATELITE", "AUTO", "PRINCIPAL"]
+      "enum": [
+        "SATELITE",
+        "AUTO",
+        "PRINCIPAL"
+      ]
     },
     "targetState": {
       "type": "string",
       "enum": [
-        "off", "safe", "active", "hit", "countdown",
-        "penalty", "error", "calibration", "locked",
-        "sensor_error", "maintenance", "disabled"
+        "off",
+        "safe",
+        "active",
+        "hit",
+        "countdown",
+        "penalty",
+        "error",
+        "calibration",
+        "locked",
+        "sensor_error",
+        "maintenance",
+        "disabled"
       ],
       "description": "Estados de la máquina de estados de diana (dosier 13.4). Colores en docs/firmware/led-states.md."
     },
     "moduleState": {
       "type": "string",
       "enum": [
-        "boot", "selftest", "network", "registering", "ready",
-        "calibration", "maintenance", "game_prepare", "game_countdown",
-        "game_active", "game_paused", "game_finished", "error"
+        "boot",
+        "selftest",
+        "network",
+        "registering",
+        "ready",
+        "calibration",
+        "maintenance",
+        "game_prepare",
+        "game_countdown",
+        "game_active",
+        "game_paused",
+        "game_finished",
+        "error"
       ]
     },
     "hitClassification": {
@@ -90,27 +137,42 @@
       "type": "object",
       "description": "T1 · tiempo capturado por el ESP32. Nunca lo reescribe el servidor.",
       "properties": {
-        "boot_id": { "$ref": "#/$defs/uuid" },
-        "uptime_us": { "type": "integer", "minimum": 0 },
+        "boot_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "uptime_us": {
+          "type": "integer",
+          "minimum": 0
+        },
         "event_us": {
           "type": "integer",
           "minimum": 0,
           "description": "Reloj monotónico local en el instante de la interrupción del comparador."
         },
         "epoch_ms": {
-          "type": ["integer", "null"],
+          "type": [
+            "integer",
+            "null"
+          ],
           "minimum": 0,
           "description": "Hora de pared si el módulo la ha sincronizado. Informativa; nunca sustituye a event_us."
         }
       },
-      "required": ["boot_id", "uptime_us", "event_us"],
+      "required": [
+        "boot_id",
+        "uptime_us",
+        "event_us"
+      ],
       "additionalProperties": false
     },
     "coordinatorTime": {
       "type": "object",
-      "description": "T2 · consolidación del módulo principal.",
+      "description": "T2 · consolidación del módulo principal. Sólo el coordinador la produce. Aparece embebida en hit-event únicamente cuando el detector ES el coordinador; para impactos de un satélite viaja en game-event (kind=target_hit) enlazado por hit_event_id.",
       "properties": {
-        "recv_us": { "type": "integer", "minimum": 0 },
+        "recv_us": {
+          "type": "integer",
+          "minimum": 0
+        },
         "elapsed_us": {
           "type": "integer",
           "minimum": 0,
@@ -120,22 +182,57 @@
           "type": "integer",
           "description": "Desfase estimado satélite - principal. 0 si el propio principal detectó el impacto."
         },
-        "offset_uncertainty_us": { "type": "integer", "minimum": 0 }
+        "offset_uncertainty_us": {
+          "type": "integer",
+          "minimum": 0
+        }
       },
-      "required": ["recv_us", "elapsed_us", "clock_offset_us"],
+      "required": [
+        "recv_us",
+        "elapsed_us",
+        "clock_offset_us"
+      ],
       "additionalProperties": false
     },
     "commandEnvelope": {
       "type": "object",
       "description": "Campos obligatorios de todo comando (dosier 23.3, contrato 6).",
       "properties": {
-        "command_id": { "$ref": "#/$defs/uuid" },
-        "issued_at_ms": { "type": "integer", "minimum": 0 },
-        "expires_in_ms": { "type": "integer", "minimum": 100, "maximum": 600000, "default": 5000 },
-        "nonce": { "type": "integer", "minimum": 0 },
-        "issuer": { "type": "string", "enum": ["backend", "coordinator", "operator-cli"] }
+        "command_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "issued_at_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expires_in_ms": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 600000,
+          "default": 5000,
+          "description": "Vida del comando en milisegundos, medida desde issued_at_ms del emisor y NO desde la recepción: si se midiera desde la recepción, el temporizador se reiniciaría en cada reentrega de QoS 1 y no protegería contra reproducción (dosier 23.3). El receptor descarta el comando si (ahora - issued_at_ms) > expires_in_ms."
+        },
+        "nonce": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Contador monotónico por emisor. El receptor lo PERSISTE en NVS, igual que local_sequence, y rechaza todo nonce menor o igual al último aceptado. Sin persistencia, un reinicio reabriría la ventana de reproducción."
+        },
+        "issuer": {
+          "type": "string",
+          "enum": [
+            "backend",
+            "coordinator",
+            "operator-cli"
+          ]
+        }
       },
-      "required": ["command_id", "issued_at_ms", "expires_in_ms", "nonce", "issuer"]
+      "required": [
+        "command_id",
+        "issued_at_ms",
+        "expires_in_ms",
+        "nonce",
+        "issuer"
+      ]
     },
     "semver": {
       "type": "string",

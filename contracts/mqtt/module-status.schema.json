@@ -6,15 +6,15 @@
   "type": "object",
   "properties": {
     "schema_version": {
-      "$ref": "common.schema.json#/$defs/schemaVersion"
+      "$ref": "../schemas/common.schema.json#/$defs/schemaVersion"
     },
     "module_id": {
-      "$ref": "common.schema.json#/$defs/identifier"
+      "$ref": "../schemas/common.schema.json#/$defs/identifier"
     },
     "system_id": {
       "oneOf": [
         {
-          "$ref": "common.schema.json#/$defs/identifier"
+          "$ref": "../schemas/common.schema.json#/$defs/identifier"
         },
         {
           "type": "null"
@@ -22,18 +22,18 @@
       ]
     },
     "state": {
-      "$ref": "common.schema.json#/$defs/moduleState"
+      "$ref": "../schemas/common.schema.json#/$defs/moduleState"
     },
     "selector": {
-      "$ref": "common.schema.json#/$defs/selectorPosition"
+      "$ref": "../schemas/common.schema.json#/$defs/selectorPosition"
     },
     "role": {
-      "$ref": "common.schema.json#/$defs/moduleRole"
+      "$ref": "../schemas/common.schema.json#/$defs/moduleRole"
     },
     "position": {
       "oneOf": [
         {
-          "$ref": "common.schema.json#/$defs/modulePosition"
+          "$ref": "../schemas/common.schema.json#/$defs/modulePosition"
         },
         {
           "type": "null"
@@ -41,7 +41,7 @@
       ]
     },
     "rotation": {
-      "$ref": "common.schema.json#/$defs/moduleRotation"
+      "$ref": "../schemas/common.schema.json#/$defs/moduleRotation"
     },
     "targets": {
       "type": "array",
@@ -52,10 +52,10 @@
         "type": "object",
         "properties": {
           "target_index": {
-            "$ref": "common.schema.json#/$defs/targetIndex"
+            "$ref": "../schemas/common.schema.json#/$defs/targetIndex"
           },
           "state": {
-            "$ref": "common.schema.json#/$defs/targetState"
+            "$ref": "../schemas/common.schema.json#/$defs/targetState"
           },
           "enabled": {
             "type": "boolean"
@@ -80,7 +80,7 @@
           "type": "object",
           "properties": {
             "command_id": {
-              "$ref": "common.schema.json#/$defs/uuid"
+              "$ref": "../schemas/common.schema.json#/$defs/uuid"
             },
             "result": {
               "type": "string",
@@ -109,7 +109,7 @@
       ]
     },
     "firmware_version": {
-      "$ref": "common.schema.json#/$defs/semver"
+      "$ref": "../schemas/common.schema.json#/$defs/semver"
     },
     "uptime_s": {
       "type": "integer",

@@ -37,26 +37,22 @@ META_KEYS = ("_schema", "_reason")
 
 
 def load_registry() -> Registry:
-    """Registra todos los esquemas sin acceso a red.
+    """Registra los esquemas por su $id, sin acceso a red y SIN atajos.
 
-    Los $ref son relativos ('common.schema.json#/$defs/x') y se resuelven contra
-    el $id del esquema que los contiene. Como common.schema.json vive en
-    schemas/ y lo referencian esquemas de mqtt/, cada recurso se registra bajo
-    ambas bases además de bajo su $id y su nombre de fichero.
+    Cada esquema se registra únicamente bajo su propio `$id`. Los `$ref` son
+    relativos a esa base ('../schemas/common.schema.json#/$defs/x') y deben
+    resolver por sí solos, exactamente igual que lo harían en ajv, en el
+    generador de tipos o en CI. Registrar además por nombre de fichero o bajo
+    bases alternativas enmascararía un `$ref` roto y haría que este validador
+    pasara mientras el resto de herramientas falla (hallazgo H-02 del supervisor).
     """
-    bases = (
-        "https://diana.seccionnueve/contracts/mqtt/",
-        "https://diana.seccionnueve/contracts/schemas/",
-    )
     registry = Registry()
     for path in list(MQTT.glob("*.schema.json")) + list(SCHEMAS.glob("*.schema.json")):
         doc = json.loads(path.read_text())
+        if "$id" not in doc:
+            raise SystemExit(f"ERROR: {path.name} no declara $id; no se puede resolver sin atajos")
         resource = Resource.from_contents(doc, default_specification=DRAFT202012)
-        registry = registry.with_resource(path.name, resource)
-        for base in bases:
-            registry = registry.with_resource(base + path.name, resource)
-        if "$id" in doc:
-            registry = registry.with_resource(doc["$id"], resource)
+        registry = registry.with_resource(doc["$id"], resource)
     return registry
 
 

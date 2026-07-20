@@ -6,19 +6,19 @@
   "type": "object",
   "properties": {
     "schema_version": {
-      "$ref": "common.schema.json#/$defs/schemaVersion"
+      "$ref": "../schemas/common.schema.json#/$defs/schemaVersion"
     },
     "system_id": {
-      "$ref": "common.schema.json#/$defs/identifier"
+      "$ref": "../schemas/common.schema.json#/$defs/identifier"
     },
     "event_id": {
-      "$ref": "common.schema.json#/$defs/eventId"
+      "$ref": "../schemas/common.schema.json#/$defs/eventId"
     },
     "game_id": {
-      "$ref": "common.schema.json#/$defs/uuid"
+      "$ref": "../schemas/common.schema.json#/$defs/uuid"
     },
     "round_id": {
-      "$ref": "common.schema.json#/$defs/uuid"
+      "$ref": "../schemas/common.schema.json#/$defs/uuid"
     },
     "kind": {
       "type": "string",
@@ -38,19 +38,19 @@
       ]
     },
     "coordinator_module_id": {
-      "$ref": "common.schema.json#/$defs/identifier"
+      "$ref": "../schemas/common.schema.json#/$defs/identifier"
     },
     "elapsed_us": {
       "type": "integer",
       "minimum": 0
     },
     "device": {
-      "$ref": "common.schema.json#/$defs/deviceTime"
+      "$ref": "../schemas/common.schema.json#/$defs/deviceTime"
     },
     "hit_event_id": {
       "oneOf": [
         {
-          "$ref": "common.schema.json#/$defs/eventId"
+          "$ref": "../schemas/common.schema.json#/$defs/eventId"
         },
         {
           "type": "null"
@@ -61,7 +61,7 @@
     "module_id": {
       "oneOf": [
         {
-          "$ref": "common.schema.json#/$defs/identifier"
+          "$ref": "../schemas/common.schema.json#/$defs/identifier"
         },
         {
           "type": "null"
@@ -71,7 +71,7 @@
     "target_index": {
       "oneOf": [
         {
-          "$ref": "common.schema.json#/$defs/targetIndex"
+          "$ref": "../schemas/common.schema.json#/$defs/targetIndex"
         },
         {
           "type": "null"

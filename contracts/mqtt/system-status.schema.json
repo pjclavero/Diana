@@ -6,10 +6,10 @@
   "type": "object",
   "properties": {
     "schema_version": {
-      "$ref": "common.schema.json#/$defs/schemaVersion"
+      "$ref": "../schemas/common.schema.json#/$defs/schemaVersion"
     },
     "system_id": {
-      "$ref": "common.schema.json#/$defs/identifier"
+      "$ref": "../schemas/common.schema.json#/$defs/identifier"
     },
     "state": {
       "type": "string",
@@ -25,7 +25,7 @@
     "coordinator_module_id": {
       "oneOf": [
         {
-          "$ref": "common.schema.json#/$defs/identifier"
+          "$ref": "../schemas/common.schema.json#/$defs/identifier"
         },
         {
           "type": "null"
@@ -58,7 +58,7 @@
     "active_game_id": {
       "oneOf": [
         {
-          "$ref": "common.schema.json#/$defs/uuid"
+          "$ref": "../schemas/common.schema.json#/$defs/uuid"
         },
         {
           "type": "null"
