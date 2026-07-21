@@ -1,0 +1,89 @@
+name: Integración
+
+# Pruebas que necesitan servicios reales: PostgreSQL (restricciones de BD,
+# migraciones Prisma, idempotencia por constraint — ADR-0003) y Mosquitto.
+# En el entorno de desarrollo no hay demonio Docker; aquí sí, en el runner.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "20"
+  POSTGRES_USER: diana
+  POSTGRES_PASSWORD: diana
+  POSTGRES_DB: diana_test
+
+jobs:
+  backend-integration:
+    name: Backend contra PostgreSQL + Mosquitto
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.4-alpine
+        env:
+          POSTGRES_USER: diana
+          POSTGRES_PASSWORD: diana
+          POSTGRES_DB: diana_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U diana -d diana_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://diana:diana@localhost:5432/diana_test?schema=public
+      MQTT_URL: mqtt://localhost:1883
+      MQTT_ENABLED: "true"
+    defaults:
+      run:
+        working-directory: server/backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Arrancar Mosquitto con la configuración de pruebas del repositorio
+        run: |
+          docker run -d --name mosquitto-it \
+            -p 1883:1883 \
+            -v "$PWD/infrastructure/mosquitto/mosquitto.test.conf:/mosquitto/config/mosquitto.conf:ro" \
+            eclipse-mosquitto:2.0.18
+        working-directory: ${{ github.workspace }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: server/backend/package-lock.json
+
+      - run: npm ci
+
+      - name: Generar cliente Prisma
+        run: npx prisma generate
+
+      - name: Aplicar migraciones (prisma migrate deploy)
+        run: npm run prisma:migrate
+
+      - name: Esperar a que Mosquitto acepte conexiones
+        run: |
+          for i in $(seq 1 20); do
+            if docker exec mosquitto-it mosquitto_sub -t '$SYS/#' -C 1 -W 2 >/dev/null 2>&1; then
+              echo "Mosquitto responde."; exit 0
+            fi
+            sleep 1
+          done
+          echo "Mosquitto no respondió a tiempo." >&2; exit 1
+        working-directory: ${{ github.workspace }}
+
+      - name: "Pruebas de integración (NO se saltan: DATABASE_URL está definida)"
+        run: npm run test:integration
+
+      - name: Recoger logs de Mosquitto si algo falla
+        if: failure()
+        run: docker logs mosquitto-it || true
+        working-directory: ${{ github.workspace }}
