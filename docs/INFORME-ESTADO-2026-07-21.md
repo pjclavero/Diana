@@ -51,10 +51,12 @@ y hay hallazgos abiertos, incluido uno de seguridad **crítico confirmado en viv
 
 ## 3. Documentación en `s9-server` (WP-09)
 
-🔴 **No iniciada.** Es lo primero a hacer al continuar: rama `feat/diana-vm109`, fichas
-`maquinas/vm109-diana.md` (máquina/recursos/servicios/estado) y `servicios/diana.md`
-(uso/config/operación), más índice/inventario/red/copias. Los datos finales de la VM ya
-existen (en `infrastructure/vm/vm109-diana-server.md`).
+✅ **Hecha (PR #7, rama `feat/diana-vm109`).** Creadas las fichas `maquinas/vm109-diana.md`
+(máquina/recursos/software/acceso/creación/copias/comprobaciones) y `servicios/diana.md`
+(función/arquitectura/URLs/gestión/verificación/seguridad), y actualizados `indice.md` e
+`inventario.md` (fila VM 109, puerto 8080, nodo Tailscale pendiente, tabla de accesos).
+Estado reflejado sin maquillar (base desplegada, no producción; F-02/X-21/X-06/X-18
+abiertos; Tailscale sin unir, `gh` sin instalar). Pendiente: merge del PR por el operador.
 
 ## 4. Calidad por paquete de trabajo
 
