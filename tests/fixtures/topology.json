@@ -1,0 +1,16 @@
+{
+  "_comment": "Topología de referencia para E-01..E-03: 9 módulos en matriz 3x3, uno principal. Coordenadas (x,y) según module_position del contrato (-1,0,1). Datos propios de WP-07 para conducir el E2E; no son la fuente de verdad del backend.",
+  "system_id": "system-a",
+  "principal": "module-05",
+  "modules": [
+    { "module_id": "module-01", "position": { "x": -1, "y": 1 }, "rotation": 0 },
+    { "module_id": "module-02", "position": { "x": 0, "y": 1 }, "rotation": 0 },
+    { "module_id": "module-03", "position": { "x": 1, "y": 1 }, "rotation": 0 },
+    { "module_id": "module-04", "position": { "x": -1, "y": 0 }, "rotation": 0 },
+    { "module_id": "module-05", "position": { "x": 0, "y": 0 }, "rotation": 0 },
+    { "module_id": "module-06", "position": { "x": 1, "y": 0 }, "rotation": 0 },
+    { "module_id": "module-07", "position": { "x": -1, "y": -1 }, "rotation": 0 },
+    { "module_id": "module-08", "position": { "x": 0, "y": -1 }, "rotation": 0 },
+    { "module_id": "module-09", "position": { "x": 1, "y": -1 }, "rotation": 0 }
+  ]
+}
