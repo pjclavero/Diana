@@ -5,6 +5,7 @@ import { PrismaHitRepository } from '../../src/modules/hits/prisma-hit.repositor
 import { IngestService } from '../../src/modules/mqtt/ingest.service';
 import { IncidentInput, IncidentSinkPort } from '../../src/modules/hits/ports';
 import { loadExamples } from '../helpers/examples';
+import { seedHitParents, cleanHitParents } from '../helpers/fk-seed';
 
 /**
  * Idempotencia demostrada contra PostgreSQL REAL.
@@ -48,6 +49,10 @@ suite('Idempotencia contra PostgreSQL (ADR-0003)', () => {
     await prisma.$connect();
     const repository = new PrismaHitRepository(prisma as unknown as PrismaService);
     ingest = new IngestService(new ContractValidator(), repository, new NullSink());
+    // Las FK gameId/roundId de hit_events apuntan a games/rounds reales: hay
+    // que sembrar los padres o el INSERT viola hit_events_game_id_fkey.
+    await cleanHitParents(prisma);
+    await seedHitParents(prisma);
   });
 
   beforeEach(async () => {
@@ -55,7 +60,7 @@ suite('Idempotencia contra PostgreSQL (ADR-0003)', () => {
   });
 
   afterAll(async () => {
-    await prisma.hitEvent.deleteMany({ where: { moduleSlug: 'module-03' } });
+    await cleanHitParents(prisma);
     await prisma.$disconnect();
   });
 

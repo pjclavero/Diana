@@ -3,6 +3,7 @@ import { PrismaService } from '../../src/common/prisma/prisma.service';
 import { toHitRecord, HitEventPayload } from '../../src/domain/hits/hit-record';
 import { PrismaHitRepository } from '../../src/modules/hits/prisma-hit.repository';
 import { loadExamples } from '../helpers/examples';
+import { seedHitParents, cleanHitParents } from '../helpers/fk-seed';
 
 /**
  * ADR-0002 contra PostgreSQL real: las cuatro marcas sobreviven al viaje de
@@ -22,6 +23,10 @@ suite('Modelo temporal contra PostgreSQL (ADR-0002)', () => {
     prisma = new PrismaClient();
     await prisma.$connect();
     repository = new PrismaHitRepository(prisma as unknown as PrismaService);
+    // Las FK gameId/roundId de hit_events apuntan a games/rounds reales: hay
+    // que sembrar los padres o el INSERT viola hit_events_game_id_fkey.
+    await cleanHitParents(prisma);
+    await seedHitParents(prisma);
   });
 
   beforeEach(async () => {
@@ -29,7 +34,7 @@ suite('Modelo temporal contra PostgreSQL (ADR-0002)', () => {
   });
 
   afterAll(async () => {
-    await prisma.hitEvent.deleteMany({ where: { moduleSlug: 'module-03' } });
+    await cleanHitParents(prisma);
     await prisma.$disconnect();
   });
 
@@ -58,10 +63,20 @@ suite('Modelo temporal contra PostgreSQL (ADR-0002)', () => {
     const example = loadExamples('valid').find((e) => e.name.includes('valid-hit'))!;
     const payload = JSON.parse(JSON.stringify(example.payload)) as HitEventPayload;
     payload.event_id = '22222222-3333-4444-8555-666666666666';
-    payload.local_sequence = 9007199254740993 as unknown as number;
-    payload.device.event_us = 9007199254740993 as unknown as number;
 
-    await repository.insertIfAbsent(toHitRecord(payload, new Date()));
+    // 2^53 + 1 NO es representable como `double`: escrito como literal `number`
+    // de JS ya se redondea a 2^53 (9007199254740992) antes de tocar la base.
+    // La precisión sólo sobrevive como BigInt, que es precisamente el tipo de
+    // la columna. Inyectamos el BigInt en el registro para demostrar que el
+    // ALMACENAMIENTO (Prisma + columna BigInt de PostgreSQL) lo conserva sin
+    // truncarlo a double. `rawPayload` se mantiene serializable a JSON (Prisma
+    // no serializa BigInt), así que no se altera lo que guarda la auditoría.
+    const bigUs = 9007199254740993n;
+    const record = toHitRecord(payload, new Date());
+    record.deviceEventUs = bigUs;
+    record.localSequence = bigUs;
+
+    await repository.insertIfAbsent(record);
     const row = await prisma.hitEvent.findUniqueOrThrow({ where: { eventId: payload.event_id } });
     expect(row.deviceEventUs.toString()).toBe('9007199254740993');
   });
