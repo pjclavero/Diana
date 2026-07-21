@@ -169,6 +169,13 @@ $ docker compose run --rm migrate                    -> "All migrations have bee
 $ verify-constraints.sql                             -> 24 tablas; 4 marcas en BIGINT; timestamptz; precisión anulable
 ```
 
+**Incidencia de redespliegue (F2, 2026-07-21):** tras reconstruir una imagen,
+`docker compose up -d <svc>` puede **no recrear** el contenedor y dejar el código
+viejo corriendo (se observó con `backend`: `/modules/mine` daba 500 por caer en el
+`/:id` del CRUD, síntoma de imagen antigua). Solución fiable: `docker compose up -d
+--force-recreate <svc>` tras `docker compose build`. Verificar siempre con un endpoint
+NUEVO de la entrega, no sólo con el healthcheck.
+
 **Queda pendiente (no bloqueante del arranque):** el enrutado WebSocket
 (`location /ws/` vs el namespace socket.io `/live` del backend) no está resuelto
 porque el contrato WS panel↔backend no está negociado (X-06); la vista en directo
