@@ -20,6 +20,7 @@ import { IncidentsPage } from "./pages/incidents/IncidentsPage";
 import { UsersPage } from "./pages/users/UsersPage";
 import { BackupsPage } from "./pages/backups/BackupsPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { ModuleOwnershipPage } from "./pages/modules-ownership/ModuleOwnershipPage";
 import { LoginPage } from "./pages/login/LoginPage";
 import { ChangePasswordPage } from "./pages/login/ChangePasswordPage";
 import { useAuth } from "./auth/AuthContext";
@@ -41,6 +42,7 @@ export function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/sistema" element={<SystemStatusPage />} />
         <Route path="/modulos" element={<ModulesPage />} />
+        <Route path="/modulos-propiedad" element={<ModuleOwnershipPage />} />
         <Route path="/modulos/:moduleId" element={<ModuleDetailPage />} />
         <Route path="/modulos/:moduleId/calibracion" element={<CalibrationPage />} />
         <Route path="/modulos/:moduleId/prueba-sensores" element={<TestSensorsPage />} />

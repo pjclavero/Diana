@@ -20,6 +20,7 @@ const NAV_SECTIONS: { title: string; links: NavLinkDef[] }[] = [
       { to: "/", label: "Inicio" },
       { to: "/sistema", label: "Estado del sistema", perm: "modules:read" },
       { to: "/modulos", label: "Módulos", perm: "modules:read" },
+      { to: "/modulos-propiedad", label: "Propiedad de módulos", perm: "modules:read" },
       { to: "/topologia", label: "Editor de matriz", perm: "topology:write" },
     ],
   },
@@ -109,8 +110,8 @@ export function AppShell() {
       <main id="main-content" className="app-shell__content" tabIndex={-1}>
         {DEMO_DATA && (
           <p className="app-shell__demo" role="status">
-            Datos de demostración · la sesión y los roles son reales; los datos de negocio aún
-            no están conectados al backend (se conectan por fases).
+            La sesión, los roles y la propiedad de módulos son reales; algunas pantallas aún
+            muestran datos de demostración y se conectan al backend por fases.
           </p>
         )}
         <Outlet />

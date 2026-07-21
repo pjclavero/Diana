@@ -27,7 +27,11 @@ export class ModuleOwnershipService {
   async listOwnedBy(userId: string) {
     return this.prisma.module.findMany({
       where: { ownerId: userId },
-      include: { position: true, targets: true },
+      include: {
+        owner: { select: { id: true, username: true, displayName: true, role: { select: { name: true } } } },
+        position: true,
+        targets: true,
+      },
       orderBy: { slug: 'asc' },
     });
   }
