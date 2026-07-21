@@ -25,6 +25,37 @@ datos distintos y que el modelo de roles/propiedad que se necesita no estaba def
 > tiene una identidad de `Player` para sus estadísticas. Si a un gestor se le desvinculan
 > todos sus módulos, deja de ejercer de gestor (sigue siendo jugador).
 
+## 0.b Naturaleza del proyecto y activación de módulos (2026-07-21)
+
+Diana es, de raíz, un proyecto **autoalojado / para compartir** (comunidad), no un negocio de
+fabricante. El modelo de roles encaja igual: **gestor = quien posee y monta los módulos**; sus
+amigos son jugadores. La capa "fabricante que vende" es una posibilidad **opcional** encima, no
+un cimiento.
+
+**Vinculación de módulo (cómo alguien pasa a ser gestor de un módulo):** el usuario introduce un
+**código de vinculación** en su apartado del panel → el backend valida el código → **vincula el
+módulo a su cuenta de jugador y lo convierte en gestor** de ese módulo. Comprar/añadir otro =
+repetir; los módulos se acumulan bajo la cuenta.
+
+**Decisión de diseño (para abaratar el futuro):** el código de vinculación se modela como un
+**«token de vinculación» detrás de una interfaz/estrategia**, con dos implementaciones
+intercambiables:
+- **V1 (ahora, F5):** código **emitido por el admin y guardado en BD** al vincular. Sin
+  hardware ni nube. La experiencia del panel es la definitiva.
+- **V2 (futuro, F5b):** código **generado y firmado por el propio módulo** (web de gestión del
+  módulo para IP/DNS + firma con clave de dispositivo), verificado con clave pública; opcional
+  «phone-home» a un mini-servicio del fabricante para conocer activaciones. Demuestra posesión
+  física y ayuda a cerrar **F-02**.
+
+El flujo del panel es idéntico en V1 y V2: pivotar es **sustituir el validador del token**, no
+rehacer el flujo ni la propiedad de módulos. Depende de piezas que hoy no existen (firmware con
+web+cripto, aprovisionamiento en fábrica, almacenamiento seguro **F-14**, mini-servicio phone-home)
+y son **aditivas**, no reescrituras.
+
+**Topología (en estudio):** A autoalojado puro · B autoalojado + phone-home · C nube central.
+Al ser un proyecto para compartir, el objetivo por defecto es **A/B**; C queda descartada salvo
+cambio de criterio.
+
 ## 1. Roles (mínimo 3)
 
 | Rol | Quién es | Qué puede hacer |
