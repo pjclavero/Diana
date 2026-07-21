@@ -89,7 +89,10 @@ services:
       # estático/Vite). No confirmado contra código real de server/frontend
       # (el contexto está vacío al escribir esto). Si WP-03 usa otra ruta o
       # puerto, este test debe ajustarse antes de integrar las ramas.
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8081/health || exit 1"]
+      # VERIFICADO (WP-08): el contenedor frontend (nginx-unprivileged) sirve
+      # en el puerto 8080 (server/frontend/nginx.conf: listen 8080), no 8081.
+      # El fallback try_files a index.html devuelve 200 para /health.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -106,8 +109,10 @@ services:
   # ----------------------------------------------------------------------------
   backend:
     build:
-      context: ./server/backend
-      dockerfile: Dockerfile
+      # Contexto en la RAÍZ del repo: la imagen necesita contracts/ (ver
+      # server/backend/Dockerfile, hallazgo F-13).
+      context: .
+      dockerfile: server/backend/Dockerfile
     image: diana/backend:local
     restart: unless-stopped
     depends_on:
@@ -125,8 +130,13 @@ services:
       MQTT_PORT: ${MQTT_PORT:-1883}
       MQTT_USERNAME: ${MQTT_BACKEND_USERNAME:-backend}
       MQTT_PASSWORD: ${MQTT_BACKEND_PASSWORD}
-      SESSION_SECRET: ${BACKEND_SESSION_SECRET}
-      CORS_ORIGIN: ${BACKEND_CORS_ORIGIN:-http://localhost:8080}
+      # El backend lee JWT_SECRET (configuration.ts:48) y ABORTA en producción
+      # si falta. Antes no se pasaba: el backend no arrancaba (fix de contrato
+      # de entorno, WP-10).
+      JWT_SECRET: ${BACKEND_JWT_SECRET}
+      # El código lee CORS_ORIGINS (plural, separado por comas), no CORS_ORIGIN.
+      # Con el nombre equivocado el panel se quedaba sin CORS (origin:false).
+      CORS_ORIGINS: ${BACKEND_CORS_ORIGIN:-http://localhost:8080}
       LOG_LEVEL: ${BACKEND_LOG_LEVEL:-info}
       TZ: UTC
     volumes:
@@ -141,7 +151,10 @@ services:
       # BACKEND_PORT. No confirmado contra código real (server/backend está
       # vacío al escribir esto). WP-02 debe exponerlo tal cual o avisar si
       # cambia de ruta/puerto; verificar al integrar las ramas.
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:${BACKEND_PORT:-3000}/health || exit 1"]
+      # El backend tiene prefijo global /api (config.globalPrefix), así que la
+      # sonda de vida real es /api/health, no /health (verificado en el código,
+      # HealthController @Get() bajo /health + setGlobalPrefix('api')).
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:${BACKEND_PORT:-3000}/api/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -158,8 +171,10 @@ services:
   # ----------------------------------------------------------------------------
   worker:
     build:
-      context: ./server/worker
-      dockerfile: Dockerfile
+      # Contexto en la RAÍZ del repo: la imagen necesita el esquema Prisma del
+      # backend (ver server/worker/Dockerfile, hallazgo F-13).
+      context: .
+      dockerfile: server/worker/Dockerfile
     image: diana/worker:local
     restart: unless-stopped
     depends_on:
@@ -184,16 +199,14 @@ services:
     networks:
       - internal
     healthcheck:
-      # ⚠ COORDINACIÓN PENDIENTE (WP-02): se asume que el worker expone una
-      # sonda de vida mínima en un puerto HTTP interno (o un fichero de
-      # heartbeat). Es un placeholder sin confirmar contra código real
-      # (server/worker está vacío al escribir esto). WP-02 debe confirmar el
-      # mecanismo real y ajustar este test antes de integrar las ramas.
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3100/health || exit 1"]
+      # VERIFICADO (WP-08): el worker (server/worker/src/main.ts) es un bucle
+      # sin servidor HTTP; NO expone /health ni puerto 3100. El placeholder
+      # HTTP anterior habría fallado siempre. Se comprueba que el proceso vive.
+      test: ["CMD-SHELL", "pgrep -f 'node dist/main.js' || exit 1"]
       interval: 20s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 15s
     deploy:
       resources:
         limits:
@@ -206,8 +219,8 @@ services:
   # ----------------------------------------------------------------------------
   migrate:
     build:
-      context: ./server/backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: server/backend/Dockerfile
     image: diana/backend:local
     command: ["npx", "prisma", "migrate", "deploy"]
     restart: "no"
@@ -346,8 +359,10 @@ services:
   device-simulator:
     profiles: ["simulator"]
     build:
-      context: ./simulators/target-module
-      dockerfile: Dockerfile
+      # El Dockerfile del simulador exige contexto en la raíz del repo (necesita
+      # contracts/ para autovalidarse). VERIFICADO/CORREGIDO por WP-08.
+      context: .
+      dockerfile: simulators/target-module/Dockerfile
     image: diana/device-simulator:local
     restart: "no"
     depends_on:
@@ -375,8 +390,8 @@ services:
   seed:
     profiles: ["dev"]
     build:
-      context: ./server/backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: server/backend/Dockerfile
     image: diana/backend:local
     # Asume un script `db:seed` en server/backend/package.json (convención
     # Prisma habitual). WP-02 debe proveerlo o este comando se ajustará.
