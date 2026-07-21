@@ -43,7 +43,9 @@ test.describe("Flujo completo de partida (mock)", () => {
     await expect(page.getByRole("heading", { name: "Partida en directo" })).toBeVisible();
 
     // Debe verse la conexión y, en unos segundos, al menos un impacto en la lista.
-    await expect(page.getByText(/en directo|conectando/i)).toBeVisible();
+    // El indicador de conexión es el ConnectionBadge (data-testid inequívoco): el
+    // regex genérico también casaba con el <h1> "Partida en directo" y violaba strict mode.
+    await expect(page.getByTestId("connection-badge")).toHaveText(/en directo|conectando/i);
     await expect(page.locator("text=Últimos impactos").locator("..")).toBeVisible();
 
     // Espera a que llegue al menos un evento de impacto (el motor mock genera uno cada ~1.4s).
