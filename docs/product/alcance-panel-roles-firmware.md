@@ -16,10 +16,9 @@ datos distintos y que el modelo de roles/propiedad que se necesita no estaba def
 | **Gestor** | Dueño de uno o varios módulos. | Gestiona sus módulos, partidas y topología; acepta actualizaciones de firmware para sus módulos; da de alta jugadores (registrados o temporales); desvincula módulos suyos; diagnostica módulos; resetea estadísticas de un jugador en una partida. |
 | **Admin** | Administrador del sistema. | Todo lo del gestor + sube versiones de firmware, vincula/desvincula módulos de cualquier dueño, y aprueba el ascenso de usuario → gestor. |
 
-> Decisión pendiente: si los roles actuales del backend (operador, árbitro, consulta,
-> mantenimiento) se retiran, se renombran o conviven como variantes. Propuesta: el núcleo es
-> **jugador / gestor / admin**; árbitro y consulta pueden modelarse como permisos acotados
-> dentro de una partida, no como roles de primer nivel.
+> **Decidido (2026-07-21):** conviven todos. Se añaden **jugador / gestor / admin** como
+> núcleo y se **conservan** operador, árbitro, consulta y mantenimiento aunque de momento no
+> se usen todos («están bien pensados»). Ningún rol se retira.
 
 ## 2. Matriz de capacidades
 
@@ -42,12 +41,21 @@ datos distintos y que el modelo de roles/propiedad que se necesita no estaba def
 ## 3. Flujos clave
 
 ### 3.1 Ascenso a gestor
-1. Un usuario (jugador) solicita el rol de gestor desde el panel.
+1. Un usuario (jugador) solicita el rol de gestor desde el panel. **El registro exige correo.**
 2. Un admin ve la solicitud y la **aprueba**.
-3. El sistema **envía un código** al solicitante; al introducirlo, queda activado como gestor.
+3. El sistema **envía un código al correo** del solicitante; al introducirlo, queda activado
+   como gestor.
+4. **Queda registrado** que se generó y envió un código, de modo que el admin lo ve.
+5. El admin, viendo que ya se generó uno, puede **volver a generarlo** (regenerar/reenviar).
 
-> Decisión pendiente: **canal del código** (correo — el usuario ya tiene `email`—, o mostrado
-> en pantalla al admin para entrega manual) y **caducidad** del código.
+> **Decidido (2026-07-21):** canal = **correo** (obligatorio en el registro); el envío queda
+> auditado (el admin ve que se envió) y es **regenerable** por el admin.
+>
+> **Dependencia de infraestructura (honesta):** la VM 109 **no tiene salida a internet ni
+> SMTP configurado**. Se implementará el flujo completo (generar código, registrarlo, marcar
+> «enviado», regenerar) con un **mailer conmutable**; el envío real de correo queda **pendiente
+> de configurar SMTP** (relay de salida). Mientras tanto el código queda registrado y visible
+> para el admin, así que el flujo es operable sin bloqueo. Caducidad propuesta: 24 h.
 
 ### 3.2 Propiedad y cesión de módulos
 - Cada módulo tiene un **dueño** (gestor) o ninguno (libre / del admin).
@@ -61,9 +69,21 @@ datos distintos y que el modelo de roles/propiedad que se necesita no estaba def
 3. El panel muestra qué versión corre cada módulo y el estado del despliegue.
 
 ### 3.4 Jugadores y estadísticas
-- Un jugador **registrado** se enlaza a un `User` (`Player.userId`) y ve sus logros.
-- Un jugador **temporal** existe para una partida sin cuenta permanente.
+- Un jugador **registrado** se enlaza a un `User` (`Player.userId`) y ve sus logros. Sus
+  **estadísticas son globales del jugador**: se acumulan aunque juegue en módulos vinculados a
+  **gestores distintos** (la propiedad del módulo no fragmenta las estadísticas del jugador).
+- Un jugador **temporal**:
+  - **No tiene estadísticas acumuladas** ni acceso al panel; no puede consultar nada ni ver
+    histórico.
+  - **Sólo aparece en esa partida.** Se guarda para no perder la consistencia de las
+    estadísticas **de esa partida**, pero no agrega entre partidas.
+  - **Dos temporales con el mismo nombre en partidas distintas NO tienen relación** entre sí
+    (cada temporal es una identidad aislada, sin `User`).
 - Gestor/admin pueden **resetear** las estadísticas de un jugador **en una partida** concreta.
+
+> **Decidido (2026-07-21):** el temporal es una identidad **por partida**, sin `User`, sin
+> `Statistic` acumulada, sin acceso; sus números viven sólo en el `Result`/`Participant` de esa
+> partida. El registrado acumula `Statistic` de forma **global**, transversal a los gestores.
 
 ## 4. Qué existe ya y qué es nuevo (verificado en el código, 2026-07-21)
 
@@ -81,14 +101,16 @@ datos distintos y que el modelo de roles/propiedad que se necesita no estaba def
 | **Reset de estadísticas por partida** | 🔴 nuevo |
 | **Login en el panel** (JWT) + rutas reales panel↔backend | 🔴 nuevo (X-21/X-22) |
 
-## 5. Preguntas abiertas antes de construir
+## 5. Decisiones (2026-07-21)
 
-1. **Roles:** ¿núcleo jugador/gestor/admin y se retiran operador/árbitro/consulta/mantenimiento,
-   o conviven?
-2. **Código de ascenso a gestor:** ¿canal (correo / pantalla) y caducidad?
-3. **Usuarios temporales:** ¿caducan solos (p. ej. al terminar la partida / a las 24 h) o los
-   borra un gestor?
-4. **Logros:** ¿qué cuenta como «logro» (hitos calculados de estadísticas) o es sólo el
-   histórico de partidas y precisión?
+1. **Roles:** ✅ conviven todos; se añaden jugador/gestor/admin y se conservan los técnicos.
+2. **Código de ascenso a gestor:** ✅ por correo (obligatorio en registro), auditado y
+   regenerable por el admin; caducidad 24 h. Envío real de correo pendiente de SMTP.
+3. **Usuarios temporales:** ✅ identidad por partida, sin `User`, sin estadística acumulada,
+   sin acceso; aislados entre partidas.
+4. **Estadísticas del registrado:** ✅ globales del jugador, transversales a los gestores.
+5. **Logros:** ⏳ **pendiente de concretar** qué cuenta como logro. Hasta definirlo, el panel
+   del jugador muestra histórico de partidas + precisión; los «logros» (hitos calculados) se
+   dejan como fase posterior.
 
-_Borrador · 2026-07-21 · pendiente de confirmación del responsable_
+_Borrador con decisiones · 2026-07-21_
