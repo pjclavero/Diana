@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { createCrudController } from '../../common/crud/crud.controller';
+import { FirmwareDeploymentController } from './firmware-deployment.controller';
+import { FirmwareDeploymentService } from './firmware-deployment.service';
 import { FirmwareService } from './firmware.service';
 
 export const FirmwareController = createCrudController({
@@ -11,8 +13,8 @@ export const FirmwareController = createCrudController({
 });
 
 @Module({
-  controllers: [FirmwareController],
-  providers: [FirmwareService],
-  exports: [FirmwareService],
+  controllers: [FirmwareDeploymentController, FirmwareController],
+  providers: [FirmwareService, FirmwareDeploymentService],
+  exports: [FirmwareService, FirmwareDeploymentService],
 })
 export class FirmwareModule {}
