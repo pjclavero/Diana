@@ -1,0 +1,48 @@
+# ==============================================================================
+# Diana · .dockerignore de la RAÍZ del repositorio (WP-08)
+# ==============================================================================
+# Los contextos de build que usan la raíz del repo (server/backend,
+# server/worker y simulators/target-module — todos con build.context: .)
+# comparten este fichero. Reduce el contexto enviado al daemon y evita meter
+# secretos, node_modules o artefactos pesados en las imágenes.
+#
+# NO excluye: server/, simulators/ ni contracts/, que los builds SÍ copian.
+# El frontend tiene su propio contexto (server/frontend) y su propio
+# .dockerignore.
+# ==============================================================================
+
+# VCS
+.git
+.gitignore
+
+# Dependencias y artefactos de compilación (se reinstalan/regeneran en la imagen)
+**/node_modules
+**/dist
+**/build
+**/coverage
+**/.npm
+npm-debug.log
+
+# Entorno y secretos: NUNCA dentro de una imagen
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.key
+infrastructure/mosquitto/passwd
+
+# Documentación y material que ninguna imagen necesita
+docs/
+hardware/
+firmware/
+tests/
+*.md
+
+# Utillaje de editor / logs
+.vscode
+.idea
+*.log
+.github/
