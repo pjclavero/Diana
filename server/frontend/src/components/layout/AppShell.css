@@ -127,3 +127,47 @@
     color: #e5e7eb;
   }
 }
+
+/* --- Autenticación en la cabecera (F1) --- */
+.app-shell__spacer {
+  flex: 1 1 auto;
+}
+.app-shell__user {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.app-shell__user-name {
+  font-weight: 600;
+}
+.app-shell__user-role {
+  padding: 0.1rem 0.5rem;
+  border-radius: 1rem;
+  background: #1d4ed8;
+  color: #fff;
+  font-size: 0.72rem;
+  text-transform: capitalize;
+}
+.app-shell__logout {
+  background: transparent;
+  border: 1px solid #4b5563;
+  color: #fff;
+  padding: 0.3rem 0.6rem;
+  border-radius: 0.4rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+.app-shell__logout:hover {
+  background: #374151;
+}
+
+.app-shell__demo {
+  grid-column: 1 / -1;
+  background: #fef3c7;
+  color: #92400e;
+  text-align: center;
+  padding: 0.4rem 1rem;
+  font-size: 0.82rem;
+  border-bottom: 1px solid #fcd34d;
+}

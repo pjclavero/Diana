@@ -20,8 +20,21 @@ import { IncidentsPage } from "./pages/incidents/IncidentsPage";
 import { UsersPage } from "./pages/users/UsersPage";
 import { BackupsPage } from "./pages/backups/BackupsPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { LoginPage } from "./pages/login/LoginPage";
+import { ChangePasswordPage } from "./pages/login/ChangePasswordPage";
+import { useAuth } from "./auth/AuthContext";
 
 export function App() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center" }}>Cargando…</div>
+    );
+  }
+  if (!user) return <LoginPage />;
+  if (user.must_change_password) return <ChangePasswordPage />;
+
   return (
     <Routes>
       <Route element={<AppShell />}>

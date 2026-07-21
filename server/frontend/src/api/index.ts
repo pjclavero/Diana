@@ -11,7 +11,8 @@ import { RealGameSocket } from "./realGameSocket";
  * tocar una pantalla. Ver README.md § "Cómo pasar de mock a API real".
  */
 const API_MODE = (import.meta.env.VITE_API_MODE ?? "mock") as "mock" | "real";
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api/v1";
+// El backend expone el prefijo global `api` SIN segmento de versión (X-21).
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
 const WS_BASE_URL = import.meta.env.VITE_WS_URL ?? "/ws";
 
 export const apiClient: DianaApiClient = API_MODE === "real" ? createRealApiClient(API_BASE_URL) : mockApiClient;

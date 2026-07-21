@@ -1,5 +1,6 @@
 import type { DianaApiClient, GamePreset, Incident, Topology } from "./client";
 import { ApiError } from "./client";
+import { getToken } from "../auth/tokenStore";
 import type {
   BackupInfo,
   FirmwareRelease,
@@ -22,10 +23,15 @@ import type {
  */
 async function request<T>(baseUrl: string, path: string, init?: RequestInit): Promise<T> {
   let res: Response;
+  const token = getToken();
   try {
     res = await fetch(`${baseUrl}${path}`, {
-      headers: { "Content-Type": "application/json" },
       ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(init?.headers as Record<string, string>),
+      },
     });
   } catch {
     throw new ApiError("No se puede contactar con el servidor. Compruebe la conexión de red.");
