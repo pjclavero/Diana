@@ -8,6 +8,23 @@ Este documento fija lo que el usuario debe poder hacer desde el panel de Diana. 
 constatar (hallazgos X-21/X-22) que el panel y el backend se construyeron sobre modelos de
 datos distintos y que el modelo de roles/propiedad que se necesita no estaba definido.
 
+## 0. Modelo de negocio (2026-07-21)
+
+- **El fabricante (nosotros) es el `admin`** y dueño del sistema.
+- **Vender un módulo a una persona = vincularle ese módulo.** Esa vinculación es lo que la
+  **convierte en `gestor`**: el rol gestor **deriva de poseer al menos un módulo**, no de una
+  solicitud aislada. El «código por correo» es la **activación** de esa venta/vinculación
+  (regenerable por el admin).
+- **Todo usuario es, en el fondo, un `jugador`.** Las estadísticas se llevan **siempre a nivel
+  de jugador**. Un **gestor es un jugador que además posee módulos** y puede gestionar.
+- Un jugador juega con **distintos gestores**; un **gestor que juega en la partida de otro
+  gestor acumula esas estadísticas como jugador**. La estadística del jugador registrado es
+  **global**, independiente de quién posea el módulo donde jugó.
+
+> Implicación de diseño: `gestor` ⟺ posee ≥1 módulo (+ activación). Todo `User` registrado
+> tiene una identidad de `Player` para sus estadísticas. Si a un gestor se le desvinculan
+> todos sus módulos, deja de ejercer de gestor (sigue siendo jugador).
+
 ## 1. Roles (mínimo 3)
 
 | Rol | Quién es | Qué puede hacer |
@@ -40,13 +57,16 @@ datos distintos y que el modelo de roles/propiedad que se necesita no estaba def
 
 ## 3. Flujos clave
 
-### 3.1 Ascenso a gestor
-1. Un usuario (jugador) solicita el rol de gestor desde el panel. **El registro exige correo.**
-2. Un admin ve la solicitud y la **aprueba**.
-3. El sistema **envía un código al correo** del solicitante; al introducirlo, queda activado
-   como gestor.
-4. **Queda registrado** que se generó y envió un código, de modo que el admin lo ve.
-5. El admin, viendo que ya se generó uno, puede **volver a generarlo** (regenerar/reenviar).
+### 3.1 Alta de gestor por venta de módulo
+El gestor no se «solicita» en abstracto: nace de **vender/vincular un módulo** a un usuario.
+1. El comprador se **registra como jugador** (correo obligatorio) — o el admin le crea la cuenta.
+2. El **admin vincula el módulo** comprado a ese usuario (la «venta»).
+3. El sistema **envía un código de activación al correo** del comprador; al introducirlo, su
+   acceso de **gestor** queda activo (ya posee un módulo).
+4. **Queda registrado** que se generó y envió el código, de modo que el admin lo ve.
+5. El admin puede **volver a generarlo** (regenerar/reenviar).
+6. Si más adelante se le desvinculan **todos** los módulos, deja de ejercer de gestor (sigue
+   siendo jugador con sus estadísticas).
 
 > **Decidido (2026-07-21):** canal = **correo** (obligatorio en el registro); el envío queda
 > auditado (el admin ve que se envió) y es **regenerable** por el admin.
