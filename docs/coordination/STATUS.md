@@ -55,7 +55,7 @@ del registrado global; temporal por partida sin cuenta.
 | Fase | Alcance | Estado |
 |---|---|---|
 | **F1** | Cimientos: roles jugador/gestor en RBAC + login real (JWT) + sesión por rol + nav filtrada + datos demo | ✅ **CONFORME** (supervisor 2 vueltas). Desplegada y verificada en VM109 (`develop` @ `bd0254e`). Backend 172, frontend 43 |
-| F2 | Propiedad de módulos (`Module.owner`, vincular/desvincular; gestor cede, admin reasigna) | 🟢 Implementada, desplegada y verificada en vivo (`develop` @ `d5120d9`); migración `owner_id` aplicada a BD viva; backend 179, frontend 45. Flujo probado: link→gestor, unlink→jugador. **Supervisor en curso** |
+| F2 | Propiedad de módulos (`Module.owner`, vincular/desvincular; gestor cede, admin reasigna) | ✅ **CONFORME CON OBSERVACIONES** (supervisor). Desplegada y verificada en vivo (`develop` @ `d5120d9`); migración `owner_id` en BD viva; backend 179, frontend 45. Flujo: link→gestor, unlink→jugador. Observaciones (no bloqueantes, para F5): (1) `link` con update condicional `where ownerId:null` (evitar TOCTOU); (2) degradación bajo `unlink` concurrente; (3) el canje por un jugador necesitará permiso/endpoint propio |
 | F3 | Firmware/OTA (admin sube, gestor acepta, versión por módulo) | Pendiente |
 | F4 | Jugadores + temporales por partida + reset de estadística por partida + vista del jugador | Pendiente |
 | F5 | Ascenso a gestor por venta (código de activación por correo, regenerable; SMTP pendiente) | Pendiente |
