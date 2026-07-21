@@ -1,0 +1,128 @@
+name: Nightly
+
+# Trabajos lentos o de vigilancia continua: carga, auditoría de dependencias,
+# escaneo de secretos y análisis de vulnerabilidades de las imágenes.
+# De madrugada y a demanda; nunca en cada push.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * *"
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Carga: 9 módulos y 81 dianas, ráfagas de impactos, telemetría continua y
+  # reconexiones (L-01..L-04 de TEST_MATRIX). El generador vive en tests/load.
+  # ---------------------------------------------------------------------------
+  carga:
+    name: Carga (9 módulos / 81 dianas)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preparar .env
+        run: |
+          cp .env.example .env
+          sed -i 's/CAMBIAR/ci-not-a-secret/g' .env
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Construir y levantar el stack
+        run: |
+          docker compose build
+          docker compose up -d postgres mosquitto
+          docker compose up --exit-code-from migrate migrate
+          docker compose up -d backend worker
+      - name: Instalar el generador de carga
+        working-directory: tests/load
+        run: npm ci || npm install
+      - name: Ejecutar el perfil de carga (9 módulos / 81 dianas, ráfagas)
+        working-directory: tests/load
+        env:
+          MQTT_URL: mqtt://localhost:1883
+          DURATION_S: "120"
+        run: npm start
+      - name: Logs si falla
+        if: failure()
+        run: docker compose logs --no-color --tail 200 || true
+      - name: Derribar
+        if: always()
+        run: docker compose down -v
+
+  # ---------------------------------------------------------------------------
+  # Auditoría de dependencias de cada paquete Node (S-02).
+  # ---------------------------------------------------------------------------
+  npm-audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pkg:
+          - server/backend
+          - server/frontend
+          - server/worker
+          - simulators
+    defaults:
+      run:
+        working-directory: ${{ matrix.pkg }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Auditar (falla con vulnerabilidades altas o críticas)
+        run: npm audit --audit-level=high
+
+  # ---------------------------------------------------------------------------
+  # Escaneo de secretos en todo el historial (S-01) con gitleaks.
+  # Configuración en tests/security/gitleaks.toml.
+  # ---------------------------------------------------------------------------
+  secretos:
+    name: Escaneo de secretos (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_CONFIG: tests/security/gitleaks.toml
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+
+  # ---------------------------------------------------------------------------
+  # Análisis de vulnerabilidades de las imágenes construidas (S-02) con Trivy.
+  # Se analiza cada imagen del stack por separado.
+  # ---------------------------------------------------------------------------
+  imagenes:
+    name: Análisis de imágenes (Trivy)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - context: server/backend
+            image: diana/backend:scan
+          - context: server/frontend
+            image: diana/frontend:scan
+          - context: server/worker
+            image: diana/worker:scan
+    steps:
+      - uses: actions/checkout@v4
+      - name: Construir la imagen
+        run: docker build -t ${{ matrix.image }} ${{ matrix.context }}
+      - name: Escanear con Trivy (falla con CRITICAL)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ matrix.image }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL
+          vuln-type: os,library

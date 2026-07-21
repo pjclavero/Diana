@@ -1,0 +1,13 @@
+{
+  "name": "@diana/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "description": "E2E de los 16 escenarios del encargo (§19) contra el stack completo con el simulador de módulos.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.48.2",
+    "mqtt": "5.10.1"
+  }
+}

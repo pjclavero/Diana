@@ -1,0 +1,9 @@
+{
+  "_comment": "Jugadores de ejemplo para tests/e2e y tests/load. No coinciden necesariamente con server/frontend/src/api/mockAdapter.ts (no es ruta propia de WP-07): son datos propios para crear jugadores vía API/DB real en integration.yml / e2e.yml.",
+  "players": [
+    { "name": "Ana García", "team": "azul" },
+    { "name": "Luis Pérez", "team": "rojo" },
+    { "name": "Marta Ruiz", "team": "azul" },
+    { "name": "Diego Soto", "team": "rojo" }
+  ]
+}

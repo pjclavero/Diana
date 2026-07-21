@@ -1,0 +1,13 @@
+{
+  "name": "@diana/load",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Generador de carga MQTT: 9 módulos y 81 dianas, ráfagas, telemetría continua y reconexiones (L-01..L-04).",
+  "type": "module",
+  "scripts": {
+    "start": "node load.mjs"
+  },
+  "dependencies": {
+    "mqtt": "5.10.1"
+  }
+}

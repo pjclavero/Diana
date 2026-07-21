@@ -1,0 +1,182 @@
+name: CI
+
+# Trabajos rápidos que deben pasar en cada push y en cada PR.
+# Lo lento (compilación ESP-IDF, integración con servicios, E2E, carga) vive en
+# workflows separados (firmware-idf.yml, integration.yml, e2e.yml, nightly.yml).
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Contratos MQTT/API: esquemas y ejemplos válidos/inválidos.
+  # ---------------------------------------------------------------------------
+  contracts:
+    name: Contratos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar dependencias de validación
+        run: python3 -m pip install --quiet jsonschema referencing
+      - name: Validar contratos
+        run: python3 contracts/validate.py
+
+  # ---------------------------------------------------------------------------
+  # Backend NestJS: prisma generate, typecheck, lint (si existe), unitarias.
+  # Las de integración NO se ejecutan aquí (necesitan PostgreSQL): integration.yml.
+  # ---------------------------------------------------------------------------
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: server/backend/package-lock.json
+      - run: npm ci
+      - name: Generar cliente Prisma
+        run: npx prisma generate
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Tests unitarios (sin PostgreSQL; las de integración se saltan)
+        run: npm run test:unit
+
+  # ---------------------------------------------------------------------------
+  # Frontend React/Vite: lint, typecheck, build de producción y tests (vitest).
+  # Los E2E de Playwright NO corren aquí: e2e.yml.
+  # ---------------------------------------------------------------------------
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: server/frontend/package-lock.json
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build de producción
+        run: npm run build
+      - name: Tests (vitest)
+        run: npm test
+
+  # ---------------------------------------------------------------------------
+  # Worker: typecheck y build. NO ejecuta `npm test` sin más porque el paquete
+  # no tiene ningún fichero de test (jest saldría con código 1). Se usa
+  # --passWithNoTests desde la línea de comandos, sin tocar el package.json del
+  # equipo del worker, para dejar constancia explícita de esa laguna.
+  # ---------------------------------------------------------------------------
+  worker:
+    name: Worker
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server/worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: server/worker/package-lock.json
+      - run: npm ci
+      - name: Generar cliente Prisma (esquema compartido con backend)
+        run: npm run prisma:generate
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+      - name: Tests (el worker aún no tiene ninguno — laguna conocida)
+        run: npx jest --runInBand --passWithNoTests
+
+  # ---------------------------------------------------------------------------
+  # Simulador de módulos: typecheck, tests (vitest) y build.
+  # ---------------------------------------------------------------------------
+  simulator:
+    name: Simulador
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: simulators
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: simulators/package-lock.json
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Tests (vitest)
+        run: npm test
+      - name: Build
+        run: npm run build
+
+  # ---------------------------------------------------------------------------
+  # Firmware en HOST: compila la lógica de negocio (diana_core) con gcc y valida
+  # los mensajes generados contra los esquemas congelados. NO compila con
+  # ESP-IDF: eso es firmware-idf.yml.
+  # ---------------------------------------------------------------------------
+  firmware-host:
+    name: Firmware (host)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar dependencias de validación
+        run: python3 -m pip install --quiet jsonschema referencing
+      - name: Tests en host + conformidad de contratos
+        run: make -C firmware test
+
+  # ---------------------------------------------------------------------------
+  # Validación estática de Docker Compose: todos los perfiles.
+  # No construye imágenes ni levanta nada; sólo `docker compose config`.
+  # ---------------------------------------------------------------------------
+  compose-config:
+    name: Docker Compose config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preparar .env desde el ejemplo
+        run: cp .env.example .env
+      - name: Validar todos los perfiles
+        run: |
+          docker compose config -q
+          docker compose -f compose.yml -f compose.dev.yml --profile dev config -q
+          docker compose --profile test config -q
+          docker compose --profile simulator config -q
+          docker compose --profile monitoring config -q
+          echo "OK: todos los perfiles de compose son sintácticamente válidos."
+      - name: Exposición de puertos (PostgreSQL interno, S-03/I-06)
+        run: bash tests/security/check-port-exposure.sh

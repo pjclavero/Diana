@@ -27,7 +27,7 @@ ENV_EXAMPLE   := .env.example
 
 .PHONY: help bootstrap dev test lint build up down deploy backup restore \
         reset-dev simulate logs ps contracts-test config config-dev \
-        mosquitto-users
+        mosquitto-users firmware-host-test check-ports load-test
 
 help: ## Muestra esta ayuda
 	@echo "Diana · objetivos disponibles:"
@@ -109,3 +109,14 @@ config: ## Vuelca la configuración resuelta del stack base (equivalente a `dock
 
 config-dev: ## Vuelca la configuración resuelta del stack de desarrollo
 	$(COMPOSE_DEV) --profile dev config
+
+# --- WP-07 · objetivos de CI y pruebas ---------------------------------------
+
+firmware-host-test: ## Compila y ejecuta los tests en host del firmware (gcc, sin ESP-IDF)
+	$(MAKE) -C firmware test
+
+check-ports: ## Verifica que sólo el proxy/broker publican puertos (PostgreSQL interno)
+	bash tests/security/check-port-exposure.sh
+
+load-test: ## Lanza el generador de carga MQTT (9 módulos/81 dianas) contra un stack ya levantado
+	cd tests/load && (npm ci || npm install) && npm start
