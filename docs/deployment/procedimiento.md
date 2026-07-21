@@ -173,3 +173,21 @@ $ verify-constraints.sql                             -> 24 tablas; 4 marcas en B
 (`location /ws/` vs el namespace socket.io `/live` del backend) no está resuelto
 porque el contrato WS panel↔backend no está negociado (X-06); la vista en directo
 por WS aún no es alcanzable por el proxy. El REST completo sí lo es.
+
+## 9. Verificación funcional ejecutada (2026-07-21)
+
+| Comprobación | Resultado | Evidencia |
+|---|---|---|
+| Migración contra base viva | ✅ | `prisma migrate deploy` → «All migrations have been successfully applied» (`20260720120000_init`) |
+| Restricciones de la BD | ✅ | `verify-constraints.sql`: 24 tablas, 4 marcas en `BIGINT`, `timestamptz`, precisión anulable |
+| **Tests de integración contra PostgreSQL real** | ✅ **5/5** | idempotencia garantizada por la BASE (índice único + tupla, incluso concurrente) y microsegundos en `BigInt`. Reproducido dos veces |
+| Stack completo healthy | ✅ **7/7** | backend, worker, mosquitto, postgres, frontend, proxy, backup |
+| API REST por el proxy | ✅ | `/api/health`→`{"status":"ok"}`, `/api/auth/login`→400 (valida) |
+| ACL de Mosquitto (`test-acl.sh`) | 🟡 5/7 | Las 4 denegaciones críticas (aislamiento entre módulos, no auto-escribir `config`/`command`/`ota`) **pasan**. Los 2 «FAIL» son falsos negativos del arnés (carrera sub/pub), verificado a mano |
+| **F-02 (suplantación por client_id)** | 🔴 **CONFIRMADO EN VIVO** | credenciales de m1 + `client_id=m2` publican en el tópico de m2 y el backend lo recibe. Mitigación = decisión de contrato (ver `docs/security/findings.md`) |
+| Simulador → broker real | ✅ conecta y completa escenario | escenario 02 «partida completa» ejecutado; una credencial de módulo vale por la ACL-por-`client_id` |
+| Simulador → backend → **PostgreSQL** (ingesta e2e) | 🔴 **NO verificado** | tras el escenario, `hit_events = 0` y sin logs de ingesta en el backend (conectado a MQTT). El backend se suscribe (`BACKEND_SUBSCRIPTIONS`) pero no persistió: probablemente el escenario aislado no dispara la orquestación de partida que genera impactos persistibles. **Requiere investigación de WP-02/WP-05** (X-18) |
+
+**Pendiente de despliegue, no ejecutado aún:** copia de seguridad + restauración en
+base aislada, y `reboot` de la VM verificando que el stack vuelve solo (`onboot` +
+`restart`).
