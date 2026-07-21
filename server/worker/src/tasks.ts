@@ -78,20 +78,35 @@ export async function recomputePlayerStatistics(
         written += 1;
         continue;
       }
-      await prisma.statistic.upsert({
+      // La clave única (scope, metric, playerId, gameId, roundId, periodStart)
+      // incluye columnas ANULABLES (gameId/roundId/periodStart), que aquí van a
+      // null para la estadística "por jugador". No se puede usar `upsert` sobre
+      // esa clave: Prisma no admite null en el `where` único (typing) y, además,
+      // en SQL NULL != NULL, así que el upsert insertaría un duplicado nuevo en
+      // cada ejecución (crecimiento sin control). Se hace un find-by-null +
+      // update/create explícito. (Hotfix WP-08 para desbloquear la imagen del
+      // worker; revisar en WP-02.)
+      const existing = await prisma.statistic.findFirst({
         where: {
-          scope_metric_playerId_gameId_roundId_periodStart: {
-            scope: 'player',
-            metric,
-            playerId: player.id,
-            gameId: null,
-            roundId: null,
-            periodStart: null,
-          },
+          scope: 'player',
+          metric,
+          playerId: player.id,
+          gameId: null,
+          roundId: null,
+          periodStart: null,
         },
-        create: { scope: 'player', metric, playerId: player.id, value },
-        update: { value, computedAt: new Date() },
+        select: { id: true },
       });
+      if (existing) {
+        await prisma.statistic.update({
+          where: { id: existing.id },
+          data: { value, computedAt: new Date() },
+        });
+      } else {
+        await prisma.statistic.create({
+          data: { scope: 'player', metric, playerId: player.id, value },
+        });
+      }
       written += 1;
     }
   }
