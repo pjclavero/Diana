@@ -11,7 +11,7 @@ const META: Record<ConnectionStatus, { label: string; symbol: string; className:
 export function ConnectionBadge({ status }: { status: ConnectionStatus }) {
   const meta = META[status];
   return (
-    <span className={`conn-badge ${meta.className}`} role="status">
+    <span className={`conn-badge ${meta.className}`} role="status" data-testid="connection-badge">
       <span aria-hidden="true">{meta.symbol}</span> {meta.label}
     </span>
   );
