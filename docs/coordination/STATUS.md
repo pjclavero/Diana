@@ -45,6 +45,24 @@ Actualizado por el organizador. Última actualización: 2026-07-20.
 | X-22 | **El panel no implementa autenticación pese a que el backend la exige.** El backend tiene JWT + RBAC (5 roles) con guards **globales** (`app.module.ts`: `JwtAuthGuard`+`PermissionsGuard`): todo endpoint no-`@Public` requiere `Authorization: Bearer`. El frontend NO tiene login: `grep -rniE 'login\|token\|authorization\|bearer' server/frontend/src` → 0 resultados; `realAdapter.ts` no añade cabecera de auth; `UsersPage` llama a `apiClient.listUsers()` sin token. Consecuencia: **contra el backend real toda llamada del panel daría 401**, agravando X-21. Falta: pantalla de login, almacenamiento/envío del JWT, guarda de rutas por rol y siembra del admin inicial (`DIANA_ADMIN_*`, ligado a F-04). Va en el mismo bloque que X-21 | WP-11 | WP-02, WP-03, WP-10 | Abierto. Verificado ejecutando (2026-07-21) |
 | X-21 | **Divergencia de contrato REST panel↔backend.** El panel de producción se compila en modo real (`server/frontend/Dockerfile` → `ARG VITE_API_MODE=real`, base `/api/v1`), pero `server/frontend/src/api/realAdapter.ts` llama a recursos que el backend **no expone**: base `/api/v1` (el backend usa prefijo `api` sin `v1`) y rutas `/systems`, `/systems/:id/modules`, `/modules/:id/config`, `/topology`, `/players`, `/teams`, `listResults→/games?phase=finished`. Verificado ejecutando: `grep @Controller('systems\|modules\|results\|players\|teams\|topology')` → NINGUNO; los controllers reales son `health, roles, users, statistics, exports, mqtt, accuracy, audit, ammo, hits, maintenance, auth, games`. Consecuencia: contra el backend desplegado, Estadísticas y las pantallas de configuración devolverían 404 («No se ha encontrado el recurso»). El E2E 18/18 verde corre contra el adaptador **mock**, no contra el backend real. Más amplio que X-06 (WS) y X-18 (ingesta): es el contrato REST completo del panel. **Decisión de rumbo:** armonizar `realAdapter` a las rutas reales del backend, o implementar en el backend los recursos que el panel espera (`/systems`, `/modules`, `/players`, `/teams`, `/topology`) | WP-11 | WP-02, WP-03 | Abierto. Verificado ejecutando (2026-07-21) |
 
+## Programa «Panel usable» (F1–F6)
+
+Requisitos de producto en `docs/product/alcance-panel-roles-firmware.md`. Modelo: admin=fabricante;
+vender módulo=vincularlo=convierte al comprador en gestor; todo usuario es jugador; estadística
+del registrado global; temporal por partida sin cuenta.
+
+| Fase | Alcance | Estado |
+|---|---|---|
+| **F1** | Cimientos: roles jugador/gestor en RBAC + login real (JWT) + sesión por rol + nav filtrada + datos demo | ✅ **CONFORME** (supervisor 2 vueltas). Desplegada y verificada en VM109 (`develop` @ `bd0254e`). Backend 172, frontend 43 |
+| F2 | Propiedad de módulos (`Module.owner`, vincular/desvincular; gestor cede, admin reasigna) | Pendiente |
+| F3 | Firmware/OTA (admin sube, gestor acepta, versión por módulo) | Pendiente |
+| F4 | Jugadores + temporales por partida + reset de estadística por partida + vista del jugador | Pendiente |
+| F5 | Ascenso a gestor por venta (código de activación por correo, regenerable; SMTP pendiente) | Pendiente |
+| F6 | Diagnóstico (test de impacto y LEDs desde el panel) | Pendiente |
+
+Observaciones no bloqueantes del supervisor para fases posteriores: `gestor` con `statistics:read`
+global y nav Resultados/Estadísticas visibles al jugador → acotar con el auto-scoping por dueño (F2/F4).
+
 ## Bitácora
 
 - **2026-07-20** · Auditados ambos repositorios y el nodo Proxmox. `Diana` contenía sólo el
