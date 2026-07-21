@@ -11,7 +11,7 @@ el 2026-07-20 en el nodo Proxmox **yggdrasil** (192.168.1.152).
 | Nombre | `diana-server` |
 | Nodo Proxmox | yggdrasil (192.168.1.152) |
 | IP LAN | 192.168.1.209/24, gw 192.168.1.1 |
-| IP Tailscale | **pendiente** — tailscaled instalado y activo, sin unir a la tailnet (falta auth key, ver abajo) |
+| IP Tailscale | **100.117.178.92** (hostname `diana-server`), unida a la tailnet `pjclavero@` el 2026-07-21 (`tailscale up`, autorizada por el operador). Panel accesible en `http://100.117.178.92:8080` |
 | MAC (net0) | `BC:24:11:DB:01:CE` |
 | UUID (smbios1) | `edd27e6a-58d2-4abb-9bf7-99cd34a7a948` |
 | vCPU | 4 (cores=4, sockets=1) |
