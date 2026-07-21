@@ -1,11 +1,13 @@
 import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { IsUUID } from 'class-validator';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/roles.decorator';
 import { FirmwareDeploymentService } from './firmware-deployment.service';
 
 class DeployFirmwareDto {
+  @IsUUID()
   firmware_version_id!: string;
 }
 
