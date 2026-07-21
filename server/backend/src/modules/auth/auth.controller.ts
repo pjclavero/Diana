@@ -20,9 +20,10 @@ export class AuthController {
   }
 
   @Get('me')
-  @ApiOperation({ summary: 'Devuelve la identidad y los permisos del token actual' })
+  @ApiOperation({ summary: 'Devuelve la identidad, permisos y estado vigente del usuario' })
   me(@Req() req: { user: AuthenticatedUser }) {
-    return req.user;
+    // Estado fresco de la BD (incluye must_change_password), no sólo el del token.
+    return this.auth.currentUser(req.user.userId);
   }
 
   @Post('change-password')

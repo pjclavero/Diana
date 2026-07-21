@@ -136,6 +136,25 @@ export class AuthService implements OnModuleInit {
     };
   }
 
+  /**
+   * Identidad vigente del usuario leída de la BD (no del token), para que
+   * `GET /auth/me` refleje el estado real —incluido `must_change_password`—
+   * tanto en el login como al recargar con un token guardado.
+   */
+  async currentUser(userId: string) {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      include: { role: true },
+    });
+    return {
+      userId: user.id,
+      username: user.username,
+      role: user.role.name,
+      permissions: user.role.permissions,
+      must_change_password: user.mustChangePassword,
+    };
+  }
+
   async changePassword(userId: string, current: string, next: string): Promise<void> {
     if (next.length < 12) {
       throw new UnauthorizedException('La nueva contraseña debe tener al menos 12 caracteres');
