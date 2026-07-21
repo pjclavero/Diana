@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { IsUUID } from 'class-validator';
 import { AuditService } from '../audit/audit.service';
@@ -32,14 +32,14 @@ export class FirmwareDeploymentController {
   @Get(':moduleId/firmware/available')
   @RequirePermissions('firmware:read')
   @ApiOperation({ summary: 'Versiones de firmware firmadas disponibles para un módulo' })
-  available(@Param('moduleId') moduleId: string, @Req() req: { user: AuthenticatedUser }) {
+  available(@Param('moduleId', ParseUUIDPipe) moduleId: string, @Req() req: { user: AuthenticatedUser }) {
     return this.deployments.availableForModule(moduleId, req.user);
   }
 
   @Get(':moduleId/firmware/deployments')
   @RequirePermissions('firmware:read')
   @ApiOperation({ summary: 'Historial de despliegues OTA de un módulo' })
-  history(@Param('moduleId') moduleId: string, @Req() req: { user: AuthenticatedUser }) {
+  history(@Param('moduleId', ParseUUIDPipe) moduleId: string, @Req() req: { user: AuthenticatedUser }) {
     return this.deployments.listDeployments(moduleId, req.user);
   }
 
@@ -47,7 +47,7 @@ export class FirmwareDeploymentController {
   @RequirePermissions('firmware:deploy')
   @ApiOperation({ summary: 'Acepta y dispara la OTA de una versión a un módulo' })
   async deploy(
-    @Param('moduleId') moduleId: string,
+    @Param('moduleId', ParseUUIDPipe) moduleId: string,
     @Body() body: DeployFirmwareDto,
     @Req() req: { user: AuthenticatedUser },
   ) {
