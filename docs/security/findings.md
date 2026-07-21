@@ -30,7 +30,7 @@ credenciales privilegiadas), **Alta**, **Media**, **Baja**. Se justifican una a 
 | # | Hallazgo | Sev. | Activo | Paquete | Método |
 |---|---|---|---|---|---|
 | F-01 | El `.gitignore` no cubre `infrastructure/mosquitto/passwd` | Alta | A2 | WP-00/WP-01 | OBSERVADO |
-| F-02 | La ACL de MQTT autoriza por `client_id`: suplantación de módulo | Crítica | A1, A4 | WP-01 | DEDUCIDO |
+| F-02 | La ACL de MQTT autoriza por `client_id`: suplantación de módulo | Crítica | A1, A4 | WP-01 | **CONFIRMADO EN VIVO (2026-07-21)** |
 | F-03 | MQTT 1883 en claro y abierto a toda la LAN | Alta | A2, A1 | WP-01, WP-08 | OBSERVADO |
 | F-04 | El contrato de variables de entorno está roto: `JWT_SECRET` nunca llega al backend | Alta | A3 | WP-01, WP-02 | OBSERVADO + DEDUCIDO |
 | F-05 | WebSocket `/live` sin autenticación y con CORS reflejado | Alta | A1, A6 | WP-02 | DEDUCIDO |
@@ -124,18 +124,45 @@ $ grep -c use_username_as_clientid infrastructure/mosquitto/mosquitto.conf
 0
 ```
 
-**Reproducción** (no ejecutada: había otro agente desplegando en la VM y la instrucción era
-no tocar nada; hágase en un entorno desechable con el mismo `acl` y `passwd`):
+**Reproducción — OBSERVADO / CONFIRMADO EN VIVO (2026-07-21, broker de la VM 109).**
+Con dos usuarios de prueba (`module-m1`, `module-m2`) y el `backend` como suscriptor
+autorizado sobre `#`:
 
 ```
-mosquitto_pub -h <broker> -p 1883 \
-  -u module-A -P <contraseña de A> \
-  -i module-B \
-  -t targets/v1/module/module-B/hit -m '<payload de impacto válido>'
+# Ataque: credenciales de m1, pero client_id = m2, publicando en el tópico de m2
+$ mosquitto_pub -h mosquitto -u module-m1 -P <pw_m1> -i m2 \
+    -t targets/v1/module/m2/hit -m '{"suplantado_por":"m1"}'
+pub-ok
+# El suscriptor backend, escuchando targets/v1/module/m2/hit, recibió:
+RECIBIDO >>> {"suplantado_por":"m1"}      <<< F-02 CONFIRMADO
 ```
 
-Si el broker acepta la publicación, F-02 queda confirmado. La comprobación negativa
-—`-i module-A` publicando en `module-B` debe ser rechazada— sirve de control.
+El broker **aceptó** que las credenciales de m1 publicaran en el subárbol de m2 sólo con
+declarar `client_id=m2`. Control negativo (parte del `test-acl.sh`): con `client_id=m1`
+publicando en el tópico de m2, el broker **sí** rechaza (comprobación 3 de `test-acl.sh`,
+`[PASS]`). Es decir, la ACL aísla por `client_id`, no por usuario, exactamente como se
+dedujo. Los usuarios de prueba se eliminaron del `passwd` tras la comprobación.
+
+**Nota sobre `test-acl.sh`:** de sus 7 comprobaciones, 5 pasaron; las 2 que fallaron
+(`[FAIL]` en «m1 escribe su propio presence» y «backend escribe system/status») son
+**falsos negativos del arnés** —una carrera entre el suscriptor detector y el publicador—,
+no fallos de ACL: la escritura del propio presence de m1 se verificó a mano y funciona.
+Las 4 comprobaciones de denegación (aislamiento entre módulos, no auto-escribir
+`config/desired`/`command`/`ota`) pasaron correctamente: esa parte de la ACL **funciona**.
+
+**Mitigación — no es una línea, es una decisión de arquitectura (para el supervisor).**
+La mitigación evidente sería `use_username_as_clientid true`, que fuerza `client_id` = usuario
+autenticado. Pero **rompe el enrutado tal como está el contrato**: el usuario mosquitto es
+`module-m1` (con prefijo, por §8) mientras el `client_id` y el `module_id` de los tópicos son
+`m1` (sin prefijo). Al forzar `client_id=module-m1`, el patrón `%c` de la ACL pasaría a exigir
+`targets/v1/module/module-m1/...`, que no casa con los tópicos reales `.../module/m1/...`, y el
+módulo no podría escribir ni lo suyo. La corrección correcta exige **alinear
+usuario = client_id = module_id** (quitar el prefijo `module-` del nombre de usuario) en el
+contrato §8, la ACL, `generate-users.sh`, el firmware y el simulador, y sólo entonces activar
+`use_username_as_clientid true`. Es un cambio incompatible que debe pasar por el supervisor
+(afecta a la identidad MQTT de todo el sistema). Hasta entonces, F-02 sigue **abierto y
+confirmado**; TLS con certificado de cliente por módulo (F-07) sería una defensa
+complementaria.
 
 **Impacto real:** el atacante necesita una credencial válida de módulo, que obtiene por
 tres vías ya documentadas: capturando un CONNECT en claro en la LAN (F-03), teniendo un
