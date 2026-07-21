@@ -19,15 +19,19 @@ for (const vp of VIEWPORTS) {
     await expect(page.getByRole("heading", { name: "Inicio" })).toBeVisible();
 
     const menuBtn = page.getByRole("button", { name: /menú/i });
+    // Acotamos las aserciones a la navegación principal: el contenido de la
+    // página de inicio también tiene enlaces ("Editor de matriz de módulos"…)
+    // que casarían por subcadena y resolverían al elemento equivocado.
+    const nav = page.getByRole("navigation", { name: "Navegación principal" });
     if (vp.sidebarVisible) {
       await expect(menuBtn).toBeHidden();
-      await expect(page.getByRole("link", { name: "Inicio" })).toBeVisible();
+      await expect(nav.getByRole("link", { name: "Inicio" })).toBeVisible();
     } else {
       await expect(menuBtn).toBeVisible();
       // La navegación empieza oculta y se abre con el botón de menú.
-      await expect(page.getByRole("link", { name: "Editor de matriz" })).toBeHidden();
+      await expect(nav.getByRole("link", { name: "Editor de matriz" })).toBeHidden();
       await menuBtn.click();
-      await expect(page.getByRole("link", { name: "Editor de matriz" })).toBeVisible();
+      await expect(nav.getByRole("link", { name: "Editor de matriz" })).toBeVisible();
     }
 
     // El contenido nunca debe producir scroll horizontal de página.
