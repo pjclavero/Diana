@@ -8,6 +8,8 @@
 
 export const ROLE = {
   ADMINISTRADOR: 'administrador',
+  GESTOR: 'gestor',
+  JUGADOR: 'jugador',
   OPERADOR: 'operador',
   ARBITRO: 'arbitro',
   CONSULTA: 'consulta',
@@ -16,8 +18,17 @@ export const ROLE = {
 
 export type RoleName = (typeof ROLE)[keyof typeof ROLE];
 
+// El núcleo del modelo de negocio (docs/product/alcance-panel-roles-firmware.md):
+//   - administrador = fabricante/dueño del sistema ('*').
+//   - gestor        = jugador que posee ≥1 módulo y gestiona partidas, topología,
+//                     firmware (acepta OTA), jugadores y diagnóstico.
+//   - jugador       = todo usuario; ve SÓLO lo suyo (perfil, partidas, estadísticas).
+// operador/arbitro/consulta/mantenimiento se conservan (dosier 23.2) aunque el
+// panel de producto gire sobre los tres primeros.
 export const ALL_ROLES: RoleName[] = [
   ROLE.ADMINISTRADOR,
+  ROLE.GESTOR,
+  ROLE.JUGADOR,
   ROLE.OPERADOR,
   ROLE.ARBITRO,
   ROLE.CONSULTA,
@@ -86,8 +97,32 @@ const MAINTENANCE_EXTRA: string[] = [
   'commands:publish',
 ];
 
+// El jugador ve SÓLO lo suyo. No recibe lecturas amplias (`games:read`,
+// `statistics:read` globales): los endpoints «/me/*» se auto-acotan por el
+// usuario autenticado. `profile:read` habilita esa vista propia.
+const PLAYER_SELF: string[] = ['profile:read'];
+
+// El gestor = operador (partidas, topología, módulos, jugadores, equipos) + aceptar
+// OTA de firmware de SUS módulos (`firmware:deploy`, no `firmware:write`/subida) +
+// gestión de propiedad de módulos (`modules:link`) + reinicio de estadística por
+// partida (`stats:reset`) + diagnóstico/incidencias.
+const GESTOR_EXTRA: string[] = [
+  ...OPERATOR_EXTRA,
+  'firmware:deploy',
+  'modules:link',
+  'stats:reset',
+  'maintenance:read',
+  'maintenance:write',
+  'calibration:write',
+  'incidents:read',
+  'incidents:write',
+  'profile:read',
+];
+
 export const ROLE_PERMISSIONS: Record<RoleName, string[]> = {
   [ROLE.ADMINISTRADOR]: ['*'],
+  [ROLE.GESTOR]: dedupe([...READ_ONLY, ...GESTOR_EXTRA]),
+  [ROLE.JUGADOR]: dedupe(PLAYER_SELF),
   [ROLE.OPERADOR]: dedupe([...READ_ONLY, ...OPERATOR_EXTRA]),
   [ROLE.ARBITRO]: dedupe([...READ_ONLY, ...REFEREE_EXTRA]),
   [ROLE.CONSULTA]: dedupe(READ_ONLY),
@@ -95,7 +130,9 @@ export const ROLE_PERMISSIONS: Record<RoleName, string[]> = {
 };
 
 export const ROLE_DESCRIPTIONS: Record<RoleName, string> = {
-  [ROLE.ADMINISTRADOR]: 'Control total, incluida la gestión de usuarios y la auditoría.',
+  [ROLE.ADMINISTRADOR]: 'Fabricante y dueño del sistema: control total, usuarios, firmware y auditoría.',
+  [ROLE.GESTOR]: 'Jugador que posee módulos: gestiona partidas, topología, jugadores, diagnóstico y acepta actualizaciones de firmware de sus módulos.',
+  [ROLE.JUGADOR]: 'Usuario jugador: ve sólo sus partidas, estadísticas y logros.',
   [ROLE.OPERADOR]: 'Prepara y dirige partidas, gestiona topología y módulos.',
   [ROLE.ARBITRO]: 'Controla la partida en curso, penalizaciones y munición.',
   [ROLE.CONSULTA]: 'Sólo lectura.',

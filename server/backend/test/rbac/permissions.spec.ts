@@ -32,9 +32,11 @@ function userWithRole(role: string): AuthenticatedUser {
 }
 
 describe('Roles y permisos (dosier 23.2)', () => {
-  it('existen exactamente los cinco roles del dosier', () => {
+  it('existen los tres roles de producto más los cuatro técnicos del dosier', () => {
     expect(ALL_ROLES).toEqual([
       'administrador',
+      'gestor',
+      'jugador',
       'operador',
       'arbitro',
       'consulta',
@@ -53,6 +55,21 @@ describe('Roles y permisos (dosier 23.2)', () => {
     const cases: Array<[string, string, boolean]> = [
       [ROLE.ADMINISTRADOR, 'users:write', true],
       [ROLE.ADMINISTRADOR, 'firmware:deploy', true],
+      // gestor: jugador con módulos; gestiona pero NO sube firmware ni usuarios
+      [ROLE.GESTOR, 'games:control', true],
+      [ROLE.GESTOR, 'topology:write', true],
+      [ROLE.GESTOR, 'players:write', true],
+      [ROLE.GESTOR, 'firmware:deploy', true],
+      [ROLE.GESTOR, 'modules:link', true],
+      [ROLE.GESTOR, 'stats:reset', true],
+      [ROLE.GESTOR, 'firmware:write', false],
+      [ROLE.GESTOR, 'users:write', false],
+      // jugador: sólo lo suyo, ninguna capacidad de gestión
+      [ROLE.JUGADOR, 'profile:read', true],
+      [ROLE.JUGADOR, 'games:write', false],
+      [ROLE.JUGADOR, 'games:control', false],
+      [ROLE.JUGADOR, 'statistics:read', false],
+      [ROLE.JUGADOR, 'users:read', false],
       [ROLE.OPERADOR, 'games:control', true],
       [ROLE.OPERADOR, 'users:write', false],
       [ROLE.OPERADOR, 'firmware:deploy', false],
