@@ -1,0 +1,27 @@
+# Configuración de gitleaks para Diana (S-01, escaneo de secretos).
+# Parte del conjunto de reglas por defecto y añade una allowlist acotada para
+# los marcadores de posición y ficheros de ejemplo del repositorio, que NO son
+# secretos reales. Si algún día un secreto de verdad entra aquí, esta allowlist
+# es deliberadamente estrecha para no ocultarlo.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Placeholders y ejemplos que no son secretos reales."
+
+# Ficheros de ejemplo/plantilla: contienen valores tipo CAMBIAR, no secretos.
+paths = [
+  '''\.env\.example$''',
+  '''.*/\.env\.example$''',
+  '''infrastructure/mosquitto/mosquitto\.test\.conf$''',
+  '''tests/fixtures/.*''',
+]
+
+# Marcadores de posición usados en toda la documentación y los ejemplos.
+regexes = [
+  '''CAMBIAR''',
+  '''ci-not-a-secret''',
+  '''diana_test''',
+  '''your-.*-here''',
+]
