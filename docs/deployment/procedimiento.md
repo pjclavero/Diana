@@ -140,3 +140,36 @@ Healthchecks verificados contra el código real:
 verify-constraints  ->  up -d  ->  ps (healthy)  ->  tests integración  ->
 test-acl  ->  simulador  ->  backup/restore aislado  ->  reboot
 ```
+
+## 8. Incidencias reales del primer despliegue (2026-07-21) y su corrección
+
+El stack **nunca había arrancado** antes de este despliegue. Se encontraron y
+corrigieron cinco defectos reales que lo impedían; ninguno era de utillaje. Cada
+uno está corregido en el repositorio (no a mano en la VM) y verificado ejecutando.
+
+| # | Síntoma | Causa raíz | Corrección | Commit |
+|---|---|---|---|---|
+| 1 | `migrate`/backend: `P1001 Can't reach database server at postgres:5432` pese a postgres `healthy` | El `postgresql.conf` propio no declaraba `listen_addresses`; PostgreSQL usa el defecto `localhost` → sólo escuchaba en 127.0.0.1. El healthcheck local pasaba, pero ningún contenedor conectaba | `listen_addresses = '*'` en `infrastructure/postgres/postgresql.conf` | `c2f66e7` |
+| 2 | mosquitto: `Unable to open pwfile` y bucle de reinicio | El fichero `passwd` estaba `0600` propiedad de `diana-admin` (uid 1000); mosquitto corre como uid 1883 y no podía leerlo | `passwd`/`acl`/`mosquitto.conf` a `644` (son hashes bcrypt en VM de sólo-admin; ver riesgo aceptado) | operación en VM |
+| 3 | mosquitto: `Error: Address in use` en 1883, un solo proceso lo abría dos veces | `allow_anonymous`/`password_file`/`acl_file` antes del primer `listener` → mosquitto 2.0 crea un «listener por defecto» en 1883 que choca con `listener 1883` | Mover las opciones globales tras el primer `listener`; `socket_domain ipv4` | `df26569` |
+| 4 | mosquitto `unhealthy` pese a estar operativo → backend/worker no arrancaban (`depend_on: healthy`) | El healthcheck hacía `mosquitto_sub -C 1 -W 3` esperando un mensaje que nadie publica: `Timed out` siempre | Cambiar a `mosquitto_pub` (prueba broker + auth + ACL de escritura) | `dcb2f54` |
+| 5 | Toda la API por el proxy daba `404 Cannot GET /health` | nginx `proxy_pass http://backend:3000/;` (barra final) descartaba el prefijo global `api`; el backend recibía `/health` en vez de `/api/health` | `proxy_pass http://backend:3000;` (URI completo) en `/api/` y `/api/auth/` | `2779b2c` |
+
+**Estado tras las correcciones (evidencia ejecutada, 2026-07-21):**
+
+```
+$ docker compose ps --format '{{.Service}}: {{.Status}}'
+backend: Up (healthy)      mosquitto: Up (healthy)    proxy: Up (healthy)
+worker: Up (healthy)       postgres: Up (healthy)     frontend: Up (healthy)
+backup: Up (healthy)
+
+$ curl -s http://127.0.0.1:8080/api/health          -> {"status":"ok"} [200]
+$ curl -s -X POST http://127.0.0.1:8080/api/auth/login -d '{}' -> [400]  (valida, no 404)
+$ docker compose run --rm migrate                    -> "All migrations have been successfully applied" (20260720120000_init)
+$ verify-constraints.sql                             -> 24 tablas; 4 marcas en BIGINT; timestamptz; precisión anulable
+```
+
+**Queda pendiente (no bloqueante del arranque):** el enrutado WebSocket
+(`location /ws/` vs el namespace socket.io `/live` del backend) no está resuelto
+porque el contrato WS panel↔backend no está negociado (X-06); la vista en directo
+por WS aún no es alcanzable por el proxy. El REST completo sí lo es.
