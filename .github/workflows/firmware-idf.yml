@@ -1,0 +1,86 @@
+name: Firmware ESP-IDF
+
+# Cierra la laguna mayor del proyecto: el firmware NUNCA se había compilado con
+# ESP-IDF (ver firmware/esp32/sdkconfig.defaults y su README). Aquí se compila
+# de verdad para ESP32-S3 con la imagen oficial de Espressif, con versión
+# fijada, y se publican el tamaño del binario y el mapa de particiones como
+# artefactos.
+#
+# ADVERTENCIA sobre la firma de aplicación:
+#   sdkconfig.defaults activa CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT=y con
+#   CONFIG_SECURE_BOOT_SIGNING_KEY="secure_boot_signing_key.pem". Esa clave NO
+#   está en el repositorio (correcto: es un secreto). Para que el build pueda
+#   COMPLETAR y así demostrar que el firmware compila y enlaza, este workflow
+#   genera una clave EFÍMERA y DESECHABLE dentro del runner. Esa clave no es la
+#   de producción, no se publica y muere con el job. El objetivo aquí es probar
+#   la compilación, no producir un binario firmado para distribuir.
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "firmware/**"
+      - ".github/workflows/firmware-idf.yml"
+  pull_request:
+    paths:
+      - "firmware/**"
+      - ".github/workflows/firmware-idf.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Compilar para ESP32-S3
+    runs-on: ubuntu-latest
+    # Versión fijada de la imagen oficial de ESP-IDF. No usar 'latest'.
+    container: espressif/idf:v5.3.1
+    defaults:
+      run:
+        shell: bash
+        working-directory: firmware/esp32
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generar clave de firma EFÍMERA (desechable, no es la de producción)
+        run: |
+          . "$IDF_PATH/export.sh"
+          espsecure.py generate_signing_key --version 2 secure_boot_signing_key.pem
+          echo "Clave efímera generada sólo para permitir el enlace firmado en CI."
+
+      - name: Fijar target ESP32-S3
+        run: |
+          . "$IDF_PATH/export.sh"
+          idf.py set-target esp32s3
+
+      - name: Compilar
+        run: |
+          . "$IDF_PATH/export.sh"
+          idf.py build
+
+      - name: Tamaño del binario y componentes
+        run: |
+          . "$IDF_PATH/export.sh"
+          idf.py size | tee build/size-report.txt
+          idf.py size-components | tee build/size-components.txt
+
+      - name: Mapa de particiones
+        run: |
+          . "$IDF_PATH/export.sh"
+          idf.py partition-table | tee build/partition-table.csv
+          ls -l build/*.bin | tee build/binarios.txt
+
+      - name: Publicar artefactos (tamaño, particiones, binario)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-esp32s3
+          path: |
+            firmware/esp32/build/size-report.txt
+            firmware/esp32/build/size-components.txt
+            firmware/esp32/build/partition-table.csv
+            firmware/esp32/build/binarios.txt
+            firmware/esp32/build/diana_firmware.bin
+            firmware/esp32/build/diana_firmware.map
+          if-no-files-found: warn
