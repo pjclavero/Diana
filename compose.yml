@@ -296,7 +296,11 @@ services:
     healthcheck:
       # Requiere el usuario 'healthcheck' generado con
       # infrastructure/mosquitto/generate-users.sh (ver infrastructure/mosquitto/acl).
-      test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -p 1883 -u \"$$MQTT_HEALTHCHECK_USERNAME\" -P \"$$MQTT_HEALTHCHECK_PASSWORD\" -t _health/probe -C 1 -W 3 -i healthcheck_probe || exit 1"]
+      # PUBLICA en _health/probe: un `mosquitto_sub -C 1 -W 3` se quedaba esperando
+      # un mensaje que nadie emite y expiraba siempre («Timed out» → unhealthy),
+      # aunque la conexión y la ACL funcionaran. Publicar prueba broker + auth +
+      # permiso de escritura del usuario healthcheck sobre _health/probe.
+      test: ["CMD-SHELL", "mosquitto_pub -h 127.0.0.1 -p 1883 -u \"$$MQTT_HEALTHCHECK_USERNAME\" -P \"$$MQTT_HEALTHCHECK_PASSWORD\" -t _health/probe -m ping -i healthcheck_probe || exit 1"]
       interval: 15s
       timeout: 6s
       retries: 5
