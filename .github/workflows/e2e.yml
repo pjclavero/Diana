@@ -1,0 +1,137 @@
+name: E2E
+
+# End-to-end. Dos frentes:
+#   1) frontend-mock: el panel contra su adaptador MOCK con Playwright (sin
+#      backend). Es rápido y no necesita el stack.
+#   2) stack-e2e: el stack COMPLETO con Docker Compose + el simulador de
+#      módulos, para los 16 escenarios del encargo (§19). Estos escenarios
+#      viven en tests/e2e y hoy son ANDAMIAJE: ver tests/e2e/README.md, que
+#      dice exactamente cuáles están implementados y cuáles son placeholder.
+#
+# Se lanza a mano o de madrugada, no en cada push: el stack completo es lento.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 2 * * *"
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Panel contra el adaptador MOCK. Playwright con Chromium y las librerías de
+  # sistema (--with-deps), que es justo lo que falta en el entorno de
+  # desarrollo (hallazgo X-07): aquí el binario arranca de verdad.
+  # ---------------------------------------------------------------------------
+  frontend-mock:
+    name: Panel (mock) con Playwright
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: server/frontend/package-lock.json
+      - run: npm ci
+      - name: Instalar Chromium + librerías de sistema
+        run: npx playwright install --with-deps chromium
+      - name: Build de producción (lo que sirve `vite preview`)
+        run: npm run build
+      - name: E2E de panel (mock)
+        run: npm run e2e
+      - name: Publicar informe si falla
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-frontend
+          path: |
+            server/frontend/playwright-report/
+            server/frontend/test-results/
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # Stack completo con Compose + simulador. Cubre (cuando estén implementados)
+  # los 16 escenarios de tests/e2e. Levanta postgres, mosquitto, backend,
+  # worker, migrate y el simulador de módulos, y ejecuta la suite de tests/e2e.
+  # ---------------------------------------------------------------------------
+  stack-e2e:
+    name: Stack completo (Compose) + 16 escenarios
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar .env
+        run: |
+          cp .env.example .env
+          # Semillas deterministas para el runner; NO son secretos de producción.
+          sed -i 's/CAMBIAR/ci-not-a-secret/g' .env
+
+      - name: Generar credenciales de Mosquitto que el stack espera
+        run: |
+          for u in backend healthcheck; do
+            ./infrastructure/mosquitto/generate-users.sh "$u" || true
+          done
+
+      - name: Construir imágenes
+        run: docker compose build
+
+      - name: Levantar dependencias y aplicar migraciones
+        run: |
+          docker compose up -d postgres mosquitto
+          docker compose up --exit-code-from migrate migrate
+          docker compose up -d backend worker
+
+      - name: Esperar salud del stack
+        run: |
+          for i in $(seq 1 30); do
+            if docker compose ps --format '{{.Service}} {{.Health}}' | grep -q 'backend healthy'; then
+              echo "Backend saludable."; break
+            fi
+            sleep 3
+          done
+          docker compose ps
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: tests/e2e/package-lock.json
+
+      - name: Instalar suite E2E de escenarios
+        working-directory: tests/e2e
+        run: |
+          npm ci || npm install
+          npx playwright install --with-deps chromium
+
+      - name: Ejecutar los 16 escenarios (los placeholder se marcan como fixme)
+        working-directory: tests/e2e
+        env:
+          DIANA_BASE_URL: http://localhost:8080
+          MQTT_URL: mqtt://localhost:1883
+        run: npm test
+
+      - name: Logs del stack si algo falla
+        if: failure()
+        run: docker compose logs --no-color --tail 200 || true
+
+      - name: Publicar informe E2E
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-stack
+          path: |
+            tests/e2e/playwright-report/
+            tests/e2e/test-results/
+          if-no-files-found: ignore
+
+      - name: Derribar el stack
+        if: always()
+        run: docker compose down -v
