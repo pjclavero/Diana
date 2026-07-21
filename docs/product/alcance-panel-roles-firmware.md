@@ -164,4 +164,77 @@ El gestor no se «solicita» en abstracto: nace de **vender/vincular un módulo*
    del jugador muestra histórico de partidas + precisión; los «logros» (hitos calculados) se
    dejan como fase posterior.
 
-_Borrador con decisiones · 2026-07-21_
+## 6. Mejoras del panel — lote del responsable (2026-07-22)
+
+Recogidas de la conversación de dirección del 2026-07-22. Se agrupan en bloques (G-\*)
+para ejecutarse con el método de siempre (tests + supervisor por bloque). Muchas
+**conectan/mejoran** lo ya existente; sólo unas pocas son construcción nueva.
+
+### 6.1 Jerarquía de topología (diana → módulo → panel → vista)
+Terminología fijada y su correspondencia con el modelo actual:
+- **Diana** = 1 blanco físico = `Target`.
+- **Módulo** = 3×3 dianas (9) = `Module` (+ sus `Target`). *(existe)*
+- **Panel** = 3×3 módulos (9) = **`TargetSystem`** (ya agrupa módulos, tiene coordinador
+  `coordinatorModuleId` y posiciones 3×3 vía `ModulePosition`). *(existe como agrupación)*
+- **Vista** = hasta 3×3 paneles. *(no existe; sobre todo UI)*
+
+Decisiones:
+- La vista **no** amontona todo en una rejilla: al pasar de 9 módulos se **pagina por
+  panel** (página nueva por cada 3×3). Nada de scroll infinito con 30 módulos.
+- Se añade el nivel **panel** a la gestión (como el módulo agrupa dianas, el panel agrupa
+  módulos), reutilizando `TargetSystem`.
+
+### 6.2 Concurrencia de partidas («juntos o separados»)
+- **Separados** (varias partidas simultáneas, cada una en su panel): **soportado de base**
+  — `Game`→un `TargetSystem` y **no hay** tope de «un único juego activo» (verificado en
+  `games.service`). Falta: UI para gestionar varias a la vez + **guardarraíl «un juego en
+  curso por panel»**. Caso límite deseado: 4 paneles con 1 módulo cada uno en **demo
+  independiente**.
+- **Juntos** (2+ paneles en **una misma** partida): **NO soportado hoy** (un `Game` está
+  atado a un solo `TargetSystem`). **DECISIÓN DE DISEÑO ABIERTA:** (a) que un juego abarque
+  varios paneles, o (b) una entidad «vista/supergrupo» por encima del panel. Pendiente de
+  elegir con el responsable.
+
+### 6.3 Resiliencia y reconexión (bloque G-I) — **defaults FIJADOS**
+Cimientos ya contratados: presencia `module/{id}/presence` retenida + Last Will; `boot_id`
+por arranque (ADR-0003) + idempotencia evitan duplicar impactos al reconectar. **Huecos
+reales hoy:** el `ingest` aún no consume la presencia para actualizar `online/bootId/
+lastSeenAt`, y el motor **no** reacciona a caídas (control manual). Ligado a X-06/X-18.
+Comportamiento por defecto **decidido (2026-07-22):**
+- **Cae un módulo implicado en la ronda** → **auto-pausa** de la ronda + aviso en panel +
+  cuenta atrás de reconexión; si no vuelve en X s, el **operador** decide *reanudar-sin-él*
+  o *abortar*. Aplica igual con 1 solo módulo o con varios.
+- **Cae el coordinador** → **pausa dura** (sin él no hay tiempos T2 fiables).
+
+### 6.4 Modo demo — **FIJADO**
+Sin jugadores (ni registrados ni temporales). Saca N dianas aleatorias (p. ej. 12), marca el
+tiempo y **repite** al relanzar. **Efímero:** dura hasta salir del demo, cerrar la partida,
+cambiar de modo o apagar los módulos implicados. Guarda los **10 últimos tiempos SÓLO en la
+sesión** (no toca la BD de partidas/jugadores); se pierden al apagar.
+
+### 6.5 Correo / SMTP — **FIJADO**
+Dejar el flujo de invitación/activación **preparado a falta de configurar un servidor de
+correo**, con un **panel de administración de SMTP** (host, puerto, credenciales, remitente,
+prueba de envío). Hasta configurarlo, el código/enlace se muestra en el panel (auditado),
+como en F5 (§3.1).
+
+### 6.6 Bloques de trabajo (backlog priorizable)
+- **G-A** Quick wins UX: botón apagar/toggle LED (`Prueba LED`); botón **volver** global;
+  arreglar **drag de la celda central** del editor de matriz.
+- **G-B** Firmware completo: **subir el binario** al backend y servirlo por HTTP local
+  (para que el módulo lo descargue en la OTA); cierra de verdad el ciclo de F3.
+- **G-C** Dashboard de módulos: resumen paginado (§6.1) + al pinchar, panel del módulo con
+  *Ver 9 dianas · Calibración · Prueba sensores · Prueba LED · Actualizar* (integra la OTA).
+- **G-D** Jugadores y equipos (F4/F5): buscar por usuario; **invitación por correo** (§6.5)
+  → aceptar guarda histórico; **QR** para unirse a partida; **temporales**; crear/cambiar de
+  equipo (elegible al entrar y desde el perfil); el gestor reasigna equipos a la partida.
+- **G-E** Modos nuevos: **duelo** (mismas dianas a la vez a 2+ jugadores; gana más aciertos
+  en menos tiempo) y **demo** (§6.4). Ambos como estrategias (`GameModeStrategy`).
+- **G-F** Presets por gestor: **5 presets custom por gestor** (`GamePreset` ya existe).
+- **G-G** Dashboard resultados/estadísticas estilo «máquina de dardos»: resultado de partida
+  + stats del jugador actual + estado visual de las dianas + acierto/fallo.
+- **G-H** Matriz avanzada: **favoritas**, nivel **panel**/paginación (§6.1) y **concurrencia**
+  (§6.2, con la decisión «juntos» pendiente).
+- **G-I** Resiliencia y reconexión (§6.3); cierra X-06/X-18.
+
+_Actualizado con el lote de mejoras · 2026-07-22_
