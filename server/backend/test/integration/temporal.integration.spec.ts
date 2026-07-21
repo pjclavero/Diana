@@ -3,6 +3,7 @@ import { PrismaService } from '../../src/common/prisma/prisma.service';
 import { toHitRecord, HitEventPayload } from '../../src/domain/hits/hit-record';
 import { PrismaHitRepository } from '../../src/modules/hits/prisma-hit.repository';
 import { loadExamples } from '../helpers/examples';
+import { seedHitParents, cleanHitParents } from '../helpers/fk-seed';
 
 /**
  * ADR-0002 contra PostgreSQL real: las cuatro marcas sobreviven al viaje de
@@ -22,6 +23,10 @@ suite('Modelo temporal contra PostgreSQL (ADR-0002)', () => {
     prisma = new PrismaClient();
     await prisma.$connect();
     repository = new PrismaHitRepository(prisma as unknown as PrismaService);
+    // Las FK gameId/roundId de hit_events apuntan a games/rounds reales: hay
+    // que sembrar los padres o el INSERT viola hit_events_game_id_fkey.
+    await cleanHitParents(prisma);
+    await seedHitParents(prisma);
   });
 
   beforeEach(async () => {
@@ -29,7 +34,7 @@ suite('Modelo temporal contra PostgreSQL (ADR-0002)', () => {
   });
 
   afterAll(async () => {
-    await prisma.hitEvent.deleteMany({ where: { moduleSlug: 'module-03' } });
+    await cleanHitParents(prisma);
     await prisma.$disconnect();
   });
 
