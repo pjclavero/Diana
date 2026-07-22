@@ -1,6 +1,6 @@
 import { GameEngine, RoundSummary } from '../../src/domain/game/engine';
 import { createDefaultRegistry } from '../../src/domain/game/registry';
-import { rankDuelo } from '../../src/domain/game/duelo';
+import { assertEqualSetup, rankDuelo } from '../../src/domain/game/duelo';
 import { RoundConfig, TargetRef } from '../../src/domain/game/types';
 
 function nine(moduleId: string): TargetRef[] {
@@ -65,6 +65,22 @@ describe('Modo duelo (G-E)', () => {
     expect(s.validHits).toBe(9);
     expect(s.finished).toBe(true);
     expect(s.totalTimeUs).not.toBeNull();
+  });
+});
+
+describe('assertEqualSetup (mismos elementos para todos)', () => {
+  it('acepta un duelo con el mismo número de dianas por jugador', () => {
+    expect(() => assertEqualSetup([9, 9])).not.toThrow();
+    expect(() => assertEqualSetup([18, 18, 18])).not.toThrow();
+  });
+
+  it('rechaza si los jugadores no tienen los mismos elementos', () => {
+    expect(() => assertEqualSetup([9, 18])).toThrow(/mismo número/);
+  });
+
+  it('rechaza menos de 2 jugadores o sin dianas', () => {
+    expect(() => assertEqualSetup([9])).toThrow(/al menos 2/);
+    expect(() => assertEqualSetup([0, 0])).toThrow(/mismo número/);
   });
 });
 

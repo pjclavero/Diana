@@ -12,6 +12,22 @@ export interface DueloCompetitor {
   summary: Pick<RoundSummary, 'validHits' | 'totalTimeUs'>;
 }
 
+/**
+ * Control de igualdad de condiciones del duelo: es 1vs1 (o N) **a la vez** y
+ * exige que **todos los jugadores tengan los mismos elementos** — el mismo número
+ * de dianas/módulos. Lanza si no se cumple. Se comprueba al montar el duelo, antes
+ * de generar los planes espejo. `counts` = nº de dianas de cada jugador.
+ */
+export function assertEqualSetup(counts: number[]): void {
+  if (counts.length < 2) {
+    throw new Error('Un duelo necesita al menos 2 jugadores.');
+  }
+  const first = counts[0];
+  if (first <= 0 || counts.some((c) => c !== first)) {
+    throw new Error('Duelo inválido: todos los jugadores deben tener el mismo número de dianas (mismos módulos).');
+  }
+}
+
 export interface DueloRankEntry extends DueloCompetitor {
   /** Posición 1-based (ranking de competición: empates comparten posición). */
   position: number;

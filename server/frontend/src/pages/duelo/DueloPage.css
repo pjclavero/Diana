@@ -1,0 +1,25 @@
+.duelo-format {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+}
+.duelo-format legend {
+  padding: 0 0.4rem;
+  font-weight: 600;
+}
+.duelo-format label {
+  margin-right: 1rem;
+}
+.duelo-arena {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem;
+}
+.duelo-side h3 {
+  margin: 0 0 0.5rem;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 640px) {
+  .duelo-arena { grid-template-columns: 1fr; }
+}
