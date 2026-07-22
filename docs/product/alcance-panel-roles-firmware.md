@@ -252,4 +252,29 @@ como en F5 (§3.1).
   (§6.2, con la decisión «juntos» pendiente).
 - **G-I** Resiliencia y reconexión (§6.3); cierra X-06/X-18.
 
+### 6.7 Coordinador, emparejamiento y red (2026-07-22) — decisiones
+
+Contexto verificado en contrato/código: el rol de coordinador es **por panel** (selector
+físico `PRINCIPAL/SATELITE/AUTO`; `TargetSystem.coordinatorModuleId`). La config remota de
+módulo (`module-config`, retenida) ya permite `system_id`, `network` (**dhcp/static**),
+`position`, brillo y calibración. **Huecos reales:** (a) la **autoelección AUTO no está
+implementada** (el selector se lee/reporta, la negociación "es de otro paquete", firmware sin
+compilar); (b) **no existe campo para atar un satélite a un principal concreto** → con 2
+principales en la misma red nada le dice al satélite a cuál seguir más allá del `system_id`.
+
+Decisiones:
+- **TAREA (firmware): resolver la elección de coordinador en modo AUTO.** Necesaria aunque
+  luego se pueda sobrescribir por web/config. Bloqueada de facto hasta retomar el firmware
+  (ESP-IDF). Anotada como pendiente de firmware.
+- **DECISIÓN 1 — `coordinator_module_id` en `module-config` (aditivo).** Permite **fijar en
+  remoto** a qué principal sigue cada satélite; resuelve el caso de 2 principales y reduce la
+  dependencia de AUTO. Cambio de contrato aditivo. La UI (dashboard de módulos, G-C) debe
+  **mostrar** rol/panel/coordinador de cada módulo (el dato ya es derivable).
+- **DECISIÓN 2 — DHCP por defecto en el primer arranque**; IP fija opcional por config remota
+  o por la web del propio módulo (idea V2). Ya soportado por el contrato (`network.mode`).
+
+> Implementación real de estas tres depende de **retomar el firmware** (hoy el gran pendiente:
+> nunca compilado con ESP-IDF; AUTO, aplicación de config, descarga OTA `esp_https_ota` y
+> sincronización de reloj están sin terminar). El **contrato** sí se puede ampliar ya (DECISIÓN 1).
+
 _Actualizado con el lote de mejoras · 2026-07-22_
