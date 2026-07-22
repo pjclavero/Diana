@@ -101,4 +101,29 @@ describe('PresetsService (G-F)', () => {
       expect(prisma.gamePreset.delete).toHaveBeenCalledWith({ where: { id: 'p1' } });
     });
   });
+
+  describe('update', () => {
+    it('un gestor no puede editar un preset ajeno', async () => {
+      const prisma = buildPrisma({ gamePreset: { findUnique: jest.fn().mockResolvedValue({ id: 'p1', ownerId: 'otro', isSample: false }) } });
+      // loadVisible lo oculta antes (no es suyo ni muestra) → NotFound.
+      await expect(new PresetsService(prisma).update('p1', { name: 'x' }, gestor)).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('el gestor edita su propio preset', async () => {
+      const prisma = buildPrisma({ gamePreset: { findUnique: jest.fn().mockResolvedValue({ id: 'p1', ownerId: 'g1', isSample: false, name: 'viejo' }) } });
+      await new PresetsService(prisma).update('p1', { name: 'nuevo' }, gestor);
+      expect(prisma.gamePreset.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'p1' }, data: expect.objectContaining({ name: 'nuevo' }) }));
+    });
+
+    it('rechaza renombrar una muestra a un nombre de muestra ya existente', async () => {
+      const prisma = buildPrisma({
+        gamePreset: {
+          findUnique: jest.fn().mockResolvedValue({ id: 's1', ownerId: null, isSample: true, name: 'viejo' }),
+          findFirst: jest.fn().mockResolvedValue({ id: 's2', name: 'Otra muestra' }),
+        },
+      });
+      await expect(new PresetsService(prisma).update('s1', { name: 'Otra muestra' }, admin)).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.gamePreset.update).not.toHaveBeenCalled();
+    });
+  });
 });

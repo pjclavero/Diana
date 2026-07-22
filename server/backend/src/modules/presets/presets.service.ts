@@ -97,10 +97,7 @@ export class PresetsService {
         include: this.include,
       });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        throw new BadRequestException(`Ya tienes un preset llamado «${input.name}».`);
-      }
-      throw error;
+      throw this.mapWriteError(error, input.name);
     }
   }
 
@@ -117,6 +114,12 @@ export class PresetsService {
       if (!mode) throw new BadRequestException(`El modo de juego '${input.mode}' no existe.`);
       gameModeId = mode.id;
     }
+    // Los presets de muestra (owner NULL) no están cubiertos por el índice único al
+    // renombrarlos: se comprueba aquí que el nuevo nombre no choque con otra muestra.
+    if (preset.ownerId === null && input.name && input.name !== preset.name) {
+      const dup = await this.prisma.gamePreset.findFirst({ where: { ownerId: null, name: input.name, id: { not: id } } });
+      if (dup) throw new BadRequestException(`Ya existe un preset de muestra llamado «${input.name}».`);
+    }
     try {
       return await this.prisma.gamePreset.update({
         where: { id },
@@ -129,11 +132,17 @@ export class PresetsService {
         include: this.include,
       });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        throw new BadRequestException(`Ya tienes un preset llamado «${input.name}».`);
-      }
-      throw error;
+      throw this.mapWriteError(error, input.name);
     }
+  }
+
+  /** Traduce errores conocidos de Prisma a 400 legibles (unicidad y FK). */
+  private mapWriteError(error: unknown, name?: string): unknown {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2002') return new BadRequestException(`Ya tienes un preset llamado «${name}».`);
+      if (error.code === 'P2003') return new BadRequestException('Referencia inválida (modo o usuario inexistente).');
+    }
+    return error;
   }
 
   /** Borra un preset. Un no-admin sólo los suyos. */
