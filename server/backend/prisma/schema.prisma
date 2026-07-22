@@ -101,10 +101,54 @@ model Player {
   user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
   participants Participant[]
   statistics   Statistic[]
+  invitations  Invitation[]
 
   @@index([teamId])
   @@index([displayName])
   @@map("players")
+}
+
+/// Invitación de jugador por correo (G-D/F5, §3.1/§6.5). Genera un código; al
+/// aceptarlo, el invitado pasa a ser un `Player` registrado (se guarda su histórico).
+/// El envío real de correo depende de configurar SMTP; mientras, el código queda
+/// registrado y visible para el admin (auditable, regenerable).
+model Invitation {
+  id             String    @id @default(uuid()) @db.Uuid
+  email          String    @db.VarChar(255)
+  displayName    String?   @map("display_name") @db.VarChar(128)
+  code           String    @unique @db.VarChar(16)
+  /// pending | accepted | revoked
+  status         String    @default("pending") @db.VarChar(16)
+  invitedBy      String?   @map("invited_by") @db.VarChar(64)
+  playerId       String?   @map("player_id") @db.Uuid
+  /// Resultado del último intento de envío (p. ej. "SMTP sin configurar").
+  dispatchNote   String?   @map("dispatch_note") @db.VarChar(255)
+  lastDispatchAt DateTime? @map("last_dispatch_at") @db.Timestamptz(6)
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(6)
+  acceptedAt     DateTime? @map("accepted_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  player Player? @relation(fields: [playerId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@map("invitations")
+}
+
+/// Configuración SMTP para el envío de correos (una sola fila). La contraseña se
+/// guarda pero NUNCA se devuelve por la API. Mientras no esté configurada, las
+/// invitaciones muestran el código en el panel.
+model SmtpSetting {
+  id          String   @id @default("singleton")
+  host        String?  @db.VarChar(255)
+  port        Int?
+  secure      Boolean  @default(true)
+  username    String?  @db.VarChar(255)
+  password    String?  @db.VarChar(512)
+  fromAddress String?  @map("from_address") @db.VarChar(255)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("smtp_settings")
 }
 
 // ---------------------------------------------------------------------------

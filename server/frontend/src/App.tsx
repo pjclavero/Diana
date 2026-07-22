@@ -28,17 +28,21 @@ import { ModuleOwnershipPage } from "./pages/modules-ownership/ModuleOwnershipPa
 import { LoginPage } from "./pages/login/LoginPage";
 import { ChangePasswordPage } from "./pages/login/ChangePasswordPage";
 import { JoinPage } from "./pages/join/JoinPage";
+import { InvitationAcceptPage } from "./pages/invitations/InvitationAcceptPage";
+import { InvitationsPage } from "./pages/invitations/InvitationsPage";
 import { useAuth } from "./auth/AuthContext";
 
 export function App() {
   const { user, loading } = useAuth();
   const location = useLocation();
 
-  // La unión por QR es PÚBLICA: se sirve sin login, antes de la barrera de sesión.
-  if (location.pathname.startsWith("/unirse/")) {
+  // Rutas PÚBLICAS (sin login), antes de la barrera de sesión: unión por QR y
+  // aceptación de invitación.
+  if (location.pathname.startsWith("/unirse/") || location.pathname.startsWith("/invitacion/")) {
     return (
       <Routes>
         <Route path="/unirse/:code" element={<JoinPage />} />
+        <Route path="/invitacion/:code" element={<InvitationAcceptPage />} />
       </Routes>
     );
   }
@@ -75,6 +79,7 @@ export function App() {
         <Route path="/demo" element={<DemoPage />} />
         <Route path="/duelo" element={<DueloPage />} />
         <Route path="/participantes" element={<ParticipantsPage />} />
+        <Route path="/invitaciones" element={<InvitationsPage />} />
         <Route path="/firmware" element={<FirmwarePage />} />
         <Route path="/incidencias" element={<IncidentsPage />} />
         <Route path="/usuarios" element={<UsersPage />} />
