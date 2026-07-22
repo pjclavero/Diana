@@ -1,0 +1,18 @@
+.demo-timer {
+  font-size: 2rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  margin: 0.25rem 0 0.75rem;
+}
+.demo-actions {
+  margin-top: 1rem;
+}
+.demo-result {
+  margin-top: 0.75rem;
+  font-size: 1.1rem;
+}
+.demo-times {
+  margin: 0;
+  padding-left: 1.5rem;
+  font-variant-numeric: tabular-nums;
+}
