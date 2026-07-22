@@ -80,17 +80,21 @@ async function main(): Promise<void> {
 
   const randomMode = await prisma.gameMode.findUnique({ where: { key: 'random' } });
   if (randomMode) {
-    await prisma.gamePreset.upsert({
-      where: { name: `${DEV_PREFIX}Aleatorio rápido` },
-      update: {},
-      create: {
-        name: `${DEV_PREFIX}Aleatorio rápido`,
-        description: 'DATOS DE DESARROLLO',
-        gameModeId: randomMode.id,
-        isSample: true,
-        config: { repetitions: 9, penalty_ms: 2000, seed: 20260720 },
-      },
-    });
+    // El nombre de preset ya no es único global (G-F: único por dueño). Los de
+    // muestra tienen ownerId NULL, así que se comprueba con findFirst + create.
+    const presetName = `${DEV_PREFIX}Aleatorio rápido`;
+    const existing = await prisma.gamePreset.findFirst({ where: { name: presetName, ownerId: null } });
+    if (!existing) {
+      await prisma.gamePreset.create({
+        data: {
+          name: presetName,
+          description: 'DATOS DE DESARROLLO',
+          gameModeId: randomMode.id,
+          isSample: true,
+          config: { repetitions: 9, penalty_ms: 2000, seed: 20260720 },
+        },
+      });
+    }
   }
 
   process.stdout.write('Semilla de DESARROLLO aplicada. Todos los registros llevan el prefijo DEV-.\n');

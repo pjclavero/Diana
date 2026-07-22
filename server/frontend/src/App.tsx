@@ -15,6 +15,7 @@ import { CountdownPage } from "./pages/countdown/CountdownPage";
 import { LiveGamePage } from "./pages/live/LiveGamePage";
 import { ResultsPage } from "./pages/results/ResultsPage";
 import { StatisticsPage } from "./pages/stats/StatisticsPage";
+import { PresetsPage } from "./pages/presets/PresetsPage";
 import { FirmwarePage } from "./pages/firmware/FirmwarePage";
 import { IncidentsPage } from "./pages/incidents/IncidentsPage";
 import { UsersPage } from "./pages/users/UsersPage";
@@ -56,6 +57,7 @@ export function App() {
         <Route path="/resultados" element={<ResultsPage />} />
         <Route path="/resultados/:gameId" element={<ResultsPage />} />
         <Route path="/estadisticas" element={<StatisticsPage />} />
+        <Route path="/presets" element={<PresetsPage />} />
         <Route path="/firmware" element={<FirmwarePage />} />
         <Route path="/incidencias" element={<IncidentsPage />} />
         <Route path="/usuarios" element={<UsersPage />} />

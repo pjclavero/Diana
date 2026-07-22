@@ -58,10 +58,11 @@ model User {
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  role         Role       @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  role         Role         @relation(fields: [roleId], references: [id], onDelete: Restrict)
   players      Player[]
   auditLogs    AuditLog[]
-  ownedModules Module[]   @relation("ModuleOwner")
+  ownedModules Module[]     @relation("ModuleOwner")
+  ownedPresets GamePreset[] @relation("PresetOwner")
 
   @@index([roleId])
   @@index([active])
@@ -320,19 +321,26 @@ model GameMode {
 
 model GamePreset {
   id          String   @id @default(uuid()) @db.Uuid
-  name        String   @unique @db.VarChar(128)
+  name        String   @db.VarChar(128)
   description String?  @db.VarChar(512)
   gameModeId  String   @map("game_mode_id") @db.Uuid
   config      Json
   isSample    Boolean  @default(false) @map("is_sample")
+  /// Dueño (gestor) del preset. NULL = preset de muestra / del sistema (visible a
+  /// todos). Cada gestor tiene los suyos, con un tope (G-F). El nombre es único por
+  /// dueño, no global, para que dos gestores puedan usar el mismo nombre.
+  ownerId     String?  @map("owner_id") @db.Uuid
   createdBy   String?  @map("created_by") @db.VarChar(64)
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   gameMode GameMode @relation(fields: [gameModeId], references: [id], onDelete: Restrict)
+  owner    User?    @relation("PresetOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   games    Game[]
 
+  @@unique([ownerId, name])
   @@index([gameModeId])
+  @@index([ownerId])
   @@map("game_presets")
 }
 

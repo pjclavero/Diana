@@ -28,6 +28,7 @@ const NAV_SECTIONS: { title: string; links: NavLinkDef[] }[] = [
     title: "Partidas",
     links: [
       { to: "/partidas/nueva", label: "Nueva partida", perm: "games:write" },
+      { to: "/presets", label: "Presets", perm: "presets:read" },
       { to: "/resultados", label: "Resultados" },
       { to: "/estadisticas", label: "Estadísticas" },
     ],
