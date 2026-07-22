@@ -63,6 +63,7 @@ model User {
   auditLogs    AuditLog[]
   ownedModules Module[]     @relation("ModuleOwner")
   ownedPresets GamePreset[] @relation("PresetOwner")
+  ownedViews   View[]       @relation("ViewOwner")
 
   @@index([roleId])
   @@index([active])
@@ -176,11 +177,12 @@ model TargetSystem {
   createdAt           DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  modules   Module[]
-  positions ModulePosition[]
-  games     Game[]
-  hitEvents HitEvent[]
-  incidents Incident[]
+  modules    Module[]
+  positions  ModulePosition[]
+  games      Game[]
+  hitEvents  HitEvent[]
+  incidents  Incident[]
+  viewPanels ViewPanel[]
 
   @@map("target_systems")
 }
@@ -418,6 +420,9 @@ model Game {
   name           String?    @db.VarChar(128)
   /// Código corto para unirse a la partida por QR (G-D). Único; regenerable.
   joinCode       String?    @unique @map("join_code") @db.VarChar(16)
+  /// Vista (grupo de paneles) sobre la que se juega, cuando la partida abarca
+  /// varios paneles (G-H, Opción B). NULL = partida sobre un solo panel (`targetSystem`).
+  viewId         String?    @map("view_id") @db.Uuid
   status         GameStatus @default(draft)
   /// Semilla del generador determinista (reproducibilidad, encargo 10).
   seed           BigInt?
@@ -432,6 +437,7 @@ model Game {
   targetSystem TargetSystem  @relation(fields: [targetSystemId], references: [id], onDelete: Restrict)
   gameMode     GameMode      @relation(fields: [gameModeId], references: [id], onDelete: Restrict)
   gamePreset   GamePreset?   @relation(fields: [gamePresetId], references: [id], onDelete: SetNull)
+  view         View?         @relation(fields: [viewId], references: [id], onDelete: SetNull)
   rounds       Round[]
   participants Participant[]
   hitEvents    HitEvent[]
@@ -440,7 +446,45 @@ model Game {
   @@index([targetSystemId, createdAt])
   @@index([status])
   @@index([createdAt])
+  @@index([viewId])
   @@map("games")
+}
+
+/// Vista: agrupa varios PANELES (`TargetSystem`) para jugar una partida sobre todos
+/// a la vez (G-H, Opción B). Es el nivel por encima del panel; tope en este nivel.
+/// El motor ya es agnóstico al panel, así que una vista sólo agrega los objetivos de
+/// sus paneles y se los pasa al mismo motor.
+model View {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique @db.VarChar(128)
+  description String?  @db.VarChar(512)
+  ownerId     String?  @map("owner_id") @db.Uuid
+  createdBy   String?  @map("created_by") @db.VarChar(64)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  owner  User?       @relation("ViewOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  panels ViewPanel[]
+  games  Game[]
+
+  @@index([ownerId])
+  @@map("views")
+}
+
+/// Pertenencia de un panel a una vista, con orden. Un panel puede estar en varias
+/// vistas; una vista ordena sus paneles por `position`.
+model ViewPanel {
+  id             String @id @default(uuid()) @db.Uuid
+  viewId         String @map("view_id") @db.Uuid
+  targetSystemId String @map("target_system_id") @db.Uuid
+  position       Int    @default(0)
+
+  view         View         @relation(fields: [viewId], references: [id], onDelete: Cascade)
+  targetSystem TargetSystem @relation(fields: [targetSystemId], references: [id], onDelete: Cascade)
+
+  @@unique([viewId, targetSystemId])
+  @@index([viewId])
+  @@map("view_panels")
 }
 
 model Round {

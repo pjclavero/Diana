@@ -25,6 +25,7 @@ import { UsersPage } from "./pages/users/UsersPage";
 import { BackupsPage } from "./pages/backups/BackupsPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { ModuleOwnershipPage } from "./pages/modules-ownership/ModuleOwnershipPage";
+import { ViewsPage } from "./pages/views/ViewsPage";
 import { LoginPage } from "./pages/login/LoginPage";
 import { ChangePasswordPage } from "./pages/login/ChangePasswordPage";
 import { JoinPage } from "./pages/join/JoinPage";
@@ -67,6 +68,7 @@ export function App() {
         <Route path="/modulos/:moduleId/prueba-sensores" element={<TestSensorsPage />} />
         <Route path="/modulos/:moduleId/prueba-leds" element={<TestLedsPage />} />
         <Route path="/topologia" element={<TopologyPage />} />
+        <Route path="/vistas" element={<ViewsPage />} />
         <Route path="/jugadores" element={<PlayersPage />} />
         <Route path="/equipos" element={<TeamsPage />} />
         <Route path="/partidas/nueva" element={<NewGamePage />} />

@@ -22,6 +22,7 @@ const NAV_SECTIONS: { title: string; links: NavLinkDef[] }[] = [
       { to: "/modulos", label: "Módulos", perm: "modules:read" },
       { to: "/modulos-propiedad", label: "Propiedad de módulos", perm: "modules:read" },
       { to: "/topologia", label: "Editor de matriz", perm: "topology:write" },
+      { to: "/vistas", label: "Vistas (paneles)", perm: "topology:read" },
     ],
   },
   {
