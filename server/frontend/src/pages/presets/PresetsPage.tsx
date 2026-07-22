@@ -99,7 +99,7 @@ function PresetCard({ preset: p, canDelete, busy, onDelete }: { preset: Preset; 
   return (
     <Card title={p.name}>
       <p>
-        Modo: <strong>{p.gameMode.displayName}</strong>
+        Modo: <strong>{p.gameMode.name}</strong>
         {p.isSample && <span className="badge badge--muted"> muestra</span>}
       </p>
       {p.description && <p>{p.description}</p>}

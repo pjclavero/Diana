@@ -33,7 +33,7 @@ export class PresetsService {
   constructor(private readonly prisma: PrismaService) {}
 
   private readonly include = {
-    gameMode: { select: { key: true, displayName: true } },
+    gameMode: { select: { key: true, name: true } },
     owner: { select: { id: true, username: true, displayName: true } },
   };
 

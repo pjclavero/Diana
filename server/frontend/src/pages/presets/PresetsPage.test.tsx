@@ -17,7 +17,7 @@ const modes = [
 function preset(over: Partial<Preset> = {}): Preset {
   return {
     id: "p1", name: "Mi rápido", description: null, isSample: false, ownerId: "g1", config: {},
-    gameMode: { key: "random", displayName: "Dianas aleatorias" }, owner: null, ...over,
+    gameMode: { key: "random", name: "Dianas aleatorias" }, owner: null, ...over,
   };
 }
 

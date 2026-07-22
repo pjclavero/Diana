@@ -46,7 +46,7 @@ export interface Preset {
   isSample: boolean;
   ownerId: string | null;
   config: Record<string, unknown>;
-  gameMode: { key: string; displayName: string };
+  gameMode: { key: string; name: string };
   owner?: { id: string; username: string; displayName: string | null } | null;
 }
 
