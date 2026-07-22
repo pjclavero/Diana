@@ -32,7 +32,8 @@ export class PlayersSearchService {
         user: { select: { id: true, username: true } },
       },
       orderBy: { displayName: 'asc' },
-      take: Math.min(Math.max(take, 1), 500),
+      // Guarda contra un take no finito (p. ej. ?take=abc → NaN): cae a 100 (OBS-1).
+      take: Math.min(Math.max(Number.isFinite(take) ? take : 100, 1), 500),
     });
 
     return items.map((p) => ({

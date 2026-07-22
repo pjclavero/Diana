@@ -43,4 +43,10 @@ describe('PlayersSearchService (G-D)', () => {
     await new PlayersSearchService(buildPrisma(findMany)).search('x', 99999);
     expect(findMany.mock.calls[0][0].take).toBe(500);
   });
+
+  it('un take no numérico (NaN) cae a 100 (OBS-1)', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    await new PlayersSearchService(buildPrisma(findMany)).search('x', Number.NaN);
+    expect(findMany.mock.calls[0][0].take).toBe(100);
+  });
 });
