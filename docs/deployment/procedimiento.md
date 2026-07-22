@@ -176,6 +176,14 @@ viejo corriendo (se observó con `backend`: `/modules/mine` daba 500 por caer en
 --force-recreate <svc>` tras `docker compose build`. Verificar siempre con un endpoint
 NUEVO de la entrega, no sólo con el healthcheck.
 
+**Incidencia de caché de build (G-C, 2026-07-22):** un `docker compose build backend`
+tras un cambio de código sirvió un `dist/` **sin la ruta nueva** (`/modules/overview`
+daba 500 «UUID inválido» por caer en el `/:id` del CRUD, síntoma de `dist` viejo). El
+`up -d --force-recreate` no ayuda si la IMAGEN no recompiló. Solución fiable:
+`docker compose build --no-cache <svc>`. **Comprobación previa a recrear:** verificar
+que el artefacto compilado contiene el símbolo esperado, p. ej.
+`docker compose run --rm --no-deps -T backend sh -c "grep -c overview dist/modules/modules/module-ownership.controller.js"` (>0), y sólo entonces `up -d --force-recreate`.
+
 **Queda pendiente (no bloqueante del arranque):** el enrutado WebSocket
 (`location /ws/` vs el namespace socket.io `/live` del backend) no está resuelto
 porque el contrato WS panel↔backend no está negociado (X-06); la vista en directo
