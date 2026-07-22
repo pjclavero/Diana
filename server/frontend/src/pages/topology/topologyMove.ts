@@ -23,6 +23,12 @@ export function applyMove(
 
   const from = slots.find((s) => s.module_id === moduleId);
   const occupant = target.module_id ?? null;
+  // Si el módulo no está aún en la matriz (viene de fuera) y el destino está
+  // ocupado, NO se machaca al ocupante: no hay casilla de origen a la que enviarlo.
+  // Se rechaza la suelta (hay que soltar en una celda vacía o intercambiar
+  // arrastrando un módulo ya colocado). Hoy es inalcanzable —el pool sólo ofrece
+  // módulos ya colocados— pero blinda el invariante para cuando venga de listModules().
+  if (!from && occupant) return slots;
 
   return slots.map((s) => {
     if (key(s.position) === key(targetPos)) return { ...s, module_id: moduleId };

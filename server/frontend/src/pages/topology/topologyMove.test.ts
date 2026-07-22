@@ -31,4 +31,16 @@ describe("applyMove (editor de matriz)", () => {
     const slots = [slot(0, 0, "A")];
     expect(applyMove(slots, "A", { x: 0, y: 0 })).toBe(slots);
   });
+
+  it("un módulo de fuera de la matriz sobre celda vacía se coloca", () => {
+    const slots = [slot(0, 0, null)];
+    const out = applyMove(slots, "NUEVO", { x: 0, y: 0 });
+    expect(out.find((s) => s.position.x === 0 && s.position.y === 0)!.module_id).toBe("NUEVO");
+  });
+
+  it("un módulo de fuera de la matriz NO machaca al ocupante de una celda ocupada", () => {
+    const slots = [slot(0, 0, "OCUPANTE")];
+    // Sin casilla de origen a la que enviar al ocupante → se rechaza la suelta.
+    expect(applyMove(slots, "NUEVO", { x: 0, y: 0 })).toBe(slots);
+  });
 });

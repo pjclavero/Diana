@@ -154,8 +154,11 @@ export function TopologyPage() {
                     role="gridcell"
                     className={`topology-cell ${isDuplicate ? "topology-cell--duplicate" : ""} ${slot?.locked ? "topology-cell--locked" : ""} ${dragOverKey === slotKey(pos) && !slot?.locked ? "topology-cell--dragover" : ""}`}
                     onDragOver={(e) => {
-                      // Imprescindible en TODA la celda (también la ocupada) para que sea
-                      // un destino de suelta válido; sin esto la celda central no aceptaba.
+                      // Una celda bloqueada no es destino válido: no hacemos preventDefault
+                      // para que el cursor muestre "no soltar aquí" (honesto con el usuario).
+                      if (slot?.locked) return;
+                      // Imprescindible en TODA celda no bloqueada (también la ocupada) para
+                      // que sea destino de suelta válido; sin esto la celda central no aceptaba.
                       e.preventDefault();
                       if (draggedId && dragOverKey !== slotKey(pos)) setDragOverKey(slotKey(pos));
                     }}
