@@ -10,6 +10,7 @@ function buildPrisma(over: {
     gamePreset: {
       findMany: jest.fn().mockResolvedValue([]),
       count: jest.fn().mockResolvedValue(0),
+      findFirst: jest.fn().mockResolvedValue(null),
       findUnique: jest.fn(),
       create: jest.fn(({ data }: any) => Promise.resolve({ id: 'p-new', ...data })),
       update: jest.fn(({ data }: any) => Promise.resolve({ id: 'p1', ...data })),
@@ -64,6 +65,12 @@ describe('PresetsService (G-F)', () => {
       const created: any = await new PresetsService(prisma).create(input, admin);
       expect(created.isSample).toBe(true);
       expect(created.ownerId).toBeNull();
+    });
+
+    it('rechaza un preset de muestra con nombre ya existente (NULL owner)', async () => {
+      const prisma = buildPrisma({ gamePreset: { findFirst: jest.fn().mockResolvedValue({ id: 'ya', name: 'Mi preset' }) } });
+      await expect(new PresetsService(prisma).create(input, admin)).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.gamePreset.create).not.toHaveBeenCalled();
     });
 
     it('rechaza si el modo de juego no existe', async () => {

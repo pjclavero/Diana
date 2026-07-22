@@ -72,6 +72,12 @@ export class PresetsService {
       if (count >= MAX_PRESETS_PER_OWNER) {
         throw new BadRequestException(`Has alcanzado el máximo de ${MAX_PRESETS_PER_OWNER} presets. Borra uno para crear otro.`);
       }
+    } else {
+      // Los presets de muestra tienen ownerId NULL: el índice único (owner_id, name)
+      // NO evita duplicados con NULL (Postgres trata los NULL como distintos), así
+      // que la unicidad del nombre de muestra se comprueba aquí.
+      const dup = await this.prisma.gamePreset.findFirst({ where: { ownerId: null, name: input.name } });
+      if (dup) throw new BadRequestException(`Ya existe un preset de muestra llamado «${input.name}».`);
     }
 
     const mode = await this.prisma.gameMode.findUnique({ where: { key: input.mode } });
