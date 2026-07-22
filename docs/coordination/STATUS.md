@@ -53,8 +53,8 @@ Origen: conversación de dirección 2026-07-22. Especificación: `docs/product/a
 | Bloque | Alcance | Estado |
 |---|---|---|
 | **G-A** | Quick wins UX: toggle/apagar LED, botón volver, fix drag editor de matriz | ✅ **CONFORME CON OBSERVACIONES** (supervisor reejecutó: 55 tests, tsc/lint/build limpios). Toggle LED (mismo botón enciende/apaga `off`) + "Apagar todas"; `BackButton` en sensores/LED/calibración/detalle; editor de matriz: soltar en celda ocupada **intercambia** (swap, era el bug de la central) + realce destino + celda bloqueada no finge soltable. Defecto latente del supervisor **corregido**: `applyMove` no machaca al ocupante si el módulo viene de fuera (hoy inalcanzable; blinda para `listModules()`). Frontend 57. Desplegada en VM109 |
-| G-B | Firmware: subir el binario y servirlo por HTTP local (cierra ciclo OTA) | Pendiente |
-| G-C | Dashboard de módulos: resumen paginado + panel del módulo (Ver 9 dianas/Calibración/Pruebas/Actualizar) | Pendiente |
+| G-B | Firmware: subir el binario y servirlo por HTTP local (cierra ciclo OTA) | ✅ **CONFORME CON OBSERVACIONES** (supervisor reejecutó: backend 198, frontend 58, tsc/lint/build limpios; verificó en vivo sha256 byte-a-byte, 401/403/409/400/404, path-traversal 400). `POST /api/firmware/upload` (admin multipart, sha256/tamaño del servidor) + `GET /api/firmware/:id/binary` (`@Public`, lo descarga el módulo). Volumen `diana_firmware`. Observaciones corregidas: OBS-1 (borrar versión limpia el binario), OBS-2 (límite interceptor=config), OBS-3 (tests unlink). Desplegado VM109; env `FIRMWARE_PUBLIC_BASE_URL=http://192.168.1.209:8080` |
+| G-C | Dashboard de módulos: resumen paginado + panel del módulo (Ver 9 dianas/Calibración/Pruebas/Actualizar) | En curso |
 | G-D | Jugadores+equipos (F4/F5): buscar, invitación correo+SMTP, QR, temporales, equipos | Pendiente |
 | G-E | Modos nuevos: duelo + demo | Pendiente |
 | G-F | Presets por gestor (5 custom) | Pendiente |
