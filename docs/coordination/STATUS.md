@@ -46,6 +46,22 @@ Actualizado por el organizador. Última actualización: 2026-07-20.
 | X-21-CORR | **CORRECCIÓN de X-21 (2026-07-21).** X-21 afirmaba que `/systems`, `/modules`, `/players`, `/teams`, `/topology`, `/firmware`, `/presets` **no existían** en el backend. **Era FALSO**: sí existen, generados por el CRUD por fábrica `common/crud/crud.controller.ts` (`@Controller(options.path)` dinámico) y registrados en `app.module.ts` (SystemsModule, ModulesModule, PlayersModule, TeamsModule, TopologyModule, FirmwareModule, PresetsModule). El grep de `@Controller('literal')` no los vio. **Verificado en vivo (VM109):** `GET /api/{systems,modules,players,teams,topology,firmware,presets}` → **HTTP 200** con token admin. La divergencia REAL es menor de lo dicho: (1) el frontend usaba `/api/v1` (ya corregido a `/api` en F1) y (2) **forma de respuesta**: el CRUD devuelve `{items:[...]}` con entidades crudas, mientras el panel espera DTOs concretos (SystemStatus, ModuleStatus con telemetría anidada, Topology con slots…). Conectar el panel a real = **adaptar la forma en el `realAdapter`**, no construir endpoints. | Organizador | WP-02, WP-03 | Verificado ejecutando. Corrige X-21 |
 | X-21 | **Divergencia de contrato REST panel↔backend.** El panel de producción se compila en modo real (`server/frontend/Dockerfile` → `ARG VITE_API_MODE=real`, base `/api/v1`), pero `server/frontend/src/api/realAdapter.ts` llama a recursos que el backend **no expone**: base `/api/v1` (el backend usa prefijo `api` sin `v1`) y rutas `/systems`, `/systems/:id/modules`, `/modules/:id/config`, `/topology`, `/players`, `/teams`, `listResults→/games?phase=finished`. Verificado ejecutando: `grep @Controller('systems\|modules\|results\|players\|teams\|topology')` → NINGUNO; los controllers reales son `health, roles, users, statistics, exports, mqtt, accuracy, audit, ammo, hits, maintenance, auth, games`. Consecuencia: contra el backend desplegado, Estadísticas y las pantallas de configuración devolverían 404 («No se ha encontrado el recurso»). El E2E 18/18 verde corre contra el adaptador **mock**, no contra el backend real. Más amplio que X-06 (WS) y X-18 (ingesta): es el contrato REST completo del panel. **Decisión de rumbo:** armonizar `realAdapter` a las rutas reales del backend, o implementar en el backend los recursos que el panel espera (`/systems`, `/modules`, `/players`, `/teams`, `/topology`) | WP-11 | WP-02, WP-03 | Abierto. Verificado ejecutando (2026-07-21) |
 
+## Lote de mejoras del panel (G-A…G-I) — 2026-07-22
+
+Origen: conversación de dirección 2026-07-22. Especificación: `docs/product/alcance-panel-roles-firmware.md` §6. Método por bloque: implementación + tests + supervisor independiente.
+
+| Bloque | Alcance | Estado |
+|---|---|---|
+| **G-A** | Quick wins UX: toggle/apagar LED, botón volver, fix drag editor de matriz | ✅ **CONFORME CON OBSERVACIONES** (supervisor reejecutó: 55 tests, tsc/lint/build limpios). Toggle LED (mismo botón enciende/apaga `off`) + "Apagar todas"; `BackButton` en sensores/LED/calibración/detalle; editor de matriz: soltar en celda ocupada **intercambia** (swap, era el bug de la central) + realce destino + celda bloqueada no finge soltable. Defecto latente del supervisor **corregido**: `applyMove` no machaca al ocupante si el módulo viene de fuera (hoy inalcanzable; blinda para `listModules()`). Frontend 57. Desplegada en VM109 |
+| G-B | Firmware: subir el binario y servirlo por HTTP local (cierra ciclo OTA) | Pendiente |
+| G-C | Dashboard de módulos: resumen paginado + panel del módulo (Ver 9 dianas/Calibración/Pruebas/Actualizar) | Pendiente |
+| G-D | Jugadores+equipos (F4/F5): buscar, invitación correo+SMTP, QR, temporales, equipos | Pendiente |
+| G-E | Modos nuevos: duelo + demo | Pendiente |
+| G-F | Presets por gestor (5 custom) | Pendiente |
+| G-G | Dashboard resultados/estadísticas estilo «máquina de dardos» | Pendiente |
+| G-H | Matriz avanzada: favoritas, paginación por panel, concurrencia (View diferida) | Pendiente |
+| G-I | Resiliencia y reconexión (auto-pausa módulo/coordinador); cierra X-06/X-18 | Pendiente |
+
 ## Programa «Panel usable» (F1–F6)
 
 Requisitos de producto en `docs/product/alcance-panel-roles-firmware.md`. Modelo: admin=fabricante;
