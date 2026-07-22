@@ -436,6 +436,10 @@ model Participant {
   gameId   String  @map("game_id") @db.Uuid
   roundId  String? @map("round_id") @db.Uuid
   playerId String? @map("player_id") @db.Uuid
+  /// Nombre de un jugador TEMPORAL (§3.4): identidad por partida, sin `User` ni
+  /// `Player`, sin estadística acumulada. Excluyente con `playerId`. Dos temporales
+  /// con el mismo nombre en partidas distintas NO tienen relación.
+  guestName String? @map("guest_name") @db.VarChar(128)
   teamId   String? @map("team_id") @db.Uuid
   slot     Int     @default(1)
   lane     String? @db.VarChar(32)

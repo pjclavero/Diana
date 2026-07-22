@@ -40,6 +40,7 @@ const NAV_SECTIONS: { title: string; links: NavLinkDef[] }[] = [
     links: [
       { to: "/jugadores", label: "Jugadores", perm: "players:read" },
       { to: "/equipos", label: "Equipos", perm: "teams:read" },
+      { to: "/participantes", label: "Participantes", perm: "participants:read" },
     ],
   },
   {

@@ -18,6 +18,7 @@ import { StatisticsPage } from "./pages/stats/StatisticsPage";
 import { PresetsPage } from "./pages/presets/PresetsPage";
 import { DemoPage } from "./pages/demo/DemoPage";
 import { DueloPage } from "./pages/duelo/DueloPage";
+import { ParticipantsPage } from "./pages/participants/ParticipantsPage";
 import { FirmwarePage } from "./pages/firmware/FirmwarePage";
 import { IncidentsPage } from "./pages/incidents/IncidentsPage";
 import { UsersPage } from "./pages/users/UsersPage";
@@ -62,6 +63,7 @@ export function App() {
         <Route path="/presets" element={<PresetsPage />} />
         <Route path="/demo" element={<DemoPage />} />
         <Route path="/duelo" element={<DueloPage />} />
+        <Route path="/participantes" element={<ParticipantsPage />} />
         <Route path="/firmware" element={<FirmwarePage />} />
         <Route path="/incidencias" element={<IncidentsPage />} />
         <Route path="/usuarios" element={<UsersPage />} />
