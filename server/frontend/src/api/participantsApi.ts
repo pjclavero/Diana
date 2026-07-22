@@ -74,3 +74,27 @@ export function setParticipantTeam(id: string, teamId: string | null): Promise<P
 export function removeParticipant(id: string): Promise<void> {
   return req<void>(`/participants/${id}`, { method: "DELETE" });
 }
+
+// --- Unirse por QR (G-D) ---
+
+export function ensureJoinCode(gameId: string, regenerate = false): Promise<{ id: string; joinCode: string }> {
+  return req<{ id: string; joinCode: string }>(`/games/${gameId}/join-code${regenerate ? "?regenerate=1" : ""}`, { method: "POST" });
+}
+
+export interface JoinGameInfo {
+  id: string;
+  name: string | null;
+  status: string;
+  gameMode: { key: string; name: string } | null;
+  joinable: boolean;
+}
+
+/** Público: información de la partida por su código de unión (para la pantalla de unión). */
+export function gameByJoinCode(code: string): Promise<JoinGameInfo> {
+  return req<JoinGameInfo>(`/games/join/${encodeURIComponent(code)}`);
+}
+
+/** Público: unirse como jugador temporal con el código de unión. */
+export function joinByCode(code: string, guestName: string): Promise<{ gameId: string; participantId: string; name: string | null }> {
+  return req(`/games/join/${encodeURIComponent(code)}/guest`, { method: "POST", body: JSON.stringify({ guest_name: guestName }) });
+}

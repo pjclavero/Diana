@@ -372,6 +372,8 @@ model Game {
   gameModeId     String     @map("game_mode_id") @db.Uuid
   gamePresetId   String?    @map("game_preset_id") @db.Uuid
   name           String?    @db.VarChar(128)
+  /// Código corto para unirse a la partida por QR (G-D). Único; regenerable.
+  joinCode       String?    @unique @map("join_code") @db.VarChar(16)
   status         GameStatus @default(draft)
   /// Semilla del generador determinista (reproducibilidad, encargo 10).
   seed           BigInt?

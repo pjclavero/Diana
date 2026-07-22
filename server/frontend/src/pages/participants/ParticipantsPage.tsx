@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
+import QRCode from "react-qr-code";
 import { Card, ErrorState, LoadingState } from "../../components/ui/Feedback";
 import { ApiError } from "../../api/client";
 import { listTeams, searchPlayers, type PlayerRow, type Team } from "../../api/playersApi";
 import {
   addRegisteredParticipant,
   addTemporaryParticipant,
+  ensureJoinCode,
   listGames,
   listParticipants,
   removeParticipant,
@@ -104,6 +106,8 @@ export function ParticipantsPage() {
               </select>
             </label>
           </Card>
+
+          <JoinQr gameId={gameId} />
 
           <Card title="Añadir jugador temporal">
             <p>Para quien no quiere registrarse: sólo aparece en esta partida y no guarda estadística.</p>
@@ -205,5 +209,62 @@ export function ParticipantsPage() {
         </>
       )}
     </div>
+  );
+}
+
+/** Código + QR para unirse a la partida escaneando (G-D). Se regenera bajo demanda. */
+function JoinQr({ gameId }: { gameId: string }) {
+  const [code, setCode] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // El código no se muestra hasta pedirlo (así no se genera para todas las partidas).
+  useEffect(() => {
+    setCode(null);
+    setError(null);
+  }, [gameId]);
+
+  async function generate(regenerate: boolean) {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await ensureJoinCode(gameId, regenerate);
+      setCode(r.joinCode);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.userMessage : "No se ha podido generar el código.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const joinUrl = code ? `${window.location.origin}/unirse/${code}` : "";
+
+  return (
+    <Card title="Unirse por QR">
+      <p>Comparte este código o QR: quien lo escanee podrá unirse como jugador temporal, sin cuenta.</p>
+      {!code ? (
+        <button type="button" onClick={() => generate(false)} disabled={busy}>
+          {busy ? "Generando…" : "Generar código de unión"}
+        </button>
+      ) : (
+        <div className="join-qr">
+          <div className="join-qr__code">
+            <QRCode value={joinUrl} size={148} aria-label={`QR de unión: ${joinUrl}`} />
+          </div>
+          <div>
+            <p>
+              Código: <strong className="join-qr__text">{code}</strong>
+            </p>
+            <p>
+              <code>{joinUrl}</code>
+            </p>
+            <button type="button" onClick={() => generate(true)} disabled={busy}>
+              {busy ? "Regenerando…" : "Regenerar"}
+            </button>
+          </div>
+        </div>
+      )}
+      {error && <ErrorState message={error} />}
+    </Card>
   );
 }

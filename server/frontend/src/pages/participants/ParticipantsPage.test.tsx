@@ -56,4 +56,16 @@ describe("ParticipantsPage (G-D.2 temporales)", () => {
     render(<ParticipantsPage />);
     expect(await screen.findByText(/No hay partidas/)).toBeInTheDocument();
   });
+
+  it("genera el código de unión (QR) bajo demanda", async () => {
+    vi.spyOn(participantsApi, "listGames").mockResolvedValue(GAMES);
+    vi.spyOn(participantsApi, "listParticipants").mockResolvedValue([]);
+    const ensure = vi.spyOn(participantsApi, "ensureJoinCode").mockResolvedValue({ id: "g1", joinCode: "ABC234" });
+
+    render(<ParticipantsPage />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Generar código de unión" }));
+    await waitFor(() => expect(ensure).toHaveBeenCalledWith("g1", false));
+    expect(await screen.findByText("ABC234")).toBeInTheDocument();
+  });
 });

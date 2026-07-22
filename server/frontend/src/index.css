@@ -166,3 +166,10 @@ button.is-active {
   color: #fff;
   border-color: #1d4ed8;
 }
+
+/* Participantes / unión por QR (G-D) */
+.participant-found { list-style: none; padding: 0; margin: 0.5rem 0 0; }
+.participant-found li { margin-bottom: 0.35rem; }
+.join-qr { display: flex; gap: 1.25rem; align-items: flex-start; flex-wrap: wrap; }
+.join-qr__code { background: #fff; padding: 8px; border-radius: 8px; }
+.join-qr__text { font-size: 1.4rem; letter-spacing: 0.15em; font-variant-numeric: tabular-nums; }

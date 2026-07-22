@@ -1,4 +1,4 @@
-import { Route, Routes } from "react-router-dom";
+import { Route, Routes, useLocation } from "react-router-dom";
 import { AppShell } from "./components/layout/AppShell";
 import { HomePage } from "./pages/home/HomePage";
 import { SystemStatusPage } from "./pages/system/SystemStatusPage";
@@ -27,10 +27,21 @@ import { NotFoundPage } from "./pages/NotFoundPage";
 import { ModuleOwnershipPage } from "./pages/modules-ownership/ModuleOwnershipPage";
 import { LoginPage } from "./pages/login/LoginPage";
 import { ChangePasswordPage } from "./pages/login/ChangePasswordPage";
+import { JoinPage } from "./pages/join/JoinPage";
 import { useAuth } from "./auth/AuthContext";
 
 export function App() {
   const { user, loading } = useAuth();
+  const location = useLocation();
+
+  // La unión por QR es PÚBLICA: se sirve sin login, antes de la barrera de sesión.
+  if (location.pathname.startsWith("/unirse/")) {
+    return (
+      <Routes>
+        <Route path="/unirse/:code" element={<JoinPage />} />
+      </Routes>
+    );
+  }
 
   if (loading) {
     return (

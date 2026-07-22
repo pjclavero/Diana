@@ -5,6 +5,9 @@ import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/roles.decorator';
 import { CreateGameInput, CreateRoundInput, GamesService } from './games.service';
+import { GameJoinController } from './game-join.controller';
+import { GameJoinService } from './game-join.service';
+import { ParticipantsModule } from '../participants/participants.module';
 
 @ApiTags('games')
 @ApiBearerAuth()
@@ -102,8 +105,10 @@ export class GamesController {
 }
 
 @Module({
-  controllers: [GamesController],
-  providers: [GamesService],
+  imports: [ParticipantsModule],
+  // El controlador de unión va ANTES para que `join/:code` no lo capture `:id`.
+  controllers: [GameJoinController, GamesController],
+  providers: [GamesService, GameJoinService],
   exports: [GamesService],
 })
 export class GamesModule {}
