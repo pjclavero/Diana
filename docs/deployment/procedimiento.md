@@ -176,6 +176,13 @@ viejo corriendo (se observó con `backend`: `/modules/mine` daba 500 por caer en
 --force-recreate <svc>` tras `docker compose build`. Verificar siempre con un endpoint
 NUEVO de la entrega, no sólo con el healthcheck.
 
+**El one-shot `migrate` bloquea el arranque en `up -d` (recurrente, 2026-07-22):**
+`docker compose up -d` reintenta el job `migrate` (ya ejecutado) y a veces sale exit 1,
+abortando el arranque del `backend` (depende de `migrate: service_completed_successfully`)
+→ 502. La migración SÍ se aplica aparte. **Remedio:** `docker compose run --rm --no-deps
+-T backend npx prisma migrate deploy` y luego `docker compose up -d --no-deps backend
+frontend mosquitto worker backup postgres-test` (salta la dependencia de migrate).
+
 **Datos de referencia sin sembrar (G-F, 2026-07-22):** el despliegue no ejecutaba
 `seed:reference`, así que la tabla `game_modes` estaba **vacía** — lo que rompe la
 creación de partidas y de presets (el modo se resuelve por clave contra BD). En la
