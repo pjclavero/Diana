@@ -176,13 +176,27 @@ viejo corriendo (se observó con `backend`: `/modules/mine` daba 500 por caer en
 --force-recreate <svc>` tras `docker compose build`. Verificar siempre con un endpoint
 NUEVO de la entrega, no sólo con el healthcheck.
 
-**Incidencia de caché de build (G-C, 2026-07-22):** un `docker compose build backend`
-tras un cambio de código sirvió un `dist/` **sin la ruta nueva** (`/modules/overview`
-daba 500 «UUID inválido» por caer en el `/:id` del CRUD, síntoma de `dist` viejo). El
-`up -d --force-recreate` no ayuda si la IMAGEN no recompiló. Solución fiable:
-`docker compose build --no-cache <svc>`. **Comprobación previa a recrear:** verificar
-que el artefacto compilado contiene el símbolo esperado, p. ej.
-`docker compose run --rm --no-deps -T backend sh -c "grep -c overview dist/modules/modules/module-ownership.controller.js"` (>0), y sólo entonces `up -d --force-recreate`.
+**Datos de referencia sin sembrar (G-F, 2026-07-22):** el despliegue no ejecutaba
+`seed:reference`, así que la tabla `game_modes` estaba **vacía** — lo que rompe la
+creación de partidas y de presets (el modo se resuelve por clave contra BD). En la
+imagen de producción **no hay `ts-node`** (devDependency), así que `npm run
+seed:reference` falla; hay que ejecutar el **seed compilado**:
+`docker compose run --rm --no-deps -T backend node dist/scripts/seed-reference.js`
+(asegura roles + los 4 modos random/sequence/all_against_clock/reaction). Debe correr
+tras `migrate deploy` en cada entorno nuevo.
+
+**Builds que dejan `dist` viejo = BuildKit se queda SIN MEMORIA (G-C/G-F, 2026-07-22):**
+se observó repetidamente que `docker compose build backend` "terminaba" pero el `dist/`
+seguía sin el cambio (rutas/campos nuevos → 500), y `--no-cache` fallaba con
+`frontend grpc server closed unexpectedly` / `no such job`. **Causa raíz real:** la VM
+tiene ~1 GB de RAM efectiva (balloon), y con los 8 contenedores en marcha + el build,
+**BuildKit muere por OOM a mitad de compilar y deja la imagen anterior** — NO es un
+problema de caché. **Procedimiento fiable para reconstruir el backend en esta VM:**
+1. Liberar RAM parando lo no esencial: `docker compose stop worker backup postgres-test mosquitto frontend backend` (deja `postgres` + `proxy`).
+2. `docker compose build backend` (build normal; con RAM libre compila entero).
+3. Verificar el artefacto: `docker compose run --rm --no-deps -T backend sh -c "grep -c <símbolo-nuevo> dist/<ruta>.js"` (>0).
+4. `docker compose up -d` (levanta todo y recrea backend con la imagen nueva).
+5. Verificar con un endpoint NUEVO, no sólo el healthcheck.
 
 **Queda pendiente (no bloqueante del arranque):** el enrutado WebSocket
 (`location /ws/` vs el namespace socket.io `/live` del backend) no está resuelto
