@@ -3,6 +3,7 @@ import { RandomModeStrategy } from './strategies/random.strategy';
 import { SequenceModeStrategy } from './strategies/sequence.strategy';
 import { AllAgainstClockModeStrategy } from './strategies/all-against-clock.strategy';
 import { ReactionModeStrategy } from './strategies/reaction.strategy';
+import { DueloModeStrategy } from './strategies/duelo.strategy';
 
 /**
  * Registro de estrategias de modo de juego.
@@ -45,11 +46,12 @@ export class GameModeRegistry {
   }
 }
 
-/** Registro con los cuatro modos de la Ola 1. */
+/** Registro de modos: los cuatro de la Ola 1 + duelo (G-E). */
 export function createDefaultRegistry(): GameModeRegistry {
   return new GameModeRegistry()
     .register(new RandomModeStrategy())
     .register(new SequenceModeStrategy())
     .register(new AllAgainstClockModeStrategy())
-    .register(new ReactionModeStrategy());
+    .register(new ReactionModeStrategy())
+    .register(new DueloModeStrategy());
 }

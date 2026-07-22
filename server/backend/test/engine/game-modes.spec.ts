@@ -405,6 +405,7 @@ describe('Extensibilidad del registro de modos (encargo §10)', () => {
     expect(plan.activations).toHaveLength(3);
     expect(registry.keys()).toEqual([
       'all_against_clock',
+      'duelo',
       'memoria',
       'random',
       'reaction',
@@ -412,9 +413,10 @@ describe('Extensibilidad del registro de modos (encargo §10)', () => {
     ]);
   });
 
-  it('el registro por defecto trae exactamente los cuatro modos de la Ola 1', () => {
+  it('el registro por defecto trae los modos de la Ola 1 + duelo', () => {
     expect(createDefaultRegistry().keys()).toEqual([
       'all_against_clock',
+      'duelo',
       'random',
       'reaction',
       'sequence',
@@ -426,6 +428,6 @@ describe('Extensibilidad del registro de modos (encargo §10)', () => {
   });
 
   it('un modo desconocido falla con un mensaje útil', () => {
-    expect(() => engine().planRound({ mode: 'duelo', seed: 1, targets: NINE })).toThrow(/desconocido/);
+    expect(() => engine().planRound({ mode: 'inexistente', seed: 1, targets: NINE })).toThrow(/desconocido/);
   });
 });

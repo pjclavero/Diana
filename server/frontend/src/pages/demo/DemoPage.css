@@ -16,3 +16,14 @@
   padding-left: 1.5rem;
   font-variant-numeric: tabular-nums;
 }
+
+.duelo-player-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+.duelo-player-row input {
+  flex: 1;
+  max-width: 320px;
+}
