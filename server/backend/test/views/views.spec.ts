@@ -56,6 +56,17 @@ describe('ViewsService (G-H · Opción B)', () => {
     await expect(new ViewsService(prisma).addPanel('v1', 's1', gestor)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
+  it('un gestor NO puede LEER una vista ajena privada por id (D1) → 404', async () => {
+    const prisma = buildPrisma({ view: { findUnique: jest.fn().mockResolvedValue(view([9], 'otro')) } });
+    await expect(new ViewsService(prisma).get('v1', gestor)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(new ViewsService(prisma).dueloReadiness('v1', gestor)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('un gestor SÍ puede leer una vista pública (sin dueño)', async () => {
+    const prisma = buildPrisma({ view: { findUnique: jest.fn().mockResolvedValue(view([9, 9], null)) } });
+    await expect(new ViewsService(prisma).get('v1', gestor)).resolves.toEqual(expect.objectContaining({ id: 'v1' }));
+  });
+
   it('añade un panel inexistente → 404', async () => {
     const prisma = buildPrisma({ view: { findUnique: jest.fn().mockResolvedValue(view([9], 'g1')) }, targetSystem: { findUnique: jest.fn().mockResolvedValue(null) } });
     await expect(new ViewsService(prisma).addPanel('v1', 'nope', gestor)).rejects.toBeInstanceOf(NotFoundException);
@@ -64,20 +75,20 @@ describe('ViewsService (G-H · Opción B)', () => {
   describe('dueloReadiness (cablea assertEqualSetup)', () => {
     it('lista para duelo si todos los paneles tienen los mismos módulos', async () => {
       const prisma = buildPrisma({ view: { findUnique: jest.fn().mockResolvedValue(view([9, 9])) } });
-      const r = await new ViewsService(prisma).dueloReadiness('v1');
+      const r = await new ViewsService(prisma).dueloReadiness('v1', admin);
       expect(r.ready).toBe(true);
     });
 
     it('NO lista si los paneles tienen distinto número de módulos', async () => {
       const prisma = buildPrisma({ view: { findUnique: jest.fn().mockResolvedValue(view([9, 18])) } });
-      const r = await new ViewsService(prisma).dueloReadiness('v1');
+      const r = await new ViewsService(prisma).dueloReadiness('v1', admin);
       expect(r.ready).toBe(false);
       expect(r.reason).toMatch(/mismo número/);
     });
 
     it('NO lista con un solo panel', async () => {
       const prisma = buildPrisma({ view: { findUnique: jest.fn().mockResolvedValue(view([9])) } });
-      expect((await new ViewsService(prisma).dueloReadiness('v1')).ready).toBe(false);
+      expect((await new ViewsService(prisma).dueloReadiness('v1', admin)).ready).toBe(false);
     });
   });
 });

@@ -60,8 +60,18 @@ export class ViewsService {
     return view;
   }
 
-  async get(id: string) {
-    return this.shape(await this.load(id));
+  /** Visible si es del actor, pública (sin dueño) o el actor es admin; si no, 404
+   *  (no se filtra la existencia de vistas ajenas — coherente con `list`, D1). */
+  private assertVisible(view: { ownerId: string | null }, actor: ViewActor) {
+    if (!this.isAdmin(actor) && view.ownerId !== actor.userId && view.ownerId !== null) {
+      throw new NotFoundException('Vista no encontrada');
+    }
+  }
+
+  async get(id: string, actor: ViewActor) {
+    const view = await this.load(id);
+    this.assertVisible(view, actor);
+    return this.shape(view);
   }
 
   private assertOwner(view: { ownerId: string | null }, actor: ViewActor) {
@@ -106,25 +116,31 @@ export class ViewsService {
 
     const existing = view.panels.find((p) => p.targetSystemId === targetSystemId);
     if (!existing) {
-      const position = view.panels.length;
-      await this.prisma.viewPanel.create({ data: { viewId: id, targetSystemId, position } });
+      try {
+        await this.prisma.viewPanel.create({ data: { viewId: id, targetSystemId, position: view.panels.length } });
+      } catch (error) {
+        // Carrera: otro add metió el mismo panel a la vez → idempotente (D2).
+        if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')) throw error;
+      }
     }
-    return this.get(id);
+    return this.get(id, actor);
   }
 
   async removePanel(id: string, targetSystemId: string, actor: ViewActor) {
     const view = await this.load(id);
     this.assertOwner(view, actor);
     await this.prisma.viewPanel.deleteMany({ where: { viewId: id, targetSystemId } });
-    return this.get(id);
+    return this.get(id, actor);
   }
 
   /**
    * ¿La vista sirve para un DUELO? Todos los paneles deben tener el MISMO número de
    * módulos (mismos elementos por jugador). Cablea `assertEqualSetup` (§6.2/G-E).
    */
-  async dueloReadiness(id: string) {
-    const view = this.shape(await this.load(id));
+  async dueloReadiness(id: string, actor: ViewActor) {
+    const loaded = await this.load(id);
+    this.assertVisible(loaded, actor);
+    const view = this.shape(loaded);
     const counts = view.panels.map((p: { moduleCount: number }) => p.moduleCount);
     try {
       assertEqualSetup(counts);

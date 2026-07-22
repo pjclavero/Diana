@@ -46,15 +46,15 @@ export class ViewsController {
   @Get(':id')
   @RequirePermissions('topology:read')
   @ApiOperation({ summary: 'Obtiene una vista con sus paneles' })
-  get(@Param('id', ParseUUIDPipe) id: string) {
-    return this.views.get(id);
+  get(@Param('id', ParseUUIDPipe) id: string, @Req() req: { user: AuthenticatedUser }) {
+    return this.views.get(id, req.user);
   }
 
   @Get(':id/duelo-readiness')
   @RequirePermissions('topology:read')
   @ApiOperation({ summary: '¿La vista sirve para duelo? (todos los paneles con los mismos módulos)' })
-  duelo(@Param('id', ParseUUIDPipe) id: string) {
-    return this.views.dueloReadiness(id);
+  duelo(@Param('id', ParseUUIDPipe) id: string, @Req() req: { user: AuthenticatedUser }) {
+    return this.views.dueloReadiness(id, req.user);
   }
 
   @Post()
