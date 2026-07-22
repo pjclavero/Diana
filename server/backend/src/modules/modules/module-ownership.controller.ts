@@ -4,6 +4,7 @@ import { IsString, IsUUID } from 'class-validator';
 import { AuthenticatedUser } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/roles.decorator';
 import { ModuleOwnershipService } from './module-ownership.service';
+import { ModulesOverviewService } from './modules-overview.service';
 
 export class LinkModuleDto {
   @ApiProperty({ description: 'Usuario al que se vincula el módulo. Un no-admin sólo puede indicar su propio id.' })
@@ -16,13 +17,23 @@ export class LinkModuleDto {
 @ApiBearerAuth()
 @Controller('modules')
 export class ModuleOwnershipController {
-  constructor(private readonly ownership: ModuleOwnershipService) {}
+  constructor(
+    private readonly ownership: ModuleOwnershipService,
+    private readonly overviewService: ModulesOverviewService,
+  ) {}
 
   @Get('mine')
   @RequirePermissions('profile:read')
   @ApiOperation({ summary: 'Módulos de los que el usuario autenticado es dueño' })
   mine(@Req() req: { user: AuthenticatedUser }) {
     return this.ownership.listOwnedBy(req.user.userId);
+  }
+
+  @Get('overview')
+  @RequirePermissions('modules:read')
+  @ApiOperation({ summary: 'Resumen de módulos + estado de actualización (dashboard). Admin: todos; gestor: los suyos' })
+  overview(@Req() req: { user: AuthenticatedUser }) {
+    return this.overviewService.overview(req.user);
   }
 
   @Post(':id/link')

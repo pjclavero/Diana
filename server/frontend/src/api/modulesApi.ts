@@ -84,3 +84,30 @@ export async function listUsers(): Promise<UserOption[]> {
   const page = await req<{ items: UserOption[] }>("/users?take=500");
   return page.items;
 }
+
+export interface ModuleOverviewItem {
+  id: string;
+  slug: string;
+  friendlyName: string | null;
+  online: boolean;
+  state: string | null;
+  role: string | null;
+  firmwareVersion: string | null;
+  maintenance: boolean;
+  lastSeenAt: string | null;
+  ownerId: string | null;
+  owner?: ModuleOwner | null;
+  position: { x: number; y: number } | null;
+  updateAvailable: boolean;
+  latestSignedVersion: string | null;
+}
+
+export interface ModulesOverview {
+  summary: { total: number; online: number; offline: number; updatesPending: number };
+  items: ModuleOverviewItem[];
+}
+
+/** Resumen de módulos para el dashboard (admin: todos; gestor: los suyos). */
+export function modulesOverview(): Promise<ModulesOverview> {
+  return req<ModulesOverview>("/modules/overview");
+}
