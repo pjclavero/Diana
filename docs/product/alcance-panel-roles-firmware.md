@@ -191,9 +191,24 @@ Decisiones:
   curso por panel»**. Caso límite deseado: 4 paneles con 1 módulo cada uno en **demo
   independiente**.
 - **Juntos** (2+ paneles en **una misma** partida): **NO soportado hoy** (un `Game` está
-  atado a un solo `TargetSystem`). **DECISIÓN DE DISEÑO ABIERTA:** (a) que un juego abarque
-  varios paneles, o (b) una entidad «vista/supergrupo» por encima del panel. Pendiente de
-  elegir con el responsable.
+  atado a un solo `TargetSystem`). **DECIDIDO (2026-07-22): destino = Opción B** — una entidad
+  **`View`** (agrupa paneles) por encima del panel; **tope en ese nivel** (2 paneles completos
+  ya son un conjunto enorme de dianas; no habrá agrupaciones superiores). **NO se construye
+  ahora:** se difiere a una actualización posterior y hoy sólo se dejan las **costuras** para
+  que sea **aditivo**:
+  - **El motor ya es agnóstico al panel:** planifica sobre `RoundConfig.targets: TargetRef[]`
+    (lista plana de dianas), no sobre un sistema. B sólo tendrá que **calcular el conjunto de
+    dianas de varios paneles y pasárselo al mismo motor**; el núcleo no se toca.
+  - **Costura de destino de partida:** cuando llegue B, se añade la tabla `View` (paneles↔vista)
+    y el `Game` podrá apuntar a **un panel o a una vista** (campo nuevo nullable + join),
+    **cambio aditivo** sin migración destructiva. Hoy la atadura sigue siendo `Game→1 panel`.
+  - **Nomenclatura reservada:** `panel = TargetSystem` en UI/datos ya; `vista` reservado para
+    el nivel futuro. Prohibido código/copys que asuman «1 partida = 1 panel para siempre».
+  - **Guardarraíl reutilizable:** el «un juego en curso por panel» (§6.2 separados) es la pieza
+    que B reutilizará.
+  - **Punto de diseño futuro (anotado, no bloquea):** al abarcar 2 paneles hay que decidir la
+    **consolidación de tiempos T2** (cada panel tiene su coordinador → quién manda). Como B se
+    difiere y hoy no se cruzan paneles, no hace falta resolverlo aún.
 
 ### 6.3 Resiliencia y reconexión (bloque G-I) — **defaults FIJADOS**
 Cimientos ya contratados: presencia `module/{id}/presence` retenida + Last Will; `boot_id`
