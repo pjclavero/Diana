@@ -1,6 +1,6 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { IsOptional, IsString, IsUUID, MaxLength, ValidateIf } from 'class-validator';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/roles.decorator';
@@ -22,6 +22,13 @@ class AddParticipantDto {
   @IsOptional()
   @IsUUID()
   team_id?: string;
+}
+
+class SetParticipantTeamDto {
+  // Acepta un UUID de equipo o null (quitar equipo).
+  @ValidateIf((o) => o.team_id !== null && o.team_id !== undefined)
+  @IsUUID()
+  team_id?: string | null;
 }
 
 /**
@@ -56,6 +63,15 @@ export class ParticipantsController {
     });
     await this.audit.record({ user: req.user, action: 'create', entity: 'participant', entityId: created.id, after: created });
     return created;
+  }
+
+  @Patch(':id/team')
+  @RequirePermissions('participants:write')
+  @ApiOperation({ summary: 'Reasigna el equipo de un participante (team_id null = sin equipo)' })
+  async setTeam(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SetParticipantTeamDto, @Req() req: { user: AuthenticatedUser }) {
+    const updated = await this.participants.setTeam(id, dto.team_id ?? null);
+    await this.audit.record({ user: req.user, action: 'update', entity: 'participant', entityId: id, after: updated });
+    return updated;
   }
 
   @Delete(':id')

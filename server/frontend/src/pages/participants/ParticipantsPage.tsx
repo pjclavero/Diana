@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { Card, ErrorState, LoadingState } from "../../components/ui/Feedback";
 import { ApiError } from "../../api/client";
-import { searchPlayers, type PlayerRow } from "../../api/playersApi";
+import { listTeams, searchPlayers, type PlayerRow, type Team } from "../../api/playersApi";
 import {
   addRegisteredParticipant,
   addTemporaryParticipant,
   listGames,
   listParticipants,
   removeParticipant,
+  setParticipantTeam,
   type GameLite,
   type Participant,
 } from "../../api/participantsApi";
@@ -26,8 +27,10 @@ export function ParticipantsPage() {
   const [guest, setGuest] = useState("");
   const [q, setQ] = useState("");
   const [found, setFound] = useState<PlayerRow[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
 
   useEffect(() => {
+    listTeams().then(setTeams).catch(() => setTeams([]));
     listGames()
       .then((g) => {
         setGames(g);
@@ -154,6 +157,7 @@ export function ParticipantsPage() {
                       <th scope="col">#</th>
                       <th scope="col">Jugador</th>
                       <th scope="col">Tipo</th>
+                      <th scope="col">Equipo</th>
                       <th scope="col"></th>
                     </tr>
                   </thead>
@@ -170,6 +174,21 @@ export function ParticipantsPage() {
                           ) : (
                             <span className="badge badge--muted">plantilla</span>
                           )}
+                        </td>
+                        <td>
+                          <select
+                            aria-label={`Equipo de ${p.temporary ? p.guestName : p.player?.displayName}`}
+                            value={p.team?.id ?? ""}
+                            disabled={busy === p.id}
+                            onChange={(e) => act(() => setParticipantTeam(p.id, e.target.value || null), p.id)}
+                          >
+                            <option value="">sin equipo</option>
+                            {teams.map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.name}
+                              </option>
+                            ))}
+                          </select>
                         </td>
                         <td>
                           <button type="button" disabled={busy === p.id} onClick={() => act(() => removeParticipant(p.id), p.id)}>

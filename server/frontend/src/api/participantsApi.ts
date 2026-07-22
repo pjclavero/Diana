@@ -67,6 +67,10 @@ export function addTemporaryParticipant(gameId: string, guestName: string): Prom
   return req<Participant>("/participants", { method: "POST", body: JSON.stringify({ game_id: gameId, guest_name: guestName }) });
 }
 
+export function setParticipantTeam(id: string, teamId: string | null): Promise<Participant> {
+  return req<Participant>(`/participants/${id}/team`, { method: "PATCH", body: JSON.stringify({ team_id: teamId }) });
+}
+
 export function removeParticipant(id: string): Promise<void> {
   return req<void>(`/participants/${id}`, { method: "DELETE" });
 }

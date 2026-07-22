@@ -82,6 +82,23 @@ describe('ParticipantsService (G-D.2 temporales)', () => {
     await expect(new ParticipantsService(prisma).add({ gameId: 'g1', guestName: 'Paco' })).rejects.toBeInstanceOf(ConflictException);
   });
 
+  it('setTeam reasigna el equipo de un participante', async () => {
+    const update = jest.fn(({ data }: any) => Promise.resolve({ id: 'part1', ...data }));
+    const prisma = buildPrisma({
+      participant: { findUnique: jest.fn().mockResolvedValue({ id: 'part1' }), update },
+      team: { findUnique: jest.fn().mockResolvedValue({ id: 't1' }) },
+    } as any);
+    prisma.team = { findUnique: jest.fn().mockResolvedValue({ id: 't1' }) };
+    const p: any = await new ParticipantsService(prisma).setTeam('part1', 't1');
+    expect(p.teamId).toBe('t1');
+  });
+
+  it('setTeam con equipo inexistente → NotFound', async () => {
+    const prisma = buildPrisma({ participant: { findUnique: jest.fn().mockResolvedValue({ id: 'part1' }) } });
+    prisma.team = { findUnique: jest.fn().mockResolvedValue(null) };
+    await expect(new ParticipantsService(prisma).setTeam('part1', 'nope')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
   it('listForGame marca temporary=true a los que tienen guestName', async () => {
     const prisma = buildPrisma({
       participant: {

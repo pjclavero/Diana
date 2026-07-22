@@ -82,6 +82,17 @@ export class ParticipantsService {
     throw new ConflictException('No se pudo asignar un puesto libre; inténtelo de nuevo.');
   }
 
+  /** Reasigna (o quita, con null) el equipo de un participante dentro de la partida. */
+  async setTeam(id: string, teamId: string | null) {
+    const found = await this.prisma.participant.findUnique({ where: { id } });
+    if (!found) throw new NotFoundException(`Participante ${id} no encontrado`);
+    if (teamId) {
+      const team = await this.prisma.team.findUnique({ where: { id: teamId } });
+      if (!team) throw new NotFoundException(`Equipo ${teamId} no encontrado`);
+    }
+    return this.prisma.participant.update({ where: { id }, data: { teamId }, include: this.include });
+  }
+
   async remove(id: string) {
     const found = await this.prisma.participant.findUnique({ where: { id } });
     if (!found) throw new NotFoundException(`Participante ${id} no encontrado`);
