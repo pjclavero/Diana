@@ -1,22 +1,42 @@
-import { useState } from "react";
-import { apiClient } from "../../api";
-import { useAsync } from "../../hooks/useAsync";
+import { useCallback, useEffect, useState } from "react";
 import { Card, ErrorState, LoadingState } from "../../components/ui/Feedback";
+import { ApiError } from "../../api/client";
+import { createTeam, listTeams, type Team } from "../../api/playersApi";
 
+/** G-D · Equipos (datos REALES). Crear equipos y listarlos; los jugadores se asignan
+ *  desde la pantalla de Jugadores. */
 export function TeamsPage() {
-  const { data: teams, loading, error, reload } = useAsync(() => apiClient.listTeams(), []);
+  const [teams, setTeams] = useState<Team[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
-  const [color, setColor] = useState("#2563eb");
+  const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
 
-  async function handleCreate(e: React.FormEvent) {
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setTeams(await listTeams());
+    } catch (e) {
+      setError(e instanceof ApiError ? e.userMessage : "No se han podido cargar los equipos.");
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function create(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
     setBusy(true);
+    setError(null);
     try {
-      await apiClient.createTeam({ name: name.trim(), color });
+      await createTeam({ name: name.trim(), description: description.trim() || undefined });
       setName("");
-      reload();
+      setDescription("");
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.userMessage : "No se ha podido crear el equipo.");
     } finally {
       setBusy(false);
     }
@@ -25,18 +45,14 @@ export function TeamsPage() {
   return (
     <div>
       <h1>Equipos</h1>
-      {loading && <LoadingState />}
-      {error && <ErrorState message={error} onRetry={reload} />}
 
       <Card title="Añadir equipo">
-        <form onSubmit={handleCreate} className="inline-form">
+        <form onSubmit={create} className="inline-form">
           <label>
-            Nombre
-            <input value={name} onChange={(e) => setName(e.target.value)} required />
+            Nombre <input value={name} onChange={(e) => setName(e.target.value)} required />
           </label>
           <label>
-            Color
-            <input type="color" value={color} onChange={(e) => setColor(e.target.value)} aria-label="Color del equipo" />
+            Descripción <input value={description} onChange={(e) => setDescription(e.target.value)} />
           </label>
           <button type="submit" disabled={busy}>
             {busy ? "Añadiendo…" : "Añadir"}
@@ -44,19 +60,25 @@ export function TeamsPage() {
         </form>
       </Card>
 
-      <Card title="Lista de equipos">
-        <ul>
-          {teams?.map((t) => (
-            <li key={t.id}>
-              <span
-                aria-hidden="true"
-                style={{ display: "inline-block", width: 12, height: 12, borderRadius: "50%", background: t.color, marginRight: 6 }}
-              />
-              {t.name} <span className="sr-only">color {t.color}</span>
-            </li>
-          ))}
-        </ul>
-      </Card>
+      {error && <ErrorState message={error} onRetry={load} />}
+      {!teams && !error && <LoadingState />}
+
+      {teams && (
+        <Card title={`Equipos (${teams.length})`}>
+          {teams.length === 0 ? (
+            <p>Aún no hay equipos.</p>
+          ) : (
+            <ul>
+              {teams.map((t) => (
+                <li key={t.id}>
+                  <strong>{t.name}</strong>
+                  {t.description && <span> — {t.description}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      )}
     </div>
   );
 }
