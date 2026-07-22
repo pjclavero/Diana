@@ -42,6 +42,10 @@ export interface AppConfig {
   };
 }
 
+/** Tope por defecto del binario de firmware (bytes). Compartido por la config y
+ *  por el límite del FileInterceptor de subida, para que sean coherentes. */
+export const FIRMWARE_MAX_BYTES_DEFAULT = 16 * 1024 * 1024;
+
 function int(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(value ?? '', 10);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -94,7 +98,7 @@ export function loadConfiguration(): AppConfig {
     firmware: {
       dir: process.env.FIRMWARE_DIR ?? '/app/firmware',
       publicBaseUrl: (process.env.FIRMWARE_PUBLIC_BASE_URL ?? 'http://localhost:8080').replace(/\/+$/, ''),
-      maxBytes: int(process.env.FIRMWARE_MAX_BYTES, 16 * 1024 * 1024),
+      maxBytes: int(process.env.FIRMWARE_MAX_BYTES, FIRMWARE_MAX_BYTES_DEFAULT),
     },
   };
 }

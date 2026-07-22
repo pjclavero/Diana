@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { mkdtempSync, readFileSync, existsSync } from 'fs';
+import { mkdtempSync, readFileSync, readdirSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
@@ -80,5 +80,27 @@ describe('FirmwareBinaryService', () => {
     const prisma = buildPrisma({ findUnique: jest.fn().mockResolvedValue({ id: 'huerfano', sizeBytes: 1, sha256: 'a', version: '1.0.0' }) });
     const svc = new FirmwareBinaryService(prisma, buildConfig(dir));
     await expect(svc.openForDownload('huerfano')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('no deja binario huérfano si falla el create (unlink en el catch)', async () => {
+    const cleanDir = mkdtempSync(join(tmpdir(), 'fw-fail-'));
+    const prisma = buildPrisma({ create: jest.fn().mockRejectedValue(new Error('db caída')) });
+    const svc = new FirmwareBinaryService(prisma, buildConfig(cleanDir));
+
+    await expect(svc.upload(Buffer.from('x'), { version: '1.0.0', targetBoard: 'esp32-s3' })).rejects.toThrow('db caída');
+    // El binario que se escribió antes del create fallido se ha retirado.
+    expect(readdirSync(cleanDir)).toHaveLength(0);
+  });
+
+  it('deleteBinary retira el .bin del disco (idempotente)', async () => {
+    const prisma = buildPrisma();
+    const svc = new FirmwareBinaryService(prisma, buildConfig(dir));
+    const created = await svc.upload(Buffer.from('abc'), { version: '5.0.0', targetBoard: 'esp32-s3' });
+    expect(existsSync(join(dir, `${created.id}.bin`))).toBe(true);
+
+    await svc.deleteBinary(created.id);
+    expect(existsSync(join(dir, `${created.id}.bin`))).toBe(false);
+    // Segunda llamada no falla (idempotente).
+    await expect(svc.deleteBinary(created.id)).resolves.toBeUndefined();
   });
 });

@@ -18,6 +18,7 @@ import { IsOptional, IsString, Matches } from 'class-validator';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/permissions.guard';
 import { Public, RequirePermissions } from '../auth/roles.decorator';
+import { FIRMWARE_MAX_BYTES_DEFAULT } from '../../config/configuration';
 import { FirmwareBinaryService } from './firmware-binary.service';
 
 class UploadFirmwareDto {
@@ -56,7 +57,9 @@ export class FirmwareBinaryController {
   @RequirePermissions('firmware:write')
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Sube el binario de una versión de firmware (calcula sha256/tamaño)' })
-  @UseInterceptors(FileInterceptor('binary', { limits: { fileSize: 32 * 1024 * 1024 } }))
+  // El límite del interceptor coincide con el máximo por defecto de config, para
+  // no bufferizar en memoria un archivo que luego se rechazaría (OBS-2 supervisor).
+  @UseInterceptors(FileInterceptor('binary', { limits: { fileSize: FIRMWARE_MAX_BYTES_DEFAULT } }))
   async upload(
     @UploadedFile() file: { buffer: Buffer } | undefined,
     @Body() dto: UploadFirmwareDto,

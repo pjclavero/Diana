@@ -96,6 +96,12 @@ export class FirmwareBinaryService {
     }
   }
 
+  /** Borra el binario en disco de una versión (idempotente). Se llama al borrar la
+   *  `FirmwareVersion` para no dejar el `.bin` huérfano en el volumen (OBS-1 supervisor). */
+  async deleteBinary(id: string): Promise<void> {
+    await unlink(this.filePath(id)).catch(() => undefined);
+  }
+
   /** Devuelve el stream del binario para descarga, o 404 si no existe en disco. */
   async openForDownload(id: string): Promise<{ stream: Readable; sizeBytes: number; sha256: string; version: string }> {
     const fw = await this.prisma.firmwareVersion.findUnique({ where: { id } });
