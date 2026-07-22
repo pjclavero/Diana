@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { apiClient } from "../../api";
 import { Card } from "../../components/ui/Feedback";
+import { BackButton } from "../../components/ui/BackButton";
 
 export function TestSensorsPage() {
   const { moduleId = "" } = useParams();
@@ -19,6 +20,7 @@ export function TestSensorsPage() {
 
   return (
     <div>
+      <BackButton />
       <h1>Prueba de sensores · módulo {moduleId}</h1>
       <Card title="Golpee cada diana o pulse Probar">
         <div className="table-scroll">

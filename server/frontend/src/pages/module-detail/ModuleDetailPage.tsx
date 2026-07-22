@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { apiClient } from "../../api";
 import { useAsync } from "../../hooks/useAsync";
 import { Card, ErrorState, LoadingState } from "../../components/ui/Feedback";
+import { BackButton } from "../../components/ui/BackButton";
 import { TargetLight } from "../../components/target/TargetLight";
 import { rotatedTargetIndices } from "../../utils/gridRotation";
 import "./ModuleDetailPage.css";
@@ -27,6 +28,7 @@ export function ModuleDetailPage() {
 
   return (
     <div>
+      <BackButton />
       <h1>Módulo {moduleId}</h1>
       {loading && <LoadingState />}
       {error && <ErrorState message={error} onRetry={reload} />}

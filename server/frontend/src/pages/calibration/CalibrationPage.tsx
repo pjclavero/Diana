@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { apiClient } from "../../api";
 import { useAsync } from "../../hooks/useAsync";
 import { Card, ErrorState, LoadingState } from "../../components/ui/Feedback";
+import { BackButton } from "../../components/ui/BackButton";
 
 export function CalibrationPage() {
   const { moduleId = "" } = useParams();
@@ -25,6 +26,7 @@ export function CalibrationPage() {
 
   return (
     <div>
+      <BackButton />
       <h1>Calibración · módulo {moduleId}</h1>
       {loading && <LoadingState />}
       {error && <ErrorState message={error} onRetry={reload} />}

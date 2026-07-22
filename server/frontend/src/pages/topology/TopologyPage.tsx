@@ -3,6 +3,7 @@ import { apiClient, type Topology, type TopologySlot } from "../../api";
 import { DEFAULT_SYSTEM_ID } from "../../config";
 import { useAsync } from "../../hooks/useAsync";
 import { Card, ErrorState, LoadingState } from "../../components/ui/Feedback";
+import { applyMove } from "./topologyMove";
 import "./TopologyPage.css";
 
 type Rotation = 0 | 90 | 180 | 270;
@@ -41,6 +42,7 @@ export function TopologyPage() {
   const [saving, setSaving] = useState(false);
   const [identifyingId, setIdentifyingId] = useState<string | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (initial) setTopology(structuredClone(initial));
@@ -76,18 +78,7 @@ export function TopologyPage() {
   }
 
   function moveModule(moduleId: string, targetPos: { x: -1 | 0 | 1; y: -1 | 0 | 1 }) {
-    setTopology((t) => {
-      if (!t) return t;
-      const target = t.slots.find((s) => slotKey(s.position) === slotKey(targetPos));
-      if (!target || target.locked) return t;
-      const slots = t.slots.map((s) => {
-        if (s.module_id === moduleId) return { ...s, module_id: null };
-        return s;
-      });
-      const idx = slots.findIndex((s) => slotKey(s.position) === slotKey(targetPos));
-      slots[idx] = { ...slots[idx], module_id: moduleId };
-      return { ...t, slots };
-    });
+    setTopology((t) => (t ? { ...t, slots: applyMove(t.slots, moduleId, targetPos) } : t));
   }
 
   function removeFromGrid(moduleId: string) {
@@ -161,10 +152,21 @@ export function TopologyPage() {
                   <div
                     key={slotKey(pos)}
                     role="gridcell"
-                    className={`topology-cell ${isDuplicate ? "topology-cell--duplicate" : ""} ${slot?.locked ? "topology-cell--locked" : ""}`}
-                    onDragOver={(e) => e.preventDefault()}
+                    className={`topology-cell ${isDuplicate ? "topology-cell--duplicate" : ""} ${slot?.locked ? "topology-cell--locked" : ""} ${dragOverKey === slotKey(pos) && !slot?.locked ? "topology-cell--dragover" : ""}`}
+                    onDragOver={(e) => {
+                      // Imprescindible en TODA la celda (también la ocupada) para que sea
+                      // un destino de suelta válido; sin esto la celda central no aceptaba.
+                      e.preventDefault();
+                      if (draggedId && dragOverKey !== slotKey(pos)) setDragOverKey(slotKey(pos));
+                    }}
+                    onDragLeave={(e) => {
+                      // Sólo limpia si el puntero abandona la celda de verdad (no al pasar
+                      // por un hijo), comparando con relatedTarget.
+                      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragOverKey((k) => (k === slotKey(pos) ? null : k));
+                    }}
                     onDrop={(e) => {
                       e.preventDefault();
+                      setDragOverKey(null);
                       if (draggedId) moveModule(draggedId, pos);
                     }}
                   >

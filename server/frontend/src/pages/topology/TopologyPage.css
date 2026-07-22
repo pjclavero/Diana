@@ -21,6 +21,13 @@
   border-style: solid;
 }
 
+.topology-cell--dragover {
+  border-color: #2563eb;
+  border-style: dashed;
+  background: #eff6ff;
+  box-shadow: inset 0 0 0 2px #2563eb;
+}
+
 .topology-cell__coord {
   font-size: 0.75rem;
   color: #6b7280;

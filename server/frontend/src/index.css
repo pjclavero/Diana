@@ -145,3 +145,24 @@ fieldset {
   white-space: nowrap;
   border: 0;
 }
+
+/* Botón "volver" reutilizable (G-A) */
+.back-button {
+  margin-bottom: 0.75rem;
+  background: transparent;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 0.35rem 0.8rem;
+  cursor: pointer;
+  color: inherit;
+}
+.back-button:hover {
+  background: #f3f4f6;
+}
+
+/* Botón de estado activo en prueba de LED: enciende/apaga (G-A) */
+button.is-active {
+  background: #2563eb;
+  color: #fff;
+  border-color: #1d4ed8;
+}
