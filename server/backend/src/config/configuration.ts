@@ -32,6 +32,14 @@ export interface AppConfig {
     telemetryDays: number;
     auditDays: number;
   };
+  firmware: {
+    /** Directorio donde se guardan los binarios subidos (volumen persistente). */
+    dir: string;
+    /** Base URL absoluta que el MÓDULO usa para descargar la OTA (red local). */
+    publicBaseUrl: string;
+    /** Tamaño máximo del binario en bytes. */
+    maxBytes: number;
+  };
 }
 
 function int(value: string | undefined, fallback: number): number {
@@ -82,6 +90,11 @@ export function loadConfiguration(): AppConfig {
       hitEventsDays: int(process.env.RETENTION_HIT_EVENTS_DAYS, 730),
       telemetryDays: int(process.env.RETENTION_TELEMETRY_DAYS, 30),
       auditDays: int(process.env.RETENTION_AUDIT_DAYS, 1095),
+    },
+    firmware: {
+      dir: process.env.FIRMWARE_DIR ?? '/app/firmware',
+      publicBaseUrl: (process.env.FIRMWARE_PUBLIC_BASE_URL ?? 'http://localhost:8080').replace(/\/+$/, ''),
+      maxBytes: int(process.env.FIRMWARE_MAX_BYTES, 16 * 1024 * 1024),
     },
   };
 }

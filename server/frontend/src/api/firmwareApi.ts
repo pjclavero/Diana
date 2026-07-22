@@ -99,6 +99,50 @@ export function createFirmwareVersion(payload: NewFirmwareVersion): Promise<Firm
   return req<FirmwareVersion>("/firmware", { method: "POST", body: JSON.stringify(payload) });
 }
 
+export interface UploadFirmwareFields {
+  version: string;
+  targetBoard: string;
+  signature?: string;
+  notes?: string;
+}
+
+/**
+ * Sube el BINARIO de firmware (multipart). El backend calcula sha256/tamaño del
+ * archivo y sirve la descarga; no se envía Content-Type (lo pone el navegador con
+ * el boundary de multipart).
+ */
+export async function uploadFirmwareBinary(file: File, fields: UploadFirmwareFields): Promise<FirmwareVersion> {
+  const token = getToken();
+  const form = new FormData();
+  form.append("binary", file);
+  form.append("version", fields.version);
+  form.append("target_board", fields.targetBoard);
+  if (fields.signature) form.append("signature", fields.signature);
+  if (fields.notes) form.append("notes", fields.notes);
+
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/firmware/upload`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+  } catch {
+    throw new ApiError("No se puede contactar con el servidor.");
+  }
+  if (res.status === 401 || res.status === 403) throw new ApiError("No tiene permiso para subir firmware.");
+  if (!res.ok) {
+    let detail = "";
+    try {
+      detail = ((await res.json()) as { message?: string }).message ?? "";
+    } catch {
+      /* sin cuerpo */
+    }
+    throw new ApiError(detail || "No se ha podido subir el binario.");
+  }
+  return (await res.json()) as FirmwareVersion;
+}
+
 export function availableForModule(moduleId: string): Promise<AvailableFirmware> {
   return req<AvailableFirmware>(`/modules/${moduleId}/firmware/available`);
 }

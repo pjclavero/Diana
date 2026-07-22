@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FirmwarePage } from "./FirmwarePage";
 import { AuthProvider } from "../../auth/AuthContext";
@@ -59,15 +59,41 @@ describe("FirmwarePage", () => {
     await waitFor(() => expect(deploy).toHaveBeenCalledWith("m1", "fw2"));
   });
 
-  it("el admin ve el formulario de subir versión y pide todos los módulos", async () => {
+  it("el admin ve el formulario de subir el binario y pide todos los módulos", async () => {
     const all = vi.spyOn(modulesApi, "listModules").mockResolvedValue([MODULE]);
     vi.spyOn(firmwareApi, "availableForModule").mockResolvedValue(AVAILABLE);
     vi.spyOn(firmwareApi, "listDeployments").mockResolvedValue([]);
 
     renderPage(ADMIN);
 
-    expect(await screen.findByRole("button", { name: "Registrar versión" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Subir binario" })).toBeInTheDocument();
+    // El campo de archivo .bin está presente.
+    expect(document.querySelector('input[type="file"]')).not.toBeNull();
     expect(all).toHaveBeenCalled();
+  });
+
+  it("el admin sube un binario y se llama a uploadFirmwareBinary con los campos", async () => {
+    vi.spyOn(modulesApi, "listModules").mockResolvedValue([MODULE]);
+    vi.spyOn(firmwareApi, "availableForModule").mockResolvedValue(AVAILABLE);
+    vi.spyOn(firmwareApi, "listDeployments").mockResolvedValue([]);
+    const upload = vi.spyOn(firmwareApi, "uploadFirmwareBinary").mockResolvedValue({
+      id: "fwX", version: "1.3.0", targetBoard: "esp32-s3", url: "http://x/api/firmware/fwX/binary",
+      sha256: "d".repeat(64), sizeBytes: 2048, signed: true, notes: null, releasedAt: "2026-07-22T00:00:00Z",
+    });
+
+    renderPage(ADMIN);
+
+    const fileInput = (await screen.findByLabelText(/Archivo del firmware/)) as HTMLInputElement;
+    const bin = new File([new Uint8Array([1, 2, 3])], "fw.bin", { type: "application/octet-stream" });
+    await userEvent.upload(fileInput, bin);
+    await userEvent.type(screen.getByPlaceholderText("1.2.0"), "1.3.0");
+    await userEvent.type(screen.getByPlaceholderText("esp32-s3"), "esp32-s3");
+    // Se dispara el submit del formulario directamente (evitar la validación
+    // nativa de required+file de jsdom, que bloquea el click en el botón).
+    fireEvent.submit(fileInput.closest("form")!);
+
+    await waitFor(() => expect(upload).toHaveBeenCalled());
+    expect(upload.mock.calls[0][1]).toEqual(expect.objectContaining({ version: "1.3.0", targetBoard: "esp32-s3" }));
   });
 
   it("con un despliegue en curso no ofrece lanzar otro", async () => {

@@ -5,12 +5,11 @@ import { ApiError } from "../../api/client";
 import { listModules, listMyModules, type ModuleEntity } from "../../api/modulesApi";
 import {
   availableForModule,
-  createFirmwareVersion,
   deployFirmware,
   listDeployments,
+  uploadFirmwareBinary,
   type AvailableFirmware,
   type DeploymentRow,
-  type NewFirmwareVersion,
 } from "../../api/firmwareApi";
 
 /**
@@ -160,72 +159,71 @@ function ModuleFirmwareCard({ module, canDeploy }: { module: ModuleEntity; canDe
   );
 }
 
-const EMPTY: NewFirmwareVersion = { version: "", targetBoard: "", url: "", sha256: "", sizeBytes: 0, signature: "", signed: true };
-
-/** Alta de versión de firmware (solo admin). Registra la versión firmada. */
+/**
+ * Subida del BINARIO de firmware (solo admin). Se sube el archivo `.bin`; el
+ * backend calcula sha256 y tamaño y sirve la descarga por HTTP local para la OTA.
+ * Sin firma la versión queda sin firmar y NO es desplegable (dosier 23.3).
+ */
 function UploadFirmware({ onUploaded }: { onUploaded: () => void }) {
-  const [form, setForm] = useState<NewFirmwareVersion>(EMPTY);
+  const [version, setVersion] = useState("");
+  const [targetBoard, setTargetBoard] = useState("");
+  const [signature, setSignature] = useState("");
+  const [notes, setNotes] = useState("");
+  const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  function set<K extends keyof NewFirmwareVersion>(key: K, value: NewFirmwareVersion[K]) {
-    setForm((f) => ({ ...f, [key]: value }));
-  }
-
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (!file) {
+      setError("Selecciona el archivo .bin del firmware.");
+      return;
+    }
     setBusy(true);
     setError(null);
     setOk(null);
     try {
-      const created = await createFirmwareVersion({ ...form, sizeBytes: Number(form.sizeBytes) });
-      setOk(`Registrada la versión ${created.version}.`);
-      setForm(EMPTY);
+      const created = await uploadFirmwareBinary(file, { version, targetBoard, signature: signature || undefined, notes: notes || undefined });
+      setOk(`Subida la versión ${created.version} (${(created.sizeBytes / 1024).toFixed(0)} KiB, sha256 ${created.sha256.slice(0, 12)}…)${created.signed ? "" : " — SIN firmar, no desplegable"}.`);
+      setVersion("");
+      setTargetBoard("");
+      setSignature("");
+      setNotes("");
+      setFile(null);
       onUploaded();
     } catch (err) {
-      setError(err instanceof ApiError ? err.userMessage : "No se ha podido registrar la versión.");
+      setError(err instanceof ApiError ? err.userMessage : "No se ha podido subir el binario.");
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Card title="Subir versión de firmware">
+    <Card title="Subir firmware (binario)">
       <form onSubmit={submit} className="firmware-upload">
         <label>
+          Archivo del firmware (.bin){" "}
+          <input required type="file" accept=".bin,application/octet-stream" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        </label>
+        <label>
           Versión (semver){" "}
-          <input required value={form.version} onChange={(e) => set("version", e.target.value)} placeholder="1.2.0" />
+          <input required value={version} onChange={(e) => setVersion(e.target.value)} placeholder="1.2.0" />
         </label>
         <label>
           Placa objetivo{" "}
-          <input required value={form.targetBoard} onChange={(e) => set("targetBoard", e.target.value)} placeholder="esp32-s3" />
+          <input required value={targetBoard} onChange={(e) => setTargetBoard(e.target.value)} placeholder="esp32-s3" />
         </label>
         <label>
-          URL del binario{" "}
-          <input required value={form.url} onChange={(e) => set("url", e.target.value)} placeholder="http://192.168.1.209:8080/fw/1.2.0.bin" />
-        </label>
-        <label>
-          SHA-256{" "}
-          <input required value={form.sha256} onChange={(e) => set("sha256", e.target.value)} minLength={64} maxLength={64} />
-        </label>
-        <label>
-          Tamaño (bytes){" "}
-          <input required type="number" min={1} value={form.sizeBytes || ""} onChange={(e) => set("sizeBytes", Number(e.target.value))} />
-        </label>
-        <label>
-          Firma (base64){" "}
-          <input required value={form.signature} onChange={(e) => set("signature", e.target.value)} />
+          Firma (base64, obligatoria para poder desplegar la OTA){" "}
+          <input value={signature} onChange={(e) => setSignature(e.target.value)} placeholder="firma del binario" />
         </label>
         <label>
           Notas{" "}
-          <input value={form.notes ?? ""} onChange={(e) => set("notes", e.target.value)} />
-        </label>
-        <label>
-          <input type="checkbox" checked={form.signed} onChange={(e) => set("signed", e.target.checked)} /> Firmada (obligatorio para OTA)
+          <input value={notes} onChange={(e) => setNotes(e.target.value)} />
         </label>
         <button type="submit" disabled={busy}>
-          Registrar versión
+          {busy ? "Subiendo…" : "Subir binario"}
         </button>
       </form>
       {ok && <p role="status">{ok}</p>}

@@ -138,6 +138,10 @@ services:
       # Con el nombre equivocado el panel se quedaba sin CORS (origin:false).
       CORS_ORIGINS: ${BACKEND_CORS_ORIGIN:-http://localhost:8080}
       LOG_LEVEL: ${BACKEND_LOG_LEVEL:-info}
+      # Firmware (G-B): binarios en el volumen diana_firmware; la URL de descarga
+      # debe ser la dirección del backend en la RED LOCAL (la usa el módulo en la OTA).
+      FIRMWARE_DIR: ${FIRMWARE_DIR:-/app/firmware}
+      FIRMWARE_PUBLIC_BASE_URL: ${FIRMWARE_PUBLIC_BASE_URL:-http://localhost:8080}
       TZ: UTC
     volumes:
       - diana_exports:/app/exports
