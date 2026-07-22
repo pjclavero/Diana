@@ -1,5 +1,8 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { ParticipantsService } from '../../src/modules/participants/participants.service';
+
+const p2002 = () => new Prisma.PrismaClientKnownRequestError('unique', { code: 'P2002', clientVersion: 'x' });
 
 function buildPrisma(over: {
   game?: any; player?: any; participant?: Partial<Record<string, jest.Mock>>;
@@ -60,6 +63,23 @@ describe('ParticipantsService (G-D.2 temporales)', () => {
     const prisma = buildPrisma({ participant: { findFirst: jest.fn().mockResolvedValue({ slot: 3 }) } });
     const p: any = await new ParticipantsService(prisma).add({ gameId: 'g1', guestName: 'Paco' });
     expect(p.slot).toBe(4);
+  });
+
+  it('reintenta al colisionar el slot (P2002) y acaba creando (OBS supervisor)', async () => {
+    const create = jest
+      .fn()
+      .mockRejectedValueOnce(p2002())
+      .mockImplementationOnce(({ data }: any) => Promise.resolve({ id: 'ok', ...data }));
+    const prisma = buildPrisma({ participant: { create } });
+    const p: any = await new ParticipantsService(prisma).add({ gameId: 'g1', guestName: 'Paco' });
+    expect(p.id).toBe('ok');
+    expect(create).toHaveBeenCalledTimes(2);
+  });
+
+  it('si la colisión de slot persiste, responde Conflict (no 500)', async () => {
+    const create = jest.fn().mockRejectedValue(p2002());
+    const prisma = buildPrisma({ participant: { create } });
+    await expect(new ParticipantsService(prisma).add({ gameId: 'g1', guestName: 'Paco' })).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('listForGame marca temporary=true a los que tienen guestName', async () => {

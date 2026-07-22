@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
 export interface AddParticipantInput {
@@ -54,23 +55,31 @@ export class ParticipantsService {
     }
 
     // Slot siguiente dentro de la partida (participantes de la partida, roundId nulo).
-    const last = await this.prisma.participant.findFirst({
-      where: { gameId: input.gameId, roundId: null },
-      orderBy: { slot: 'desc' },
-      select: { slot: true },
-    });
-    const slot = (last?.slot ?? 0) + 1;
-
-    return this.prisma.participant.create({
-      data: {
-        gameId: input.gameId,
-        playerId: hasPlayer ? input.playerId! : null,
-        guestName: hasGuest ? guest : null,
-        teamId: input.teamId ?? null,
-        slot,
-      },
-      include: this.include,
-    });
+    // Con `@@unique([gameId, slot, roundId])`, dos altas concurrentes podrían calcular
+    // el mismo slot; se reintenta ante la colisión (P2002) recalculando (OBS supervisor).
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const last = await this.prisma.participant.findFirst({
+        where: { gameId: input.gameId, roundId: null },
+        orderBy: { slot: 'desc' },
+        select: { slot: true },
+      });
+      try {
+        return await this.prisma.participant.create({
+          data: {
+            gameId: input.gameId,
+            playerId: hasPlayer ? input.playerId! : null,
+            guestName: hasGuest ? guest : null,
+            teamId: input.teamId ?? null,
+            slot: (last?.slot ?? 0) + 1,
+          },
+          include: this.include,
+        });
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') continue;
+        throw error;
+      }
+    }
+    throw new ConflictException('No se pudo asignar un puesto libre; inténtelo de nuevo.');
   }
 
   async remove(id: string) {
