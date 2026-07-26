@@ -44,6 +44,7 @@ describe('Arranque de la aplicación', () => {
       '/api/accuracy/rounds/{roundId}/participants/{participantId}',
       '/api/ammo/participants/{participantId}',
       '/api/exports/rounds/{roundId}/hits.csv',
+      '/api/statistics/games/{gameId}/participants/{participantId}/reset',
       '/api/audit',
       '/api/health',
       '/api/mqtt/status',

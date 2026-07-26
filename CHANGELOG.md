@@ -24,6 +24,14 @@ Versionado semántico.
   multipanel y guardarraíl «una partida activa por panel»; y **detección real de caída de
   módulo** con auto-pausa, pausa dura si cae el coordinador y decisión del operador.
 - **Contrato MQTT ampliado (aditivo):** `coordinator_module_id` en `module-config`.
+- **Reinicio de la estadística de un jugador en una partida (F4, §3.4):**
+  `POST /api/statistics/games/:gameId/participants/:participantId/reset`, sólo para gestor (de
+  las partidas jugadas en sus paneles) y admin, auditado e idempotente. Borra los resultados,
+  penalizaciones y munición de ese jugador **en esa partida** —las entradas con las que se
+  recalcula, para que el reinicio no lo deshaga el primer recálculo— y **desatribuye** sus
+  impactos en lugar de borrarlos, porque son telemetría del firmware. La estadística global no
+  se toca a mano: se deriva de los resultados, así que quitar los de esa partida la ajusta sola.
+  En el panel, botón con confirmación en la ficha del jugador del marcador. **Sin desplegar.**
 
 ### Corregido
 

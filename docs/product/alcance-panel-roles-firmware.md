@@ -136,6 +136,13 @@ El gestor no se «solicita» en abstracto: nace de **vender/vincular un módulo*
   - **Dos temporales con el mismo nombre en partidas distintas NO tienen relación** entre sí
     (cada temporal es una identidad aislada, sin `User`).
 - Gestor/admin pueden **resetear** las estadísticas de un jugador **en una partida** concreta.
+  Implementado en F4 (§4). Alcance exacto del reinicio, para que nadie tenga que adivinarlo:
+  se borran los `Result`, `Penalty` y `ShotCount` de ese jugador **en esa partida** (todos sus
+  puestos, incluido el de ronda) y se **desatribuyen** sus `HitEvent` (`participantId = NULL`)
+  **sin borrarlos**, porque son telemetría del firmware y no del backend. El participante sigue
+  en la partida. El acumulado global se corrige solo: hoy **se deriva** de los `Result`, no hay
+  ningún total escrito que restar. Se rechaza con la partida en curso (`running`/`paused`),
+  porque el motor recalcularía lo borrado.
 
 > **Decidido (2026-07-21):** el temporal es una identidad **por partida**, sin `User`, sin
 > `Statistic` acumulada, sin acceso; sus números viven sólo en el `Result`/`Participant` de esa
@@ -158,7 +165,7 @@ verificado en el código de `develop` @ `133d760`.
 | **Propiedad de módulo** (`owner`) + vincular/desvincular | 🔴 nuevo: `Module` no tiene dueño | ✅ **hecho y desplegado** (F2): `Module.ownerId`, `link`/`unlink`, y el acotado por dueño llega ya hasta paneles y matrices |
 | **Aprobación usuario→gestor + código** | 🔴 nuevo | 🟡 **parcial** (F5/G-D): hay invitación por correo con código visible y auditado, regenerable y revocable, + panel SMTP sólo-admin. Falta el **código de activación específico del ascenso a gestor** (§3.1 pasos 3-5) y el **envío real** de correo |
 | **Usuarios temporales** | 🔴 nuevo | ✅ **hecho y desplegado** (G-D.2): identidad por partida (XOR `playerId`/`guestName`), sin `User` y **sin estadística acumulada por construcción**, no por convención |
-| **Reset de estadísticas por partida** | 🔴 nuevo | 🔴 **sin hacer.** Comprobado el 2026-07-26: no hay endpoint ni servicio de reset |
+| **Reset de estadísticas por partida** | 🔴 nuevo | ✅ **hecho** (F4, 2026-07-26): `POST /api/statistics/games/:gameId/participants/:participantId/reset` con permiso `stats:reset` (gestor de sus paneles + admin), auditado e idempotente. Borra `Result`, `Penalty` y `ShotCount` de ese jugador **en esa partida** —las entradas con las que se recalcula, no sólo el resultado— y **desatribuye** sus `HitEvent` sin borrarlos (telemetría inmutable). La estadística global no se corrompe porque **se deriva** de los `Result`: nadie escribe la tabla `Statistic`. **No verificado contra el backend desplegado ni contra PostgreSQL real** |
 | **Login en el panel** (JWT) + rutas reales panel↔backend | 🔴 nuevo (X-21/X-22) | ✅ login **hecho y desplegado** (F1; cierra X-22). Rutas reales: 🟡 **las pantallas nuevas sí**, las heredadas siguen en datos de demostración (X-21 parcial) |
 
 ## 5. Decisiones (2026-07-21)

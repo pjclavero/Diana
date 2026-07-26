@@ -4,9 +4,12 @@ import {
   getParticipantHistory,
   getScoreboard,
   listRecentGames,
+  resetParticipantStats,
   type ParticipantHistory,
   type Scoreboard,
+  type StatsResetOutcome,
 } from "../../api/scoreboardApi";
+import { useAuth } from "../../auth/AuthContext";
 import { useAsync } from "../../hooks/useAsync";
 import { BackButton } from "../../components/ui/BackButton";
 import { Card, EmptyState, ErrorState, LoadingState } from "../../components/ui/Feedback";
@@ -72,6 +75,11 @@ export function ScoreboardPage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [history, setHistory] = useState<ParticipantHistory | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [confirmingReset, setConfirmingReset] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetOutcome, setResetOutcome] = useState<StatsResetOutcome | null>(null);
+  const { can } = useAuth();
 
   const mounted = useRef(true);
   useEffect(() => {
@@ -109,6 +117,11 @@ export function ScoreboardPage() {
   }, [live, load]);
 
   useEffect(() => {
+    // Cambiar de jugador cierra cualquier confirmación o resultado anterior:
+    // confirmar un borrado y que lo reciba otro sería un desastre silencioso.
+    setConfirmingReset(false);
+    setResetError(null);
+    setResetOutcome(null);
     if (!selected) {
       setHistory(null);
       return;
@@ -126,6 +139,26 @@ export function ScoreboardPage() {
       cancelled = true;
     };
   }, [selected]);
+
+  const doReset = useCallback(async () => {
+    if (!gameId || !selected) return;
+    setResetting(true);
+    setResetError(null);
+    try {
+      const outcome = await resetParticipantStats(gameId, selected);
+      if (!mounted.current) return;
+      setResetOutcome(outcome);
+      setConfirmingReset(false);
+      // Marcador y ficha quedan obsoletos en cuanto se borra: se recargan.
+      await load();
+      const refreshed = await getParticipantHistory(selected);
+      if (mounted.current) setHistory(refreshed);
+    } catch (e) {
+      if (mounted.current) setResetError(e instanceof Error ? e.message : "No se pudo reiniciar la estadística.");
+    } finally {
+      if (mounted.current) setResetting(false);
+    }
+  }, [gameId, selected, load]);
 
   if (!gameId) return <ScoreboardPicker />;
 
@@ -321,6 +354,65 @@ export function ScoreboardPage() {
                         </div>
                       )}
                     </>
+                  )}
+
+                  {/* §3.4: reinicio por partida. Sólo gestor/admin (stats:reset);
+                      el backend vuelve a comprobarlo, esto sólo evita enseñar
+                      un botón que no se puede usar. */}
+                  {can("stats:reset") && (
+                    <div className="scoreboard-reset">
+                      <h3>Reiniciar estadística de esta partida</h3>
+                      {!confirmingReset && !resetOutcome && (
+                        <button type="button" onClick={() => setConfirmingReset(true)}>
+                          Reiniciar estadística de {history.name} en esta partida
+                        </button>
+                      )}
+
+                      {confirmingReset && (
+                        <div role="alertdialog" aria-label="Confirmar reinicio de estadística">
+                          <p>
+                            Va a reiniciar la estadística de <strong>{history.name}</strong> en{" "}
+                            <strong>esta partida</strong>. No se puede deshacer.
+                          </p>
+                          <p>
+                            <strong>Se borra:</strong> sus resultados, penalizaciones y munición de esta
+                            partida.
+                          </p>
+                          <p>
+                            <strong>No se borra:</strong> los impactos registrados (se conservan, pero dejarán
+                            de estar atribuidos a este jugador y el marcador los contará como «sin atribuir»),
+                            su puesto en la partida, ni ninguna otra partida.
+                          </p>
+                          <p>
+                            {history.temporary
+                              ? "Es un jugador temporal: no tiene estadística acumulada, así que no hay nada global que descontar."
+                              : "Su estadística global se calcula sumando sus partidas: al quitar los resultados de ésta, el acumulado se ajusta solo; las demás partidas no se tocan."}
+                          </p>
+                          <button type="button" onClick={() => void doReset()} disabled={resetting}>
+                            {resetting ? "Reiniciando…" : "Sí, reiniciar"}
+                          </button>
+                          <button type="button" onClick={() => setConfirmingReset(false)} disabled={resetting}>
+                            Cancelar
+                          </button>
+                        </div>
+                      )}
+
+                      {resetError && <ErrorState message={resetError} />}
+
+                      {resetOutcome && (
+                        <div role="status">
+                          <p>
+                            Estadística reiniciada. Borrados: {resetOutcome.deleted.results} resultado(s),{" "}
+                            {resetOutcome.deleted.penalties} penalización(es) y {resetOutcome.deleted.shotCounts}{" "}
+                            registro(s) de munición. Impactos conservados pero sin atribuir:{" "}
+                            {resetOutcome.hitsDetached}.
+                          </p>
+                          {resetOutcome.notes.map((note) => (
+                            <p key={note}>{note}</p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </>
               )}

@@ -7,6 +7,8 @@ import {
   RoundStatistics,
 } from '../../domain/statistics/round-statistics';
 import { RequirePermissions } from '../auth/roles.decorator';
+import { StatsResetController } from './stats-reset.controller';
+import { StatsResetService } from './stats-reset.service';
 
 @Injectable()
 export class StatisticsService {
@@ -80,8 +82,8 @@ export class StatisticsController {
 }
 
 @Module({
-  controllers: [StatisticsController],
-  providers: [StatisticsService],
-  exports: [StatisticsService],
+  controllers: [StatisticsController, StatsResetController],
+  providers: [StatisticsService, StatsResetService],
+  exports: [StatisticsService, StatsResetService],
 })
 export class StatisticsModule {}

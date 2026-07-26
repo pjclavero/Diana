@@ -78,3 +78,28 @@
   font-size: 0.8rem;
   opacity: 0.75;
 }
+
+/* Reinicio de estadística (§3.4): acción destructiva, separada del resto de la
+   ficha para que no se pulse por inercia. */
+.scoreboard-reset {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(127, 29, 29, 0.5);
+}
+
+.scoreboard-reset h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.scoreboard-reset [role="alertdialog"] {
+  border: 1px solid #b91c1c;
+  border-radius: 6px;
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.scoreboard-reset [role="alertdialog"] p {
+  margin: 0;
+}

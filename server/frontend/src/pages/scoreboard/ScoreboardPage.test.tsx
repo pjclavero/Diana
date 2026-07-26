@@ -5,6 +5,8 @@ import userEvent from "@testing-library/user-event";
 import { ScoreboardPage } from "./ScoreboardPage";
 import * as api from "../../api/scoreboardApi";
 import type { Scoreboard } from "../../api/scoreboardApi";
+import { AuthProvider } from "../../auth/AuthContext";
+import type { AuthUser } from "../../auth/authApi";
 
 function board(over: Partial<Scoreboard> = {}): Scoreboard {
   return {
@@ -70,13 +72,32 @@ function board(over: Partial<Scoreboard> = {}): Scoreboard {
   };
 }
 
-function renderAt(gameId = "11111111-1111-4111-8111-111111111111") {
+/** Jugador raso: no tiene `stats:reset`, así que no ve el reinicio. */
+const JUGADOR: AuthUser = {
+  id: "u-jug",
+  username: "jugador",
+  role: "jugador",
+  permissions: ["profile:read"],
+  must_change_password: false,
+};
+
+const GESTOR: AuthUser = {
+  id: "u-ges",
+  username: "gestor",
+  role: "gestor",
+  permissions: ["statistics:read", "stats:reset"],
+  must_change_password: false,
+};
+
+function renderAt(gameId = "11111111-1111-4111-8111-111111111111", user: AuthUser = JUGADOR) {
   return render(
-    <MemoryRouter initialEntries={[`/marcador/${gameId}`]}>
-      <Routes>
-        <Route path="/marcador/:gameId" element={<ScoreboardPage />} />
-      </Routes>
-    </MemoryRouter>,
+    <AuthProvider initialUser={user}>
+      <MemoryRouter initialEntries={[`/marcador/${gameId}`]}>
+        <Routes>
+          <Route path="/marcador/:gameId" element={<ScoreboardPage />} />
+        </Routes>
+      </MemoryRouter>
+    </AuthProvider>,
   );
 }
 
@@ -308,5 +329,117 @@ describe("ScoreboardPage (G-G · marcador tipo dardos)", () => {
 
     expect(await screen.findByText("Partida no encontrada")).toBeInTheDocument();
     expect(screen.queryByText("Clasificación")).not.toBeInTheDocument();
+  });
+});
+
+describe("ScoreboardPage · reinicio de estadística por partida (F4 · §3.4)", () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  const anaHistory: api.ParticipantHistory = {
+    participantId: "p1",
+    name: "Ana",
+    temporary: false,
+    note: null,
+    history: {
+      playerId: "pl1",
+      rounds: 3,
+      totalValidHits: 12,
+      averageAccuracyValid: 0.75,
+      roundsWithoutAccuracy: 0,
+      bestTimeUs: 5_000_000,
+      recent: [],
+    },
+  };
+
+  const outcome: api.StatsResetOutcome = {
+    gameId: "11111111-1111-4111-8111-111111111111",
+    participantId: "p1",
+    participantIds: ["p1"],
+    playerId: "pl1",
+    playerName: "Ana",
+    temporary: false,
+    selfReset: false,
+    deleted: { results: 2, penalties: 1, shotCounts: 1, statistics: 0 },
+    hitsDetached: 3,
+    aggregatesPendingRecompute: 0,
+    notes: ["La estadística global del jugador se calcula a partir de los resultados de sus partidas."],
+  };
+
+  async function openFicha(user: AuthUser, history: api.ParticipantHistory = anaHistory) {
+    vi.spyOn(api, "getScoreboard").mockResolvedValue(board());
+    vi.spyOn(api, "getParticipantHistory").mockResolvedValue(history);
+    renderAt(undefined, user);
+    await screen.findByText("Ana");
+    await userEvent.click(screen.getAllByRole("button", { name: "Ver jugador" })[0]);
+    await screen.findByText("Ficha del jugador");
+  }
+
+  it("un jugador sin permiso NO ve el botón de reinicio", async () => {
+    await openFicha(JUGADOR);
+    expect(screen.queryByRole("button", { name: /Reiniciar estadística/ })).not.toBeInTheDocument();
+  });
+
+  it("el gestor ve el botón, y no borra nada hasta confirmar", async () => {
+    const reset = vi.spyOn(api, "resetParticipantStats").mockResolvedValue(outcome);
+    await openFicha(GESTOR);
+
+    await userEvent.click(await screen.findByRole("button", { name: /Reiniciar estadística de Ana/ }));
+
+    // La confirmación tiene que decir la verdad sobre el alcance.
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent(/resultados, penalizaciones y munición de esta partida/);
+    expect(dialog).toHaveTextContent(/dejarán de estar atribuidos/);
+    expect(dialog).toHaveTextContent(/ninguna otra partida/);
+    expect(reset).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(reset).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("al confirmar reinicia, recarga y cuenta lo que se ha borrado de verdad", async () => {
+    const reset = vi.spyOn(api, "resetParticipantStats").mockResolvedValue(outcome);
+    await openFicha(GESTOR);
+    const board1 = vi.mocked(api.getScoreboard).mock.calls.length;
+
+    await userEvent.click(await screen.findByRole("button", { name: /Reiniciar estadística de Ana/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Sí, reiniciar" }));
+
+    await waitFor(() =>
+      expect(reset).toHaveBeenCalledWith("11111111-1111-4111-8111-111111111111", "p1"),
+    );
+    expect(await screen.findByText(/Borrados: 2 resultado\(s\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Impactos conservados pero sin atribuir: 3/)).toBeInTheDocument();
+    // El marcador se recarga: lo que se ve ya no es lo de antes del borrado.
+    await waitFor(() => expect(vi.mocked(api.getScoreboard).mock.calls.length).toBeGreaterThan(board1));
+  });
+
+  it("con un temporal, la confirmación no promete descontar un acumulado que no existe", async () => {
+    vi.spyOn(api, "resetParticipantStats").mockResolvedValue(outcome);
+    await openFicha(GESTOR, {
+      participantId: "p1",
+      name: "Invitado",
+      temporary: true,
+      history: null,
+      note: "Jugador temporal: no acumula estadística histórica.",
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: /Reiniciar estadística de Invitado/ }));
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent(
+      /no tiene estadística acumulada/,
+    );
+  });
+
+  it("si el backend rechaza el reinicio, se enseña su motivo tal cual", async () => {
+    vi.spyOn(api, "resetParticipantStats").mockRejectedValue(
+      new Error('La partida está en curso (estado «running»): termínela o abórtela antes de reiniciar.'),
+    );
+    await openFicha(GESTOR);
+
+    await userEvent.click(await screen.findByRole("button", { name: /Reiniciar estadística de Ana/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Sí, reiniciar" }));
+
+    expect(await screen.findByText(/La partida está en curso/)).toBeInTheDocument();
+    expect(screen.queryByText(/Borrados:/)).not.toBeInTheDocument();
   });
 });

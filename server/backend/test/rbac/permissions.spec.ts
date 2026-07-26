@@ -69,6 +69,14 @@ describe('Roles y permisos (dosier 23.2)', () => {
       [ROLE.JUGADOR, 'games:write', false],
       [ROLE.JUGADOR, 'games:control', false],
       [ROLE.JUGADOR, 'statistics:read', false],
+      // §3.4: el reinicio de estadística por partida es de gestor/admin. Un
+      // jugador NO puede reiniciar la suya.
+      [ROLE.JUGADOR, 'stats:reset', false],
+      [ROLE.OPERADOR, 'stats:reset', false],
+      [ROLE.ARBITRO, 'stats:reset', false],
+      [ROLE.CONSULTA, 'stats:reset', false],
+      [ROLE.MANTENIMIENTO, 'stats:reset', false],
+      [ROLE.ADMINISTRADOR, 'stats:reset', true],
       [ROLE.JUGADOR, 'users:read', false],
       [ROLE.OPERADOR, 'games:control', true],
       [ROLE.OPERADOR, 'users:write', false],
