@@ -6,6 +6,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { ROLE } from '../../domain/rbac/permissions';
 import { MqttService } from '../mqtt/mqtt.service';
@@ -107,6 +108,18 @@ export class FirmwareDeploymentService {
     if (module.firmwareVersion && module.firmwareVersion === firmware.version) {
       throw new BadRequestException(`El módulo ya corre la versión ${firmware.version}.`);
     }
+    // D3: no se instala firmware de otra placa. Si la placa del módulo es
+    // desconocida NO se afirma compatibilidad: se exige declararla antes.
+    if (!module.targetBoard) {
+      throw new BadRequestException(
+        'No consta la placa del módulo (`targetBoard`): no se puede afirmar que este firmware sea compatible. Decláresela antes de desplegar.',
+      );
+    }
+    if (module.targetBoard !== firmware.targetBoard) {
+      throw new BadRequestException(
+        `Firmware incompatible: es para la placa '${firmware.targetBoard}' y el módulo es '${module.targetBoard}'.`,
+      );
+    }
 
     const inFlight = await this.prisma.deployment.findFirst({
       where: { moduleId, status: { in: [...IN_FLIGHT] } },
@@ -117,15 +130,27 @@ export class FirmwareDeploymentService {
       );
     }
 
-    const deployment = await this.prisma.deployment.create({
-      data: {
-        firmwareVersionId: firmware.id,
-        moduleId: module.id,
-        status: 'pending',
-        previousVersion: module.firmwareVersion ?? null,
-        requestedBy: actor.username,
-      },
-    });
+    // La comprobación anterior tiene carrera: la garantía real la da el índice
+    // único parcial `deployments_one_in_flight_per_module` (D2).
+    let deployment;
+    try {
+      deployment = await this.prisma.deployment.create({
+        data: {
+          firmwareVersionId: firmware.id,
+          moduleId: module.id,
+          status: 'pending',
+          previousVersion: module.firmwareVersion ?? null,
+          requestedBy: actor.username,
+        },
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException(
+          'El módulo acaba de recibir otro despliegue; espere a que termine o cancélelo.',
+        );
+      }
+      throw error;
+    }
 
     // El identificador MQTT del módulo es su `slug` (tópico), no el UUID interno.
     const firmwareBlock: Record<string, unknown> = {

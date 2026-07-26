@@ -10,7 +10,8 @@ function buildPrisma(modules: any[], latestSigned: any) {
 
 const mod = (over: Partial<any> = {}) => ({
   id: 'm1', slug: 'diana-01', friendlyName: null, online: true, state: 'ready', role: 'principal',
-  firmwareVersion: '1.0.0', maintenance: false, lastSeenAt: null, ownerId: 'g1', owner: null, position: null, ...over,
+  firmwareVersion: '1.0.0', maintenance: false, lastSeenAt: null, ownerId: 'g1', owner: null, position: null,
+  targetBoard: 'esp32-s3', ...over,
 });
 
 describe('ModulesOverviewService', () => {
@@ -48,5 +49,23 @@ describe('ModulesOverviewService', () => {
     const prisma = buildPrisma([mod(), mod({ id: 'm2', online: false })], null);
     const res = await new ModulesOverviewService(prisma).overview(admin);
     expect(res.summary).toEqual({ total: 2, online: 1, offline: 1, updatesPending: 0 });
+  });
+
+  it('no ofrece firmware de OTRA placa (F3/D3)', async () => {
+    const prisma = buildPrisma([mod({ targetBoard: 'esp32-c3' })], null);
+    // La consulta se acota por placa: para 'esp32-c3' no hay firmada.
+    const res = await new ModulesOverviewService(prisma).overview(admin);
+    expect(prisma.firmwareVersion.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { signed: true, targetBoard: 'esp32-c3' } }),
+    );
+    expect(res.items[0].updateAvailable).toBe(false);
+  });
+
+  it('sin placa declarada no afirma que haya actualización: lo dice', async () => {
+    const prisma = buildPrisma([mod({ targetBoard: null })], { version: '1.2.0', targetBoard: 'esp32-s3' });
+    const res = await new ModulesOverviewService(prisma).overview(admin);
+    expect(res.items[0].updateAvailable).toBe(false);
+    expect(res.items[0].updateUnknownReason).toMatch(/No consta la placa/);
+    expect(res.summary.updatesPending).toBe(0);
   });
 });

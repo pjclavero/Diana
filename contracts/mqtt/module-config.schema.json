@@ -26,6 +26,17 @@
         }
       ]
     },
+    "coordinator_module_id": {
+      "description": "Módulo PRINCIPAL al que debe seguir este satélite. Resuelve el caso de dos principales en la misma red, donde el selector AUTO no basta. null = decide el propio módulo (AUTO).",
+      "oneOf": [
+        {
+          "$ref": "../schemas/common.schema.json#/$defs/identifier"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "position": {
       "oneOf": [
         {

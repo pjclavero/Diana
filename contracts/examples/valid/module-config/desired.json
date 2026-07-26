@@ -4,6 +4,7 @@
   "module_id": "module-03",
   "config_version": 7,
   "system_id": "system-a",
+  "coordinator_module_id": "module-01",
   "position": {
     "x": -1,
     "y": 0

@@ -231,6 +231,9 @@ model Module {
   mac              String?           @db.VarChar(17)
   ip               String?           @db.VarChar(45)
   hardwareRevision String?           @map("hardware_revision") @db.VarChar(32)
+  /// Placa del módulo (`FirmwareVersion.targetBoard`). Sin ella no se puede
+  /// afirmar que una versión de firmware sea compatible (F3/D3).
+  targetBoard      String?           @map("target_board") @db.VarChar(64)
   firmwareVersion  String?           @map("firmware_version") @db.VarChar(32)
   role             ModuleRole?
   selector         SelectorPosition?

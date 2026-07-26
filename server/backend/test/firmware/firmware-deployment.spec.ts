@@ -27,7 +27,7 @@ function buildPrisma(overrides: {
 } = {}) {
   return {
     module: {
-      findUnique: jest.fn().mockResolvedValue({ id: 'm1', slug: 'diana-01', ownerId: 'g1', firmwareVersion: '1.1.0' }),
+      findUnique: jest.fn().mockResolvedValue({ id: 'm1', slug: 'diana-01', ownerId: 'g1', firmwareVersion: '1.1.0', targetBoard: 'esp32-s3' }),
       ...overrides.module,
     },
     firmwareVersion: {
@@ -90,7 +90,7 @@ describe('FirmwareDeploymentService', () => {
 
     it('el admin puede desplegar sobre cualquier módulo', async () => {
       const send = jest.fn().mockReturnValue({ command_id: 'cmd-2' });
-      const prisma = buildPrisma({ module: { findUnique: jest.fn().mockResolvedValue({ id: 'm1', slug: 'ajeno', ownerId: 'g2', firmwareVersion: '1.0.0' }) } });
+      const prisma = buildPrisma({ module: { findUnique: jest.fn().mockResolvedValue({ id: 'm1', slug: 'ajeno', ownerId: 'g2', firmwareVersion: '1.0.0', targetBoard: 'esp32-s3' }) } });
       const svc = new FirmwareDeploymentService(prisma, buildMqtt(send));
 
       await svc.deploy('m1', 'fw1', admin);
@@ -108,9 +108,61 @@ describe('FirmwareDeploymentService', () => {
     });
 
     it('rechaza si el módulo ya corre esa versión', async () => {
-      const prisma = buildPrisma({ module: { findUnique: jest.fn().mockResolvedValue({ id: 'm1', slug: 'diana-01', ownerId: 'g1', firmwareVersion: '1.2.0' }) } });
+      const prisma = buildPrisma({ module: { findUnique: jest.fn().mockResolvedValue({ id: 'm1', slug: 'diana-01', ownerId: 'g1', firmwareVersion: '1.2.0', targetBoard: 'esp32-s3' }) } });
       const svc = new FirmwareDeploymentService(prisma, buildMqtt());
       await expect(svc.deploy('m1', 'fw1', gestor)).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+      // --- Compatibilidad de placa (F3/D3) y despliegue en vuelo (F3/D2) ---
+
+    it('no despliega firmware de otra placa', async () => {
+      const prisma = buildPrisma({
+        module: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'm1',
+            slug: 'diana-01',
+            ownerId: 'g1',
+            firmwareVersion: '1.1.0',
+            targetBoard: 'esp32-c3',
+          }),
+        },
+      });
+      const svc = new FirmwareDeploymentService(prisma, buildMqtt());
+      await expect(svc.deploy('m1', 'fw1', gestor)).rejects.toThrow(/incompatible/);
+      expect(prisma.deployment.create).not.toHaveBeenCalled();
+    });
+
+    it('sin placa declarada NO se afirma compatibilidad: se rechaza', async () => {
+      const prisma = buildPrisma({
+        module: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'm1',
+            slug: 'diana-01',
+            ownerId: 'g1',
+            firmwareVersion: '1.1.0',
+            targetBoard: null,
+          }),
+        },
+      });
+      const svc = new FirmwareDeploymentService(prisma, buildMqtt());
+      await expect(svc.deploy('m1', 'fw1', gestor)).rejects.toThrow(/No consta la placa/);
+      expect(prisma.deployment.create).not.toHaveBeenCalled();
+    });
+
+    it('la carrera de dos despliegues la corta la base (P2002 → 409)', async () => {
+      const { Prisma } = await import('@prisma/client');
+      const prisma = buildPrisma({
+        deployment: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest
+            .fn()
+            .mockRejectedValue(
+              new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'x' }),
+            ),
+        },
+      });
+      const svc = new FirmwareDeploymentService(prisma, buildMqtt());
+      await expect(svc.deploy('m1', 'fw1', gestor)).rejects.toBeInstanceOf(ConflictException);
     });
 
     it('rechaza si ya hay un despliegue en curso', async () => {

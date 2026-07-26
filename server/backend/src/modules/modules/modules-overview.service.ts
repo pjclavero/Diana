@@ -13,9 +13,9 @@ export interface OverviewActor {
  * (existe una versión firmada más reciente que la que corre). El admin ve todos;
  * un no-admin (gestor) sólo los suyos.
  *
- * Nota: la compatibilidad de placa (`targetBoard` ↔ módulo) se difiere a F5/D3
- * (requiere un campo `Module.targetBoard` explícito). Hasta entonces se usa la
- * última versión firmada global como referencia de «hay algo más nuevo».
+ * Compatibilidad de placa (F3/D3, ya cerrada): la versión candidata es la más
+ * reciente firmada **para la placa del módulo**. Si la placa del módulo no
+ * consta, no se afirma que haya actualización: se dice que no se puede saber.
  */
 @Injectable()
 export class ModulesOverviewService {
@@ -34,13 +34,20 @@ export class ModulesOverviewService {
       orderBy: { slug: 'asc' },
     });
 
-    const latestSigned = await this.prisma.firmwareVersion.findFirst({
-      where: { signed: true },
-      orderBy: { releasedAt: 'desc' },
-      select: { version: true, targetBoard: true },
-    });
+    // Una candidata por placa: ofrecer firmware de otra placa sería mentir.
+    const boards = [...new Set(modules.map((m) => m.targetBoard).filter(Boolean))] as string[];
+    const signedByBoard = new Map<string, { version: string; targetBoard: string }>();
+    for (const board of boards) {
+      const latest = await this.prisma.firmwareVersion.findFirst({
+        where: { signed: true, targetBoard: board },
+        orderBy: { releasedAt: 'desc' },
+        select: { version: true, targetBoard: true },
+      });
+      if (latest) signedByBoard.set(board, latest);
+    }
 
     const items = modules.map((m) => {
+      const latestSigned = m.targetBoard ? (signedByBoard.get(m.targetBoard) ?? null) : null;
       const updateAvailable = latestSigned !== null && latestSigned.version !== m.firmwareVersion;
       return {
         id: m.id,
@@ -57,6 +64,11 @@ export class ModulesOverviewService {
         position: m.position ? { x: m.position.x, y: m.position.y } : null,
         updateAvailable,
         latestSignedVersion: latestSigned?.version ?? null,
+        targetBoard: m.targetBoard,
+        // Sin placa declarada no se puede afirmar ni negar que haya actualización.
+        updateUnknownReason: m.targetBoard
+          ? null
+          : 'No consta la placa del módulo: no se puede saber qué firmware le corresponde.',
       };
     });
 

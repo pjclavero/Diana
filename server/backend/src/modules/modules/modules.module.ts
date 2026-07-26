@@ -4,6 +4,7 @@ import { ModulesService } from './modules.service';
 import { ModuleOwnershipController } from './module-ownership.controller';
 import { ModuleOwnershipService } from './module-ownership.service';
 import { ModulesOverviewService } from './modules-overview.service';
+import { ModuleConfigService } from './module-config.service';
 
 export const ModulesController = createCrudController({
   path: 'modules',
@@ -17,7 +18,7 @@ export const ModulesController = createCrudController({
   // El controlador de propiedad va PRIMERO para que su ruta estática
   // `GET /modules/mine` se resuelva antes que el `GET /modules/:id` del CRUD.
   controllers: [ModuleOwnershipController, ModulesController],
-  providers: [ModulesService, ModuleOwnershipService, ModulesOverviewService],
+  providers: [ModulesService, ModuleOwnershipService, ModulesOverviewService, ModuleConfigService],
   exports: [ModulesService],
 })
 export class ModulesModule {}
