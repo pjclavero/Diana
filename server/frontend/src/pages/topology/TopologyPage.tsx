@@ -121,11 +121,13 @@ export function TopologyPage() {
     void reloadLayouts();
   }, [reloadLayouts]);
 
-  // ¿Lo que se ve difiere de lo guardado en el panel?
+  // ¿Lo que se ve difiere de lo guardado en el panel? Sólo cuenta lo que SE
+  // GUARDA: el bloqueo es una ayuda local y no debe disparar el aviso.
   const dirty = useMemo(() => {
     if (!matrix) return false;
-    const saved = JSON.stringify(toEditorSlots(matrix));
-    return JSON.stringify(slots) !== saved;
+    const persisted = (list: TopologySlot[]) =>
+      JSON.stringify(list.map((s) => [s.module_id, s.position.x, s.position.y, s.rotation]));
+    return persisted(slots) !== persisted(toEditorSlots(matrix));
   }, [matrix, slots]);
 
   const duplicates = useMemo(() => findDuplicates(slots), [slots]);

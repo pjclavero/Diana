@@ -14,6 +14,7 @@ function view(panels: number[], ownerId: string | null = 'g1') {
 
 function buildPrisma(over: any = {}) {
   return {
+    game: { findFirst: jest.fn().mockResolvedValue(null), ...over.game },
     view: {
       findMany: jest.fn().mockResolvedValue([]),
       findUnique: jest.fn(),
@@ -89,6 +90,48 @@ describe('ViewsService (G-H · Opción B)', () => {
     it('NO lista con un solo panel', async () => {
       const prisma = buildPrisma({ view: { findUnique: jest.fn().mockResolvedValue(view([9])) } });
       expect((await new ViewsService(prisma).dueloReadiness('v1', admin)).ready).toBe(false);
+    });
+  });
+});
+
+/**
+ * Guarda añadida tras el defecto D3 del supervisor: `games.view_id` es
+ * ON DELETE SET NULL, así que tocar una vista con partida viva encima dejaría
+ * paneles en uso fuera del guardarraíl de concurrencia.
+ */
+describe('ViewsService · no se toca una vista con partida activa (D3)', () => {
+  const { ConflictException } = require('@nestjs/common');
+
+  it('no se puede borrar la vista mientras hay una partida activa encima', async () => {
+    const prisma = buildPrisma({
+      view: { findUnique: jest.fn().mockResolvedValue(view([9, 9])) },
+      game: { findFirst: jest.fn().mockResolvedValue({ id: 'g1', name: 'Torneo', status: 'running' }) },
+    });
+    await expect(new ViewsService(prisma).remove('v1', gestor)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(prisma.view.delete).not.toHaveBeenCalled();
+  });
+
+  it('tampoco se le puede quitar un panel', async () => {
+    const prisma = buildPrisma({
+      view: { findUnique: jest.fn().mockResolvedValue(view([9, 9])) },
+      game: { findFirst: jest.fn().mockResolvedValue({ id: 'g1', name: null, status: 'paused' }) },
+    });
+    await expect(new ViewsService(prisma).removePanel('v1', 's1', gestor)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(prisma.viewPanel.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('sin partida activa sí se borra, y sólo se miran los estados que ocupan panel', async () => {
+    const prisma = buildPrisma({ view: { findUnique: jest.fn().mockResolvedValue(view([9])) } });
+    await expect(new ViewsService(prisma).remove('v1', gestor)).resolves.toMatchObject({
+      deleted: true,
+    });
+    expect(prisma.game.findFirst.mock.calls[0][0].where).toEqual({
+      viewId: 'v1',
+      status: { in: ['armed', 'running', 'paused'] },
     });
   });
 });

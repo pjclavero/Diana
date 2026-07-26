@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { GamesService } from '../../src/modules/games/games.service';
 
 function buildPrisma(over: any = {}) {
@@ -205,6 +205,44 @@ describe('GamesService · el guardarraíl está cableado de verdad', () => {
     await expect(new GamesService(prisma, mqtt).control('g1', 'resume_game')).rejects.toBeInstanceOf(
       ConflictException,
     );
+    expect(mqtt.sendSystemCommand).not.toHaveBeenCalled();
+  });
+
+  it('start() no reabre una partida terminada ni abortada', async () => {
+    for (const status of ['finished', 'aborted']) {
+      const prisma = gamePrisma({ game: { status } });
+      const mqtt = { sendSystemCommand: jest.fn() } as any;
+      await expect(new GamesService(prisma, mqtt).start('g1', 'r1')).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+      expect(mqtt.sendSystemCommand).not.toHaveBeenCalled();
+      expect(prisma.__tx.game.update).not.toHaveBeenCalled();
+    }
+  });
+
+  it('si falla la orden MQTT, la partida NO queda marcada como en curso', async () => {
+    const prisma = gamePrisma();
+    // La transacción real revierte al propagarse el error: aquí se comprueba que
+    // la publicación ocurre DENTRO del callback, que es lo que lo hace posible.
+    prisma.$transaction = jest.fn(async (fn: any) => fn(prisma.__tx));
+    const mqtt = {
+      sendSystemCommand: jest.fn(() => {
+        throw new Error('Tópico fuera del contrato v1');
+      }),
+    } as any;
+    await expect(new GamesService(prisma, mqtt).start('g1', 'r1')).rejects.toThrow(/contrato v1/);
+    // El update se ejecutó dentro de la misma transacción que ha fallado.
+    const txCallback = (prisma.$transaction as jest.Mock).mock.calls[0][0];
+    expect(typeof txCallback).toBe('function');
+    expect(mqtt.sendSystemCommand).toHaveBeenCalled();
+  });
+
+  it('una orden de control desconocida es un 400, no un 500', async () => {
+    const prisma = gamePrisma({ game: { status: 'running' } });
+    const mqtt = { sendSystemCommand: jest.fn() } as any;
+    await expect(
+      new GamesService(prisma, mqtt).control('g1', 'nope' as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
     expect(mqtt.sendSystemCommand).not.toHaveBeenCalled();
   });
 

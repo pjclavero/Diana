@@ -31,6 +31,7 @@ function buildPrisma(over: any = {}) {
       findMany: jest.fn().mockResolvedValue([layoutRow()]),
       findUnique: jest.fn().mockResolvedValue(layoutRow()),
       count: jest.fn().mockResolvedValue(0),
+      findFirst: jest.fn().mockResolvedValue(null),
       create: jest.fn(({ data }: any) => Promise.resolve(layoutRow({ ...data }))),
       update: jest.fn(({ data }: any) => Promise.resolve(layoutRow(data))),
       delete: jest.fn().mockResolvedValue({}),
@@ -207,6 +208,60 @@ describe('MatrixLayoutsService · matrices favoritas (G-H)', () => {
       new MatrixLayoutsService(prisma).apply('l1', 's1', gestor),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('aplicar rechaza una matriz ya guardada con coordenadas fuera de la rejilla', async () => {
+    const prisma = buildPrisma({
+      matrixLayout: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue(layoutRow({ cells: [{ slug: 'mod-a', x: 7, y: 9, rotation: 0 }] })),
+      },
+    });
+    await expect(new MatrixLayoutsService(prisma).apply('l1', 's1', gestor)).rejects.toThrow(
+      /fuera de la rejilla/,
+    );
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('crear rechaza coordenadas fuera de la rejilla 3×3', async () => {
+    const prisma = buildPrisma();
+    await expect(
+      new MatrixLayoutsService(prisma).create(
+        { name: 'Mala', cells: [{ slug: 'mod-a', x: 7, y: 9, rotation: 0 }] },
+        gestor,
+      ),
+    ).rejects.toThrow(/fuera de la rejilla/);
+  });
+
+  it('el admin crea matrices PÚBLICAS y su cuota se cuenta sobre ellas', async () => {
+    const prisma = buildPrisma();
+    await new MatrixLayoutsService(prisma).create({ name: 'Común', cells }, admin);
+    expect(prisma.matrixLayout.create.mock.calls[0][0].data.ownerId).toBeNull();
+    // La cuota del admin no puede quedar en 0 para siempre: se cuenta por ownerId null.
+    expect(prisma.matrixLayout.count.mock.calls[0][0].where).toEqual({ ownerId: null });
+  });
+
+  it('dos matrices públicas con el mismo nombre se rechazan (Postgres no lo frena)', async () => {
+    const prisma = buildPrisma({
+      matrixLayout: { findFirst: jest.fn().mockResolvedValue(layoutRow({ ownerId: null })) },
+    });
+    await expect(
+      new MatrixLayoutsService(prisma).create({ name: 'Común', cells }, admin),
+    ).rejects.toThrow(/pública llamada/);
+    expect(prisma.matrixLayout.create).not.toHaveBeenCalled();
+  });
+
+  it('aplicar informa de los módulos desplazados de su casilla', async () => {
+    const prisma = buildPrisma({
+      modulePosition: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ moduleId: 'm-c', module: { slug: 'mod-c' }, x: 0, y: 0 }]),
+      },
+    });
+    const result = await new MatrixLayoutsService(prisma).apply('l1', 's1', gestor);
+    expect(result.displaced).toEqual(['mod-c']);
   });
 
   it('aplicar sobre un panel inexistente → 400', async () => {

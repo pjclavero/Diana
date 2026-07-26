@@ -51,6 +51,15 @@ export class MatrixLayoutsService {
     return actor.role === ROLE.ADMINISTRADOR;
   }
 
+  /**
+   * Dueño de las matrices que crea cada actor: el admin crea PÚBLICAS
+   * (`ownerId: null`), como en las vistas. La cuota y el recuento propio deben
+   * mirar ese mismo criterio o al admin no le aplicaría ningún límite.
+   */
+  private ownerScopeOf(actor: LayoutActor): string | null {
+    return this.isAdmin(actor) ? null : actor.userId;
+  }
+
   private assertOwned(layout: { ownerId: string | null }, actor: LayoutActor) {
     if (this.isAdmin(actor)) return;
     if (layout.ownerId !== actor.userId) {
@@ -90,7 +99,9 @@ export class MatrixLayoutsService {
       where,
       orderBy: [{ favorite: 'desc' }, { name: 'asc' }],
     });
-    const ownCount = await this.prisma.matrixLayout.count({ where: { ownerId: actor.userId } });
+    const ownCount = await this.prisma.matrixLayout.count({
+      where: { ownerId: this.ownerScopeOf(actor) },
+    });
     return { items: layouts.map((l) => this.shape(l)), ownCount, maxOwn: MAX_LAYOUTS_PER_OWNER };
   }
 
@@ -182,11 +193,21 @@ export class MatrixLayoutsService {
       seen.add(key);
     }
 
-    const ownCount = await this.prisma.matrixLayout.count({ where: { ownerId: actor.userId } });
+    const ownerId = this.ownerScopeOf(actor);
+    const ownCount = await this.prisma.matrixLayout.count({ where: { ownerId } });
     if (ownCount >= MAX_LAYOUTS_PER_OWNER) {
       throw new BadRequestException(
         `Has alcanzado el máximo de ${MAX_LAYOUTS_PER_OWNER} matrices guardadas. Borra alguna antes.`,
       );
+    }
+
+    // Con `ownerId` NULL, Postgres considera distintos los NULL y
+    // @@unique([ownerId, name]) NO impide dos públicas con el mismo nombre.
+    if (ownerId === null) {
+      const clash = await this.prisma.matrixLayout.findFirst({ where: { ownerId: null, name } });
+      if (clash) {
+        throw new BadRequestException(`Ya existe una matriz pública llamada «${name}»`);
+      }
     }
 
     try {
@@ -194,7 +215,7 @@ export class MatrixLayoutsService {
         data: {
           name,
           description: input.description ?? null,
-          ownerId: this.isAdmin(actor) ? null : actor.userId,
+          ownerId,
           originSystemId: input.origin_system_id ?? null,
           cells: input.cells.map((c) => ({
             slug: c.slug,
@@ -260,6 +281,24 @@ export class MatrixLayoutsService {
     });
     const bySlug = new Map(modules.map((m) => [m.slug, m.id]));
     const missing = slugs.filter((s) => !bySlug.has(s));
+    // Defensa en profundidad: una matriz guardada por otra vía (o antes de que
+    // existiera el acotado) podría traer coordenadas fuera de la rejilla y dejar
+    // un módulo colocado donde el editor no lo puede ver.
+    for (const cell of layout.cells) {
+      if (
+        !Number.isInteger(cell.x) ||
+        !Number.isInteger(cell.y) ||
+        cell.x < COORD_MIN ||
+        cell.x > COORD_MAX ||
+        cell.y < COORD_MIN ||
+        cell.y > COORD_MAX
+      ) {
+        throw new BadRequestException(
+          `La matriz «${layout.name}» tiene una posición fuera de la rejilla 3×3: (${cell.x}, ${cell.y}). Corríjala antes de aplicarla.`,
+        );
+      }
+    }
+
     const applicable = layout.cells.filter((c) => bySlug.has(c.slug));
     if (applicable.length === 0) {
       throw new BadRequestException(

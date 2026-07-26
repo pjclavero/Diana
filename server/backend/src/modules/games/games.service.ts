@@ -57,6 +57,13 @@ export const ACTIVE_GAME_STATUSES: Array<'armed' | 'running' | 'paused'> = [
   'paused',
 ];
 
+/** Estados desde los que tiene sentido autorizar el comienzo de una ronda. */
+export const STARTABLE_GAME_STATUSES = ['draft', 'armed', 'paused'] as const;
+
+/** Órdenes de control admitidas; cualquier otra cosa es un 400, no un 500. */
+export const CONTROL_ACTIONS = ['pause_game', 'resume_game', 'abort_game', 'end_game'] as const;
+export type ControlAction = (typeof CONTROL_ACTIONS)[number];
+
 /**
  * Orquestación administrativa de partidas.
  *
@@ -274,10 +281,27 @@ export class GamesService {
     const plan = round.plan as unknown as { activations: Array<{ targets: TargetRef[] }> } | null;
     if (!plan) throw new BadRequestException('La ronda no tiene plan calculado');
 
-    // Guardarraíl G-H, atómico: se toma un cerrojo por panel, se comprueba la
-    // ocupación y se marca la partida como en curso DENTRO de la misma
-    // transacción. Sin el cerrojo, dos `start` simultáneos sobre el mismo panel
-    // pasaban los dos la comprobación (lectura sin bloqueo).
+    // Una partida terminada o abortada no se reabre desde aquí: volvería a
+    // ocupar el panel una partida que el operador daba por cerrada.
+    if (!STARTABLE_GAME_STATUSES.includes(game.status as never)) {
+      throw new ConflictException(
+        `No se puede empezar una ronda de una partida en estado '${game.status}'.`,
+      );
+    }
+
+    const targets = Array.from(
+      new Map(
+        plan.activations
+          .flatMap((a) => a.targets)
+          .map((t) => [`${t.module_id}#${t.target_index}`, t]),
+      ).values(),
+    );
+
+    // Guardarraíl G-H, atómico: cerrojo por panel, comprobación de ocupación,
+    // marcado y ORDEN al coordinador dentro de la misma transacción. Si la
+    // publicación falla, la transacción revierte y la partida no queda ocupando
+    // un panel sin que se haya dado ninguna orden.
+    let command!: ReturnType<MqttService['sendSystemCommand']>;
     await this.prisma.$transaction(async (tx) => {
       await this.lockPanels(tx as unknown as TransactionClient, game);
       await this.assertPanelsFree(game, tx as unknown as PrismaLike);
@@ -289,20 +313,10 @@ export class GamesService {
         where: { id: roundId },
         data: { phase: 'countdown', startedAt: new Date() },
       });
-    });
-
-    const targets = Array.from(
-      new Map(
-        plan.activations
-          .flatMap((a) => a.targets)
-          .map((t) => [`${t.module_id}#${t.target_index}`, t]),
-      ).values(),
-    );
-
-    const command = this.mqtt.sendSystemCommand(
-      game.targetSystem.slug,
-      'start_game',
-      {
+      command = this.mqtt.sendSystemCommand(
+        game.targetSystem.slug,
+        'start_game',
+        {
         game: {
           game_id: game.id,
           round_id: round.id,
@@ -317,22 +331,28 @@ export class GamesService {
             round.reactionDelayMinMs !== null && round.reactionDelayMaxMs !== null
               ? [round.reactionDelayMinMs, round.reactionDelayMaxMs]
               : null,
-          seed: Number(round.seed ?? 0),
+            seed: Number(round.seed ?? 0),
+          },
         },
-      },
-      10000,
-    );
+        10000,
+      );
+    });
 
     return { command };
   }
 
   /** Órdenes de control: pausar, reanudar, abortar, finalizar. */
-  async control(gameId: string, action: 'pause_game' | 'resume_game' | 'abort_game' | 'end_game') {
+  async control(gameId: string, action: ControlAction) {
+    if (!CONTROL_ACTIONS.includes(action)) {
+      throw new BadRequestException(
+        `Orden de control desconocida: '${action}'. Admitidas: ${CONTROL_ACTIONS.join(', ')}.`,
+      );
+    }
     const game = await this.get(gameId);
 
     // Transiciones válidas: una orden sobre una partida que no está en el estado
     // adecuado no se envía al coordinador (antes se enviaba siempre).
-    const allowedFrom: Record<typeof action, string[]> = {
+    const allowedFrom: Record<ControlAction, string[]> = {
       pause_game: ['running'],
       resume_game: ['paused'],
       abort_game: ['armed', 'running', 'paused'],

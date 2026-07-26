@@ -131,6 +131,18 @@ describe("TopologyPage (X-21 · datos reales + G-H)", () => {
     expect(screen.getByText(/Han quedado sin colocar .*mod-c/)).toBeInTheDocument();
   });
 
+  it("bloquear una celda no es un cambio del panel: no avisa de cambios sin guardar", async () => {
+    stubPanels();
+    vi.spyOn(api, "getPanelMatrix").mockResolvedValue(matrix());
+    vi.spyOn(api, "listLayouts").mockResolvedValue({ items: [], ownCount: 0, maxOwn: 20 });
+
+    renderPage();
+    await screen.findByText("Matriz 3×3 · Panel A");
+    await userEvent.click(screen.getByRole("button", { name: "Bloquear" }));
+
+    expect(screen.queryByText(/Hay cambios sin guardar en el panel/)).not.toBeInTheDocument();
+  });
+
   it("guarda como matriz los cambios AÚN NO guardados en el panel, y lo avisa", async () => {
     stubPanels();
     vi.spyOn(api, "getPanelMatrix").mockResolvedValue(matrix());
