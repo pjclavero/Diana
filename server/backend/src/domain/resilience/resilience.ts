@@ -169,8 +169,17 @@ export function findStaleModules(
  * Cuánto se tolera el silencio simultáneo de todos antes de declarar las caídas
  * de todas formas. Acota el punto ciego: no distinguimos «se ha roto el camino
  * común» de «se ha ido la luz de la sala», pero no podemos quedarnos ciegos para
- * siempre. Una ronda pausada de más se reanuda con un botón; una ronda que sigue
- * con las dianas muertas produce resultados basura sin que nadie se entere.
+ * siempre, porque una ronda que sigue con las dianas muertas produce resultados
+ * basura sin que nadie se entere.
+ *
+ * Dos límites de esta cota, dichos aquí para que no se olviden:
+ *  - Si entre los caídos está el coordinador la pausa es dura, y hasta que
+ *    vuelvan la única salida del operador es ABORTAR, no reanudar.
+ *  - El plazo mide silencio OYENDO, y se reinicia cada vez que perdemos al
+ *    broker. Con un broker en bucle de reinicio (cae y vuelve antes de que se
+ *    complete el plazo de escucha) la cota deja de existir y no se declara
+ *    ninguna caída: es el lado conservador —nunca una pausa falsa— pero el
+ *    sistema se queda ciego mientras dure ese régimen.
  */
 export const BLACKOUT_GRACE_MS = 4 * 60_000;
 

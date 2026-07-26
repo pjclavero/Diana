@@ -59,7 +59,7 @@ export interface ResilienceStatus {
    * ser suyo; `blackout: true` = callan todos a la vez y se está tratando como
    * fallo del camino común. En los tres casos NO habrá pausa automática.
    */
-  sweep: { enabled: boolean; listening: boolean; blackout: boolean };
+  sweep: { enabled: boolean; intervalMs: number; listening: boolean; blackout: boolean };
   involvedModules: number;
   countdown: { elapsedMs: number; remainingMs: number; expired: boolean } | null;
   operatorMustDecide: boolean;

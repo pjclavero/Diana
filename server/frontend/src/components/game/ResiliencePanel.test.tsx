@@ -25,7 +25,7 @@ function status(over: Partial<ResilienceStatus> = {}): ResilienceStatus {
       },
     ],
     staleModules: [],
-    sweep: { enabled: true, listening: true, blackout: false },
+    sweep: { enabled: true, intervalMs: 15_000, listening: true, blackout: false },
     involvedModules: 3,
     countdown: { elapsedMs: 20_000, remainingMs: 40_000, expired: false },
     operatorMustDecide: true,
@@ -85,19 +85,19 @@ describe("ResiliencePanel (G-I)", () => {
   it("sin escucha del broker NO promete una pausa que no va a ocurrir (N-D1)", async () => {
     vi.spyOn(api, "getResilienceStatus").mockResolvedValue(
       status({
-        sweep: { enabled: true, listening: false, blackout: false },
+        sweep: { enabled: true, intervalMs: 15_000, listening: false, blackout: false },
         staleModules: [{ slug: "mod-c", silentForMs: 120_000, reason: "callado" }],
       }),
     );
     render(<ResiliencePanel gameId="g1" />);
     expect(await screen.findByText(/puede ser suyo y no de los módulos/)).toBeInTheDocument();
-    expect(screen.queryByText(/se pausará sola en unos segundos/)).toBeNull();
+    expect(screen.queryByText(/se pausará sola/)).toBeNull();
   });
 
   it("con apagón dice que no se declara ninguna caída de momento (N-D1)", async () => {
     vi.spyOn(api, "getResilienceStatus").mockResolvedValue(
       status({
-        sweep: { enabled: true, listening: true, blackout: true },
+        sweep: { enabled: true, intervalMs: 15_000, listening: true, blackout: true },
         staleModules: [
           { slug: "mod-c", silentForMs: 120_000, reason: "callado" },
           { slug: "mod-d", silentForMs: 120_000, reason: "callado" },
@@ -109,25 +109,37 @@ describe("ResiliencePanel (G-I)", () => {
       await screen.findByText(/Han callado a la vez TODOS los módulos en línea del sistema/),
     ).toBeInTheDocument();
     expect(screen.getByText(/Revise el broker y la alimentación/)).toBeInTheDocument();
-    expect(screen.queryByText(/se pausará sola en unos segundos/)).toBeNull();
+    expect(screen.queryByText(/se pausará sola/)).toBeNull();
+  });
+
+  it("dice cada cuánto se comprueba, en vez de prometer «unos segundos»", async () => {
+    vi.spyOn(api, "getResilienceStatus").mockResolvedValue(
+      status({
+        sweep: { enabled: true, intervalMs: 600_000, listening: true, blackout: false },
+        staleModules: [{ slug: "mod-c", silentForMs: 120_000, reason: "callado" }],
+      }),
+    );
+    render(<ResiliencePanel gameId="g1" />);
+    // Con un intervalo de 10 min, «unos segundos» sería sencillamente falso.
+    expect(await screen.findByText(/se comprueba cada 10 min/)).toBeInTheDocument();
   });
 
   it("con la detección desactivada dice que nadie va a pausar la ronda (B2)", async () => {
     vi.spyOn(api, "getResilienceStatus").mockResolvedValue(
       status({
-        sweep: { enabled: false, listening: true, blackout: false },
+        sweep: { enabled: false, intervalMs: 0, listening: true, blackout: false },
         staleModules: [{ slug: "mod-c", silentForMs: 120_000, reason: "callado" }],
       }),
     );
     render(<ResiliencePanel gameId="g1" />);
     expect(await screen.findByText(/DESACTIVADA por configuración/)).toBeInTheDocument();
-    expect(screen.queryByText(/se pausará sola en unos segundos/)).toBeNull();
+    expect(screen.queryByText(/se pausará sola/)).toBeNull();
   });
 
   it("con el apagón dice que la tolerancia caduca y la ronda acabará pausándose", async () => {
     vi.spyOn(api, "getResilienceStatus").mockResolvedValue(
       status({
-        sweep: { enabled: true, listening: true, blackout: true },
+        sweep: { enabled: true, intervalMs: 15_000, listening: true, blackout: true },
         staleModules: [
           { slug: "mod-c", silentForMs: 120_000, reason: "callado" },
           { slug: "mod-d", silentForMs: 120_000, reason: "callado" },

@@ -13,6 +13,16 @@ function formatSeconds(ms: number): string {
   return `${Math.ceil(ms / 1000)} s`;
 }
 
+/**
+ * Cada cuánto se comprueba. Se dice el valor real en vez de «unos segundos»,
+ * que era una magnitud que el backend no publicaba y que deja de ser cierta si
+ * alguien configura un intervalo largo.
+ */
+function formatInterval(ms: number): string {
+  if (ms < 60_000) return `${Math.round(ms / 1000)} s`;
+  return `${Math.round(ms / 60_000)} min`;
+}
+
 /** Cuánto lleva callado un módulo, en lenguaje llano. */
 function formatSilence(ms: number | null): string {
   if (ms === null) return "sin señal de vida registrada";
@@ -134,7 +144,7 @@ export function ResiliencePanel({ gameId }: { gameId: string }) {
                     "corriente que la caída de cada uno, así que no se declara ninguna caída de " +
                     "momento. Si el silencio persiste unos minutos, se declararán igualmente y " +
                     "la ronda se pausará. Revise el broker y la alimentación."
-                  : "Si no vuelve(n), la ronda se pausará sola en unos segundos."}
+                  : `Si no vuelve(n), la ronda se pausará sola (se comprueba cada ${formatInterval(status.sweep.intervalMs)}).`}
           </p>
         )}
 

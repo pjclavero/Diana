@@ -247,6 +247,30 @@ describe('Barrido · no confundir sordera propia con caída ajena (D1)', () => {
     expect(prisma.game.updateMany).not.toHaveBeenCalled();
   });
 
+  it('un corte BREVE del broker entre barridos también reinicia el plazo (B1)', async () => {
+    // Caso distinto del anterior: mqtt.js reconecta en ~1 s y el barrido va cada
+    // 15 s, así que lo NORMAL es que ningún barrido llegue a ver la desconexión.
+    // Lo único que queda es que `connectedSince` sea reciente, y eso también
+    // tiene que reiniciar la tolerancia: si no, el rato sin escucha se cuela
+    // como silencio de los módulos. Sin esta prueba, borrar ese segundo reinicio
+    // reintroducía B1 con toda la suite en verde.
+    const { service, mqtt, prisma } = buildService([
+      { slug: 'mod-a', online: true, lastSeenAt: at(0) },
+      { slug: 'mod-b', online: true, lastSeenAt: at(0) },
+    ]);
+    await service.sweepStale(LATE); // apagón tolerado; empieza a contar
+    // El broker cayó y volvió ENTRE dos barridos: nunca vimos `null`.
+    const reconnect = new Date(LATE.getTime() + 60_000);
+    mqtt.connectedSince = reconnect;
+    // Barrido mientras aún no se ha oído bastante: no declara y OLVIDA el plazo.
+    await service.sweepStale(new Date(reconnect.getTime() + 10_000));
+    // Ya se oye de sobra, y ha pasado más del plazo desde el PRIMER apagón…
+    const after = new Date(reconnect.getTime() + BLACKOUT_GRACE_MS + 5_000);
+    // …pero el plazo cuenta desde que volvimos a oír, así que aún no toca.
+    expect(await service.sweepStale(after)).toEqual([]);
+    expect(prisma.game.updateMany).not.toHaveBeenCalled();
+  });
+
   it('un módulo que nunca dio señal no convierte una caída aislada en apagón', async () => {
     const { service } = buildService([
       { slug: 'mod-a', online: true, lastSeenAt: at(0) },
