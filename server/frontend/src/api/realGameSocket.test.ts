@@ -21,6 +21,8 @@ vi.mock("socket.io-client", () => ({
   },
 }));
 
+vi.mock("../auth/tokenStore", () => ({ getToken: () => "token-de-prueba" }));
+
 const { RealGameSocket, splitBase } = await import("./realGameSocket");
 
 const fire = (ev: string, ...args: unknown[]) => handlers.get(ev)?.(...args);
@@ -50,6 +52,45 @@ describe("RealGameSocket · habla socket.io, no WebSocket crudo (X-06)", () => {
     vi.clearAllMocks();
   });
 
+  it("manda el token en el saludo: el canal exige credenciales", () => {
+    new RealGameSocket("/ws").connect("g1");
+    const [, opts] = ioSpy.mock.calls[0] as [string, { auth: { token: string } }];
+    expect(opts.auth.token).toBe("token-de-prueba");
+  });
+
+  it("si el servidor rechaza las credenciales se dice, no se finge reconectar", () => {
+    const socket = new RealGameSocket("/ws");
+    socket.connect("g1");
+    fire("connect");
+    fire("unauthorized", { reason: "credenciales no válidas" });
+    expect(socket.status).toBe("disconnected");
+  });
+
+  it("traduce el vocabulario del contrato al del panel", () => {
+    const socket = new RealGameSocket("/ws");
+    const received: { state: { phase: string; mode: string } }[] = [];
+    socket.onMessage((m) => received.push(m as never));
+    socket.connect("g1");
+    // Tal y como lo publica el coordinador, según el esquema.
+    fire("live", {
+      state: { game_id: "g1", phase: "aborted", mode: "all_against_clock" },
+      event: { kind: "penalty_applied" },
+    });
+    expect(received[0].state.phase).toBe("cancelled");
+    expect(received[0].state.mode).toBe("all_vs_clock");
+    expect((received[0] as unknown as { event: { kind: string } }).event.kind).toBe("penalty");
+  });
+
+  it("un estado sin `active_targets` no rompe: llega como lista vacía", () => {
+    const socket = new RealGameSocket("/ws");
+    const received: { state: { active_targets: unknown[] } }[] = [];
+    socket.onMessage((m) => received.push(m as never));
+    socket.connect("g1");
+    // `active_targets` NO es obligatorio en el contrato y la pantalla lo recorría.
+    fire("live", { state: { game_id: "g1", phase: "running" } });
+    expect(received[0].state.active_targets).toEqual([]);
+  });
+
   it("se conecta al namespace /live con el path que enruta el proxy", () => {
     new RealGameSocket("/ws").connect("g1");
     const [url, opts] = ioSpy.mock.calls[0] as [string, { path: string }];
@@ -73,7 +114,7 @@ describe("RealGameSocket · habla socket.io, no WebSocket crudo (X-06)", () => {
     // El servidor responde al `subscribe_game` con el último estado conocido.
     const ack = emit.mock.calls[0][2] as (a: unknown) => void;
     ack({ state });
-    expect(received).toEqual([{ state }]);
+    expect(received).toEqual([{ state: { ...state, active_targets: [] } }]);
   });
 
   it("un ack sin estado no entrega nada: no se pinta una pantalla a medias", () => {
@@ -92,7 +133,9 @@ describe("RealGameSocket · habla socket.io, no WebSocket crudo (X-06)", () => {
     socket.onMessage((m) => received.push(m));
     socket.connect("g1");
     fire("live", { state, event: { kind: "target_hit" } });
-    expect(received).toEqual([{ state, event: { kind: "target_hit" } }]);
+    expect(received).toEqual([
+      { state: { ...state, active_targets: [] }, event: { kind: "target_hit" } },
+    ]);
   });
 
   it("un mensaje sin estado se descarta", () => {

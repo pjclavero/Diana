@@ -1,5 +1,7 @@
 import { io, type Socket } from "socket.io-client";
 import type { ConnectionStatus, GameSocket, GameSocketMessage } from "./gameSocket";
+import { normalizeEvent, normalizeState } from "./liveContract";
+import { getToken } from "../auth/tokenStore";
 
 const DEGRADED_AFTER_RETRIES = 2;
 
@@ -44,6 +46,9 @@ export class RealGameSocket implements GameSocket {
     const { origin, path } = splitBase(this.baseUrl);
     this.socket = io(`${origin}/live`, {
       path: `${path}/socket.io`,
+      // El canal exige credenciales: van en el saludo, no en la URL, para que
+      // no acaben en los registros del proxy.
+      auth: { token: getToken() ?? "" },
       transports: ["websocket", "polling"],
       reconnection: true,
       reconnectionDelay: 500,
@@ -60,15 +65,24 @@ export class RealGameSocket implements GameSocket {
         "subscribe_game",
         { game_id: gameId },
         (ack?: { state?: unknown } | null) => {
-          if (ack && ack.state) this.deliver({ state: ack.state } as GameSocketMessage);
+          const state = normalizeState(ack?.state);
+          if (state) this.deliver({ state });
         },
       );
     });
 
-    this.socket.on(LIVE_MESSAGE, (msg: GameSocketMessage | null) => {
-      // Un mensaje sin estado no se puede pintar: se descarta en vez de
-      // entregar una pantalla a medias.
-      if (msg && msg.state) this.deliver(msg);
+    this.socket.on(LIVE_MESSAGE, (msg: { state?: unknown; event?: unknown } | null) => {
+      // El mensaje se TRADUCE aquí: el contrato MQTT y el panel usan palabras
+      // distintas para lo mismo (`aborted`/`cancelled`, `penalty_applied`…), y
+      // `active_targets` no es obligatorio en el esquema aunque la pantalla lo
+      // recorra. Ver `liveContract.ts`.
+      const state = normalizeState(msg?.state);
+      // Sin estado no hay nada que pintar: se descarta en vez de entregar una
+      // pantalla a medias. El backend sí lo envía; es el panel quien no puede
+      // hacer nada con un evento suelto.
+      if (!state) return;
+      const event = normalizeEvent(msg?.event);
+      this.deliver(event ? { state, event } : { state });
     });
 
     this.socket.on("disconnect", () => {
@@ -78,6 +92,12 @@ export class RealGameSocket implements GameSocket {
     this.socket.io.on("reconnect_attempt", () => {
       this.retries += 1;
       this.setStatus(this.retries >= DEGRADED_AFTER_RETRIES ? "degraded" : "connecting");
+    });
+
+    // El servidor cierra la sesión si el token no vale: decirlo en vez de
+    // dejar al operador viendo un «reconectando» eterno.
+    this.socket.on("unauthorized", () => {
+      this.setStatus("disconnected");
     });
 
     this.socket.on("connect_error", () => {

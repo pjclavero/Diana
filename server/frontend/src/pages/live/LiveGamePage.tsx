@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { apiClient, createGameSocket, type ConnectionStatus } from "../../api";
+import { isFinishedPhase } from "../../api/liveContract";
 import { Card } from "../../components/ui/Feedback";
 import { ConnectionBadge } from "../../components/ui/ConnectionBadge";
 import { ResiliencePanel } from "../../components/game/ResiliencePanel";
@@ -41,7 +42,10 @@ export function LiveGamePage() {
     socketRef.current = socket;
     const offMsg = socket.onMessage(({ state: s, event }) => {
       setState(s);
-      for (const t of s.active_targets) {
+      // Defensa en profundidad: `active_targets` no es obligatorio en el
+      // contrato. El adaptador ya lo normaliza, pero la pantalla no puede
+      // reventar por un campo ausente (el mock es otro productor).
+      for (const t of s.active_targets ?? []) {
         targetStatesRef.current.set(`${t.module_id}:${t.target_index}`, "active");
       }
       if (event) {
@@ -64,7 +68,7 @@ export function LiveGamePage() {
     };
   }, [gameId, refreshSummary]);
 
-  const isFinished = state?.phase === "finished" || state?.phase === "cancelled";
+  const isFinished = isFinishedPhase(state?.phase);
 
   return (
     <div>

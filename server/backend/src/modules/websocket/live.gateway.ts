@@ -1,4 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { AppConfig, CONFIG } from '../../config/configuration';
 import {
   OnGatewayConnection,
   OnGatewayDisconnect,
@@ -27,19 +29,31 @@ export const LIVE_MESSAGE = 'live';
  * `elapsed_us` del coordinador, no un tiempo calculado por el servidor ni por
  * el navegador (dosier 14.2).
  *
- * Dos cosas que antes no funcionaban (X-06):
+ * Lo que no funcionaba (X-06):
  *  - El `path` cuelga de `/ws/`, que es lo que enruta el proxy. Con el `path`
- *    por defecto (`/socket.io/`) el handshake no pasaba por nginx y la vista en
+ *    por defecto (`/socket.io/`) el saludo no pasaba por nginx y la vista en
  *    directo era inalcanzable desde fuera del contenedor.
- *  - La emisión iba a TODOS los clientes (`server.emit`), así que la
- *    suscripción por sala era decorativa: cualquier panel abierto recibía los
- *    eventos de cualquier partida. Ahora se emite a la sala de su partida.
+ *  - La emisión iba a TODOS los clientes conectados, así que la suscripción por
+ *    sala era decorativa. Se corrigió para el mensaje del panel, pero el canal
+ *    de diagnóstico seguía difundiendo la manguera MQTT completa a cualquiera:
+ *    ahora hay que pedir esa sala expresamente.
+ *  - El canal no pedía credenciales. Los guards globales son de contexto HTTP y
+ *    no llegan aquí; ahora el saludo exige un token válido.
  */
 @Injectable()
 @WebSocketGateway({
   namespace: '/live',
   path: '/ws/socket.io',
-  cors: { origin: true },
+  // Misma política que el REST (`main.ts`): reflejar cualquier origen aquí y
+  // restringirlo allí era una incoherencia difícil de justificar. Sin orígenes
+  // configurados no se admite ninguno, igual que en HTTP.
+  cors: {
+    origin: (origin: string | undefined, cb: (e: Error | null, ok?: boolean) => void) => {
+      const allowed = LiveGateway.allowedOrigins;
+      cb(null, allowed.length === 0 ? false : !origin || allowed.includes(origin));
+    },
+    credentials: true,
+  },
 })
 export class LiveGateway implements EventPublisherPort, OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(LiveGateway.name);
@@ -59,8 +73,46 @@ export class LiveGateway implements EventPublisherPort, OnGatewayConnection, OnG
   @WebSocketServer()
   server?: Server;
 
+  /** Orígenes admitidos; los fija el arranque con la misma lista que el REST. */
+  static allowedOrigins: string[] = [];
+
+  constructor(
+    private readonly jwt: JwtService,
+    @Inject(CONFIG) private readonly config: AppConfig,
+  ) {
+    LiveGateway.allowedOrigins = config.corsOrigins ?? [];
+  }
+
+  /**
+   * EL CANAL EXIGE CREDENCIALES. Los guards globales del REST son de contexto
+   * HTTP y no se aplican aquí: sin esta comprobación, cualquiera que alcanzase
+   * el puerto entraba sin pedir nada. El token viaja en el saludo
+   * (`auth.token`), no en la URL, para que no acabe en los registros del proxy.
+   */
   handleConnection(client: Socket): void {
-    this.logger.debug(`Cliente conectado al canal en directo: ${client.id}`);
+    const token = LiveGateway.tokenOf(client);
+    if (!token) return this.reject(client, 'sin credenciales');
+    try {
+      const claims = this.jwt.verify<{ sub?: string; username?: string }>(token);
+      client.data.user = claims;
+      this.logger.debug(`Cliente conectado al canal en directo: ${client.id}`);
+    } catch {
+      this.reject(client, 'credenciales no válidas');
+    }
+  }
+
+  private reject(client: Socket, reason: string): void {
+    this.logger.warn(`Conexión al canal en directo rechazada (${reason}): ${client.id}`);
+    client.emit('unauthorized', { reason });
+    client.disconnect(true);
+  }
+
+  private static tokenOf(client: Socket): string | null {
+    const fromAuth = (client.handshake?.auth as { token?: unknown } | undefined)?.token;
+    if (typeof fromAuth === 'string' && fromAuth.length > 0) return fromAuth;
+    const header = client.handshake?.headers?.authorization;
+    if (typeof header === 'string' && header.startsWith('Bearer ')) return header.slice(7);
+    return null;
   }
 
   handleDisconnect(client: Socket): void {
@@ -102,6 +154,15 @@ export class LiveGateway implements EventPublisherPort, OnGatewayConnection, OnG
     return `game:${gameId}`;
   }
 
+  static readonly DIAGNOSTICS_ROOM = 'diagnostics';
+
+  /** Canal de diagnóstico: hay que pedirlo, no se recibe por estar conectado. */
+  @SubscribeMessage('subscribe_diagnostics')
+  onSubscribeDiagnostics(client: Socket): { subscribed: string } {
+    void client.join(LiveGateway.DIAGNOSTICS_ROOM);
+    return { subscribed: LiveGateway.DIAGNOSTICS_ROOM };
+  }
+
   publish(event: LiveEvent): void {
     this.buffer.push(event);
     if (this.buffer.length > LiveGateway.BUFFER_SIZE) this.buffer.shift();
@@ -115,9 +176,13 @@ export class LiveGateway implements EventPublisherPort, OnGatewayConnection, OnG
       this.emitToGame(gameId, { state: this.lastState.get(gameId) ?? null, event: event.payload });
     }
 
-    // Canal de diagnóstico: el resto de tópicos (telemetría, impactos crudos,
-    // presencia…) se sigue reemitiendo por su nombre para quien lo observe.
-    this.server?.emit(event.type, {
+    // El diagnóstico va a una sala a la que hay que pedir entrar EXPRESAMENTE.
+    // Antes esto era un `server.emit` a todo el namespace: la manguera MQTT
+    // completa —estados de partidas ajenas, telemetría, impactos, presencia—
+    // llegaba a cualquier cliente, incluso a uno que no se hubiera suscrito a
+    // nada. La corrección por salas sólo cubría el evento `live`, así que el
+    // fallo seguía vivo con otro nombre de evento.
+    this.server?.to(LiveGateway.DIAGNOSTICS_ROOM).emit(event.type, {
       topic: event.topic,
       payload: event.payload,
       received_at: event.at.toISOString(),
@@ -131,7 +196,13 @@ export class LiveGateway implements EventPublisherPort, OnGatewayConnection, OnG
   private remember(gameId: string, state: unknown): void {
     // Cota dura: sin ella, un despliegue largo acumularía una entrada por cada
     // partida vista desde el arranque y la memoria crecería sin techo.
-    if (!this.lastState.has(gameId) && this.lastState.size >= LiveGateway.MAX_GAMES) {
+    // Desalojo por USO, no por inserción: `Map.set` sobre una clave existente no
+    // la reordena, así que la partida EN CURSO —insertada la primera y
+    // actualizada mil veces— era la primera en caer, mientras sobrevivían
+    // partidas terminadas. Al operador le dejaba la pantalla en blanco justo en
+    // la partida que estaba mirando.
+    this.lastState.delete(gameId);
+    if (this.lastState.size >= LiveGateway.MAX_GAMES) {
       const oldest = this.lastState.keys().next();
       if (!oldest.done) this.lastState.delete(oldest.value);
     }

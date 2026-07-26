@@ -2,19 +2,33 @@ import { LiveGateway, LIVE_MESSAGE } from '../../src/modules/websocket/live.gate
 
 const AT = new Date('2026-07-26T10:00:00Z');
 
-function buildGateway() {
+function buildGateway(over: { verify?: jest.Mock; corsOrigins?: string[] } = {}) {
   const rooms = new Map<string, { emit: jest.Mock }>();
   const to = jest.fn((room: string) => {
     if (!rooms.has(room)) rooms.set(room, { emit: jest.fn() });
     return rooms.get(room)!;
   });
   const server = { emit: jest.fn(), to } as never;
-  const gateway = new LiveGateway();
+  const verify = over.verify ?? jest.fn(() => ({ sub: 'u1', username: 'ana' }));
+  const config = {
+    corsOrigins: over.corsOrigins ?? ['http://localhost:8080'],
+    jwt: { secret: 's' },
+  } as never;
+  const gateway = new LiveGateway({ verify } as never, config);
   gateway.server = server;
-  return { gateway, rooms, to, server: server as unknown as { emit: jest.Mock } };
+  return { gateway, rooms, to, verify, server: server as unknown as { emit: jest.Mock } };
 }
 
-const client = () => ({ id: 'c1', join: jest.fn(), leave: jest.fn() }) as never;
+const client = (token?: string) =>
+  ({
+    id: 'c1',
+    data: {} as Record<string, unknown>,
+    join: jest.fn(),
+    leave: jest.fn(),
+    emit: jest.fn(),
+    disconnect: jest.fn(),
+    handshake: { auth: token ? { token } : {}, headers: {} },
+  }) as never;
 
 const state = (gameId: string, over: Record<string, unknown> = {}) => ({
   game_id: gameId,
@@ -119,17 +133,77 @@ describe('LiveGateway · el directo va SÓLO a su partida', () => {
     expect(last[1].state).toMatchObject({ targets_hit: 5 });
   });
 
-  it('un mensaje sin `game_id` no se emite a ninguna sala', () => {
+  it('un mensaje sin `game_id` no se emite a ninguna sala de partida', () => {
     const { gateway, to } = buildGateway();
     gateway.publish({ type: 'game-state', topic: 't', payload: { system_id: 's1' }, at: AT });
-    expect(to).not.toHaveBeenCalled();
+    const salas = to.mock.calls.map((c) => c[0]);
+    expect(salas.filter((r) => String(r).startsWith('game:'))).toEqual([]);
   });
 
-  it('los demás tópicos se siguen reemitiendo por su nombre (diagnóstico)', () => {
-    const { gateway, server, to } = buildGateway();
+  it('el diagnóstico NO se difunde a todo el mundo: va a su sala', () => {
+    const { gateway, server, rooms } = buildGateway();
     gateway.publish({ type: 'module-telemetry', topic: 't', payload: { module_id: 'm1' }, at: AT });
-    expect(server.emit).toHaveBeenCalledWith('module-telemetry', expect.any(Object));
-    expect(to).not.toHaveBeenCalled();
+    // `server.emit` mandaba la manguera MQTT completa a cualquier conectado.
+    expect(server.emit).not.toHaveBeenCalled();
+    expect(rooms.get('diagnostics')!.emit).toHaveBeenCalledWith(
+      'module-telemetry',
+      expect.any(Object),
+    );
+  });
+
+  it('un cliente que no pide diagnóstico no recibe tópicos ajenos', () => {
+    const { gateway, rooms } = buildGateway();
+    gateway.publish(stateEvent('g1'));
+    gateway.publish({ type: 'module-telemetry', topic: 't', payload: { module_id: 'm1' }, at: AT });
+    // La sala de la partida sólo ha recibido su mensaje `live`.
+    expect(rooms.get('game:g1')!.emit).toHaveBeenCalledTimes(1);
+  });
+
+  it('al diagnóstico hay que pedir entrar expresamente', () => {
+    const { gateway } = buildGateway();
+    const c = client('t');
+    expect(gateway.onSubscribeDiagnostics(c).subscribed).toBe('diagnostics');
+    expect((c as unknown as { join: jest.Mock }).join).toHaveBeenCalledWith('diagnostics');
+  });
+});
+
+describe('LiveGateway · el canal exige credenciales (B1)', () => {
+  it('sin token se rechaza la conexión y se cierra', () => {
+    const { gateway } = buildGateway();
+    const c = client();
+    gateway.handleConnection(c);
+    const spy = c as unknown as { disconnect: jest.Mock; emit: jest.Mock };
+    expect(spy.disconnect).toHaveBeenCalledWith(true);
+    expect(spy.emit).toHaveBeenCalledWith('unauthorized', { reason: 'sin credenciales' });
+  });
+
+  it('con un token inválido tampoco se entra', () => {
+    const verify = jest.fn(() => {
+      throw new Error('firma incorrecta');
+    });
+    const { gateway } = buildGateway({ verify });
+    const c = client('basura');
+    gateway.handleConnection(c);
+    expect((c as unknown as { disconnect: jest.Mock }).disconnect).toHaveBeenCalledWith(true);
+  });
+
+  it('con un token válido se entra y queda registrado quién es', () => {
+    const { gateway, verify } = buildGateway();
+    const c = client('bueno');
+    gateway.handleConnection(c);
+    expect(verify).toHaveBeenCalledWith('bueno');
+    expect((c as unknown as { disconnect: jest.Mock }).disconnect).not.toHaveBeenCalled();
+    expect((c as unknown as { data: { user?: unknown } }).data.user).toMatchObject({
+      username: 'ana',
+    });
+  });
+
+  it('el token también se acepta en la cabecera Authorization', () => {
+    const { gateway, verify } = buildGateway();
+    const c = client() as unknown as { handshake: { headers: Record<string, string> } };
+    c.handshake.headers.authorization = 'Bearer desde-cabecera';
+    gateway.handleConnection(c as never);
+    expect(verify).toHaveBeenCalledWith('desde-cabecera');
   });
 });
 
@@ -142,6 +216,18 @@ describe('LiveGateway · no crece sin techo', () => {
     expect(gateway.onSubscribeGame(client(), { game_id: 'g249' }).state).not.toBeNull();
   });
 
+  it('el desalojo NO se lleva por delante la partida en curso (O2)', () => {
+    const { gateway } = buildGateway();
+    gateway.publish(stateEvent('viva'));
+    // Se llena la memoria con partidas nuevas mientras la viva sigue latiendo.
+    for (let i = 0; i < 250; i += 1) {
+      gateway.publish(stateEvent(`relleno${i}`));
+      gateway.publish(stateEvent('viva', { v: i }));
+    }
+    // Antes caía la primera INSERTADA, que era justo la que se estaba mirando.
+    expect(gateway.onSubscribeGame(client(), { game_id: 'viva' }).state).not.toBeNull();
+  });
+
   it('el búfer de diagnóstico no pasa de 200', () => {
     const { gateway } = buildGateway();
     for (let i = 0; i < 300; i += 1) gateway.publish(stateEvent('g1'));
@@ -151,7 +237,8 @@ describe('LiveGateway · no crece sin techo', () => {
 
 describe('LiveGateway · sin servidor no revienta', () => {
   it('publicar antes de que el servidor exista no lanza', () => {
-    const gateway = new LiveGateway();
+    const { gateway } = buildGateway();
+    gateway.server = undefined;
     expect(() => gateway.publish(stateEvent('g1'))).not.toThrow();
     // Y el estado se recuerda igual, para quien se suscriba después.
     expect(gateway.onSubscribeGame(client(), { game_id: 'g1' }).state).not.toBeNull();
