@@ -77,14 +77,18 @@ suite('Concurrencia de panel contra PostgreSQL (G-H)', () => {
       [GAME_A, ROUND_A],
       [GAME_B, ROUND_B],
     ]) {
+      // `draft`: NO ocupa panel (sólo armed|running|paused lo hacen), así que
+      // ambas parten libres y lo único que puede impedir el doble arranque es
+      // el cerrojo. Con las dos en `armed` se rechazaban mutuamente y la prueba
+      // no demostraba nada del cerrojo.
       await prisma.game.upsert({
         where: { id: gameId },
-        update: { status: 'armed', startedAt: null },
+        update: { status: 'draft', startedAt: null },
         create: {
           id: gameId,
           targetSystemId: SYSTEM_ID,
           gameModeId: MODE_ID,
-          status: 'armed',
+          status: 'draft',
           config: {},
         },
       });
@@ -128,7 +132,7 @@ suite('Concurrencia de panel contra PostgreSQL (G-H)', () => {
       select: { id: true, status: true },
     });
     const perdedora = games.find((g) => g.status !== 'running')!;
-    expect(perdedora.status).toBe('armed');
+    expect(perdedora.status).toBe('draft');
 
     const rounds = await prisma.round.findMany({
       where: { gameId: perdedora.id },

@@ -48,6 +48,19 @@ Actualizado por el organizador. Última actualización: 2026-07-20.
 
 ## Lote de mejoras del panel (G-A…G-I) — 2026-07-22
 
+> **DESPLEGADO EN VM109 el 2026-07-26** (`develop` @ `045fdd1`): 4 migraciones aplicadas
+> (`matrix_layouts`, `participant_panel`, `module_board_and_deploy_guard`,
+> `module_offline_since`), imágenes backend/frontend/worker reconstruidas, 8/8 contenedores
+> `healthy`, panel 200 y API 200. Verificado en vivo: las 6 rutas nuevas responden 401
+> (existen y exigen auth; una ruta inexistente da 404) y el esquema real tiene la tabla, las
+> 3 columnas y el índice parcial de OTA. **N8 CERRADO CON EVIDENCIA:** la prueba de
+> concurrencia del cerrojo de panel se ejecutó por fin contra PostgreSQL real (base de
+> pruebas aislada) — dos `start` simultáneos, **gana exactamente uno**, el otro recibe 409 y
+> la perdedora no queda marcada ni con la ronda arrancada. Integración 7/7.
+> Incidencia preexistente encontrada: **la VM no resolvía DNS** (MagicDNS de Tailscale roto);
+> ver `docs/deployment/procedimiento.md` §8. Sin autenticar contra la API con credenciales
+> reales: la verificación funcional con datos queda pendiente del operador.
+
 Origen: conversación de dirección 2026-07-22. Especificación: `docs/product/alcance-panel-roles-firmware.md` §6. Método por bloque: implementación + tests + supervisor independiente.
 
 | Bloque | Alcance | Estado |

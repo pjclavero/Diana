@@ -210,6 +210,27 @@ problema de caché. **Procedimiento fiable para reconstruir el backend en esta V
 porque el contrato WS panel↔backend no está negociado (X-06); la vista en directo
 por WS aún no es alcanzable por el proxy. El REST completo sí lo es.
 
+**Incidencia de DNS de la VM (2026-07-26, PREEXISTENTE, no causada por el despliegue):**
+la VM tenía como ÚNICO resolver el MagicDNS de Tailscale (`100.100.100.100`), que
+respondía `server misbehaving`. Consecuencia: `git`, `docker pull` y `npm ci` fallaban
+todos con «Could not resolve host» / «lookup registry-1.docker.io … server misbehaving»,
+y **cualquier build o actualización estaba bloqueada**. El resolver del router
+(192.168.1.1) sí funciona; `1.1.1.1` está bloqueado desde la VM.
+Procedimiento usado para desplegar sin tocar la red de forma permanente:
+1. Llevar el código con un **bundle de git por SSH** (no `git pull`):
+   `git bundle create x.bundle <base>..develop` → `scp` → en la VM
+   `git fetch /tmp/x.bundle develop:refs/remotes/bundle/develop && git merge --ff-only`.
+2. Para el build (necesita npm), override **temporal** de `/etc/resolv.conf` apuntando al
+   router, con copia previa en `/etc/resolv.conf.prediana-deploy`, y **restaurarlo al
+   terminar** (comprobado: vuelve a `100.100.100.100` + `search …ts.net`).
+**Causa de fondo SIN resolver:** MagicDNS de la tailnet. Se arregla con
+`tailscale set --accept-dns=false` (la VM usaría el DNS del router) o revisando los
+nameservers de la tailnet. Es un cambio persistente: requiere decisión del operador.
+
+**Nota sobre `pgrep -f` en esperas por SSH:** un `until ! pgrep -f 'docker compose build'`
+lanzado por SSH **se detecta a sí mismo** (el patrón aparece en su propia línea de
+comando) y no termina nunca. Usar un patrón que no coincida con el propio comando.
+
 ## 9. Verificación funcional ejecutada (2026-07-21)
 
 | Comprobación | Resultado | Evidencia |
