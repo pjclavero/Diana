@@ -206,7 +206,27 @@ export class ResilienceService implements PresenceSinkPort {
       where: { id: game.id, status: 'running' },
       data: { status: 'paused' },
     });
-    if (transitioned.count === 0) return; // ya estaba pausada o cambió de estado
+    if (transitioned.count === 0) {
+      // Ya estaba pausada (p. ej. pausa manual previa): no se repite la orden,
+      // pero SÍ queda constancia de que además cayó un módulo implicado. Sin
+      // esa incidencia, al volver el módulo la ronda quedaba sin salida (N2).
+      await this.prisma.incident.create({
+        data: {
+          kind:
+            decision.action === 'hard_pause' ? INCIDENT_KIND.hardPause : INCIDENT_KIND.autoPause,
+          severity: decision.severity,
+          source: 'resilience',
+          message: `${decision.reason} (la ronda ya estaba en pausa: no se repite la orden)`,
+          detail: {
+            game_id: game.id,
+            module_slug: moduleSlug,
+            command_delivered: null,
+            already_paused: true,
+          } as never,
+        },
+      });
+      return;
+    }
 
     let delivered = false;
     let failure: string | null = null;
@@ -262,32 +282,34 @@ export class ResilienceService implements PresenceSinkPort {
 
   /** ¿Sigue pausada por una caída, y salió la orden? */
   private async pauseContext(gameId: string) {
-    const incidents = await this.prisma.incident.findMany({
+    // El filtro por partida va en SQL: con `take` global y filtrado en memoria,
+    // 25 incidencias de OTRAS partidas escondían la de ésta y la ronda volvía a
+    // quedarse sin salida (N1). El desempate por `id` evita que dos incidencias
+    // del mismo microsegundo se ordenen al azar.
+    const mine = await this.prisma.incident.findMany({
       where: {
         source: 'resilience',
         kind: {
           in: [
             INCIDENT_KIND.autoPause,
             INCIDENT_KIND.hardPause,
-            INCIDENT_KIND.pauseFailed,
             INCIDENT_KIND.resumed,
             'round_resumed_without_module',
             'round_aborted',
           ],
         },
+        detail: { path: ['game_id'], equals: gameId },
       },
-      orderBy: { occurredAt: 'desc' },
-      take: 25,
+      orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
+      take: 5,
       select: { kind: true, detail: true, occurredAt: true },
     });
-    const mine = incidents.filter(
-      (i) => (i.detail as { game_id?: string } | null)?.game_id === gameId,
-    );
     const last = mine[0] ?? null;
     const pausedByResilience =
       last !== null && (last.kind === INCIDENT_KIND.autoPause || last.kind === INCIDENT_KIND.hardPause);
-    const commandDelivered =
-      last === null ? null : ((last.detail as { command_delivered?: boolean } | null)?.command_delivered ?? null);
+    const commandDelivered = !pausedByResilience
+      ? null
+      : ((last!.detail as { command_delivered?: boolean } | null)?.command_delivered ?? null);
     return { pausedByResilience, commandDelivered, since: last?.occurredAt ?? null };
   }
 

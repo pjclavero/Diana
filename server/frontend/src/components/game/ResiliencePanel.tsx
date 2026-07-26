@@ -65,11 +65,22 @@ export function ResiliencePanel({ gameId }: { gameId: string }) {
   if (!status || !status.operatorMustDecide) return null;
 
   return (
-    <Card title={status.coordinatorDown ? "Pausa dura: ha caído el coordinador" : "Módulo caído"}>
+    <Card
+      title={
+        status.coordinatorDown
+          ? status.paused
+            ? "Pausa dura: ha caído el coordinador"
+            : "Ha caído el coordinador"
+          : "Módulo caído"
+      }
+    >
       <div className="resilience" role="alert">
         {status.coordinatorDown ? (
           <p>
-            <strong>Sin coordinador no hay tiempos fiables.</strong> {status.note}
+            <strong>Sin coordinador no hay tiempos fiables.</strong>{" "}
+            {status.paused
+              ? status.note
+              : "La ronda no está en curso, así que no hay nada que pausar; no podrá empezar hasta que vuelva."}
           </p>
         ) : status.missingModules.length > 0 ? (
           <p>
@@ -120,7 +131,12 @@ export function ResiliencePanel({ gameId }: { gameId: string }) {
           >
             Reanudar sin él
           </button>
-          <button type="button" onClick={() => decide("abort")} disabled={busy}>
+          <button
+            type="button"
+            onClick={() => decide("abort")}
+            disabled={busy || !status.paused}
+            title={status.paused ? "Aborta la ronda" : "La ronda no está en curso"}
+          >
             Abortar la ronda
           </button>
         </div>

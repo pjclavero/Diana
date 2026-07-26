@@ -362,4 +362,49 @@ describe('ResilienceService · decisión del operador', () => {
     expect(result.delivered).toBe(false);
     expect(result.note).toMatch(/no llegó al broker/);
   });
+
+  it('la pausa de ESTA partida se busca en SQL, no entre las 25 últimas de todas (N1)', async () => {
+    const prisma = buildPrisma();
+    const { ref } = mqttRef();
+    await new ResilienceService(prisma, ref).statusOf('g1');
+    const where = prisma.incident.findMany.mock.calls[0][0].where;
+    expect(where.detail).toEqual({ path: ['game_id'], equals: 'g1' });
+    // Y el orden desempata para que dos incidencias del mismo instante no salgan al azar.
+    expect(prisma.incident.findMany.mock.calls[0][0].orderBy).toEqual([
+      { occurredAt: 'desc' },
+      { id: 'desc' },
+    ]);
+  });
+
+  it('una caída durante una pausa MANUAL deja constancia igualmente (N2)', async () => {
+    const prisma = buildPrisma({ game: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) } });
+    const { ref, sendSystemCommand } = mqttRef();
+    await new ResilienceService(prisma, ref).record(presence());
+    // No se repite la orden…
+    expect(sendSystemCommand).not.toHaveBeenCalled();
+    // …pero sí queda la incidencia, o al volver el módulo no habría salida.
+    const kinds = prisma.incident.create.mock.calls.map((c: any) => c[0].data.kind);
+    expect(kinds).toContain('round_auto_paused');
+    const detail = prisma.incident.create.mock.calls.find(
+      (c: any) => c[0].data.kind === 'round_auto_paused',
+    )[0].data.detail;
+    expect(detail.already_paused).toBe(true);
+    expect(detail.command_delivered).toBeNull();
+  });
+
+  it('sin pausa por resiliencia no se afirma nada sobre la entrega de la orden', async () => {
+    const prisma = buildPrisma({
+      incident: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { kind: 'round_resumed', detail: { game_id: 'g1' }, occurredAt: FELL_AT },
+          ]),
+      },
+    });
+    const { ref } = mqttRef();
+    const status = await new ResilienceService(prisma, ref).statusOf('g1');
+    expect(status.pausedByResilience).toBe(false);
+    expect(status.pauseCommandDelivered).toBeNull();
+  });
 });

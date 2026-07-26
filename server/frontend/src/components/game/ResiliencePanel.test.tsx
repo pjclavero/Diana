@@ -152,4 +152,22 @@ describe("ResiliencePanel (G-I)", () => {
     render(<ResiliencePanel gameId="g1" />);
     expect(await screen.findByText(/La ronda NO está en pausa/)).toBeInTheDocument();
   });
+
+  it("no habla de pausa sobre una ronda que no está en curso (N3)", async () => {
+    vi.spyOn(api, "getResilienceStatus").mockResolvedValue(
+      status({
+        game: { id: "g1", status: "armed", panel: "Panel A" },
+        paused: false,
+        pausedByResilience: false,
+        coordinatorDown: true,
+        canResumeWithout: false,
+        missingModules: [{ slug: "mod-a", lastSeenAt: null, offlineSince: null }],
+      }),
+    );
+    render(<ResiliencePanel gameId="g1" />);
+    expect(await screen.findByText("Ha caído el coordinador")).toBeInTheDocument();
+    expect(screen.getByText(/no hay nada que pausar/)).toBeInTheDocument();
+    // Y no se ofrece abortar algo que no está en marcha.
+    expect(screen.getByRole("button", { name: "Abortar la ronda" })).toBeDisabled();
+  });
 });

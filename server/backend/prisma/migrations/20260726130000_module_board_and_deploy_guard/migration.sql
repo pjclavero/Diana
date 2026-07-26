@@ -7,7 +7,3 @@ ALTER TABLE "public"."modules"
 CREATE UNIQUE INDEX IF NOT EXISTS "deployments_one_in_flight_per_module"
   ON "public"."deployments"("module_id")
   WHERE "status" IN ('pending', 'sent', 'downloading', 'installing');
-
--- G-I · D6: instante de la caída, origen real de la cuenta atrás de reconexión.
-ALTER TABLE "public"."modules"
-  ADD COLUMN IF NOT EXISTS "offline_since" TIMESTAMPTZ(6);

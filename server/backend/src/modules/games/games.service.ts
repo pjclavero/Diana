@@ -315,9 +315,10 @@ export class GamesService {
     );
 
     // Guardarraíl G-H, atómico: cerrojo por panel, comprobación de ocupación,
-    // marcado y ORDEN al coordinador dentro de la misma transacción. Si la
-    // publicación falla, la transacción revierte y la partida no queda ocupando
-    // un panel sin que se haya dado ninguna orden.
+    // marcado y ORDEN al coordinador dentro de la misma transacción. Si publicar
+    // LANZA, la transacción revierte. Ojo: sin conexión con el broker, mqtt.js
+    // encola en vez de lanzar; ese caso no revierte y se informa con
+    // `delivered: false` para que el panel no dé por hecho que la orden salió.
     let command!: ReturnType<MqttService['sendSystemCommand']>;
     await this.prisma.$transaction(async (tx) => {
       await this.lockPanels(tx as unknown as TransactionClient, game);
@@ -355,7 +356,14 @@ export class GamesService {
       );
     });
 
-    return { command };
+    return {
+      command,
+      delivered: (command as { delivered?: boolean }).delivered === true,
+      note:
+        (command as { delivered?: boolean }).delivered === true
+          ? null
+          : 'La orden no llegó al broker MQTT: el coordinador puede no haberla recibido.',
+    };
   }
 
   /** Órdenes de control: pausar, reanudar, abortar, finalizar. */
@@ -404,6 +412,14 @@ export class GamesService {
         finishedAt: status === 'finished' || status === 'aborted' ? new Date() : undefined,
       },
     });
-    return { command, status };
+    const delivered = (command as { delivered?: boolean }).delivered === true;
+    return {
+      command,
+      status,
+      delivered,
+      note: delivered
+        ? null
+        : 'La orden no llegó al broker MQTT: el coordinador puede no haberla recibido.',
+    };
   }
 }
