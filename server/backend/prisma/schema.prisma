@@ -65,6 +65,7 @@ model User {
   ownedPresets GamePreset[]   @relation("PresetOwner")
   ownedViews   View[]         @relation("ViewOwner")
   ownedLayouts MatrixLayout[] @relation("LayoutOwner")
+  managerActivations ManagerActivation[]
 
   @@index([roleId])
   @@index([active])
@@ -114,6 +115,37 @@ model Player {
 /// aceptarlo, el invitado pasa a ser un `Player` registrado (se guarda su histórico).
 /// El envío real de correo depende de configurar SMTP; mientras, el código queda
 /// registrado y visible para el admin (auditable, regenerable).
+/// Ascenso de jugador a gestor por venta de módulo (§3.1, F5).
+///
+/// El encargo NO dice «al vincular un módulo, el comprador pasa a gestor»: dice
+/// que se le envía un código y que su acceso de gestor queda activo **cuando lo
+/// introduce**. Vincular es la venta; activar es la aceptación. Sin esta tabla
+/// el paso intermedio no existía y la promoción era inmediata y silenciosa.
+model ManagerActivation {
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  /// Módulo cuya venta originó el ascenso; informativo y auditable.
+  moduleId       String?   @map("module_id") @db.Uuid
+  code           String    @unique @db.VarChar(16)
+  /// pending | activated | revoked | expired
+  status         String    @default("pending") @db.VarChar(16)
+  /// Resultado del último intento de envío (p. ej. "SMTP sin configurar").
+  dispatchNote   String?   @map("dispatch_note") @db.VarChar(255)
+  lastDispatchAt DateTime? @map("last_dispatch_at") @db.Timestamptz(6)
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(6)
+  activatedAt    DateTime? @map("activated_at") @db.Timestamptz(6)
+  createdBy      String?   @map("created_by") @db.VarChar(64)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  module Module? @relation(fields: [moduleId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([status])
+  @@map("manager_activations")
+}
+
 model Invitation {
   id             String    @id @default(uuid()) @db.Uuid
   email          String    @db.VarChar(255)
@@ -259,6 +291,7 @@ model Module {
   hitEvents    HitEvent[]
   deployments  Deployment[]
   incidents    Incident[]
+  managerActivations ManagerActivation[]
 
   @@index([targetSystemId])
   @@index([ownerId])

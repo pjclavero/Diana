@@ -3,9 +3,11 @@ import { ModuleOwnershipService } from '../../src/modules/modules/module-ownersh
 import { ROLE } from '../../src/domain/rbac/permissions';
 
 /**
- * Regla de negocio F2: un usuario con ≥1 módulo vinculado ejerce de gestor.
- * Se promociona al vincular el primer módulo a un jugador y se degrada al
- * desvincular el último. El administrador nunca se degrada por perder módulos.
+ * Regla de negocio F2 + F5: poseer un módulo es condición para ejercer de
+ * gestor, pero **vender no es ascender**. Vincular abre un código de activación
+ * (§3.1); el acceso de gestor queda activo cuando el comprador lo introduce.
+ * Se degrada al desvincular el último módulo, y entonces sus códigos pendientes
+ * dejan de valer. El administrador nunca se degrada por perder módulos.
  */
 function buildPrisma(overrides: {
   module?: Partial<Record<string, jest.Mock>>;
@@ -36,39 +38,61 @@ function buildPrisma(overrides: {
   return prisma;
 }
 
+/** Doble del servicio de ascensos: aquí sólo interesa que se le llame. */
+function buildActivations() {
+  return {
+    open: jest.fn().mockResolvedValue({
+      id: 'act-1',
+      expiresAt: new Date('2026-07-27T10:00:00Z'),
+      dispatchNote: 'SMTP sin configurar',
+    }),
+    revokePendingFor: jest.fn().mockResolvedValue(1),
+  } as any;
+}
+
 describe('ModuleOwnershipService', () => {
   const admin = { userId: 'admin-1', role: ROLE.ADMINISTRADOR };
   const gestor = { userId: 'g1', role: ROLE.GESTOR };
 
   describe('link', () => {
-    it('promociona a gestor cuando un jugador recibe su primer módulo', async () => {
+    it('vender NO asciende: abre un código de activación y el rol NO cambia', async () => {
       const prisma = buildPrisma({
         module: { findUnique: jest.fn().mockResolvedValue({ id: 'm1', ownerId: null }) },
         user: { findUnique: jest.fn().mockResolvedValue({ id: 'u1', role: { name: ROLE.JUGADOR } }) },
       });
-      const svc = new ModuleOwnershipService(prisma);
+      const activations = buildActivations();
+      const svc = new ModuleOwnershipService(prisma, activations);
 
-      await svc.link('m1', 'u1', admin);
+      const result = await svc.link('m1', 'u1', admin);
 
       expect(prisma.module.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'm1' }, data: { ownerId: 'u1' } }));
-      expect(prisma.user.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'u1' }, data: { roleId: 'role-gestor' } }));
+      // Antes esto ascendía a gestor en el acto, sin que el comprador aceptara
+      // nada y sin que quedara constancia de habérselo comunicado.
+      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(activations.open).toHaveBeenCalledWith('u1', 'm1', 'admin-1');
+      expect((result as any).activation.note).toMatch(/NO es gestor todavía/);
     });
 
-    it('NO cambia el rol si el destinatario ya era gestor', async () => {
+    it('a quien ya es gestor no se le abre ningún ascenso nuevo', async () => {
       const prisma = buildPrisma({
         module: { findUnique: jest.fn().mockResolvedValue({ id: 'm1', ownerId: null }) },
         user: { findUnique: jest.fn().mockResolvedValue({ id: 'u1', role: { name: ROLE.GESTOR } }) },
       });
-      const svc = new ModuleOwnershipService(prisma);
+      const activations = buildActivations();
+      const svc = new ModuleOwnershipService(prisma, activations);
 
       await svc.link('m1', 'u1', admin);
 
       expect(prisma.user.update).not.toHaveBeenCalled();
+      // `open` decide por sí mismo que no procede; aquí se comprueba que se le
+      // consulta siempre, para que esa decisión viva en un solo sitio.
+      expect(activations.open).toHaveBeenCalled();
     });
 
     it('un no-admin no puede vincular a otro usuario', async () => {
       const prisma = buildPrisma({});
-      const svc = new ModuleOwnershipService(prisma);
+      const activations = buildActivations();
+      const svc = new ModuleOwnershipService(prisma, activations);
 
       await expect(svc.link('m1', 'otro-usuario', gestor)).rejects.toBeInstanceOf(ForbiddenException);
     });
@@ -77,7 +101,8 @@ describe('ModuleOwnershipService', () => {
       const prisma = buildPrisma({
         module: { findUnique: jest.fn().mockResolvedValue({ id: 'm1', ownerId: 'otro' }) },
       });
-      const svc = new ModuleOwnershipService(prisma);
+      const activations = buildActivations();
+      const svc = new ModuleOwnershipService(prisma, activations);
 
       await expect(svc.link('m1', 'u1', admin)).rejects.toBeInstanceOf(BadRequestException);
     });
@@ -92,12 +117,15 @@ describe('ModuleOwnershipService', () => {
         },
         user: { findUnique: jest.fn().mockResolvedValue({ id: 'g1', role: { name: ROLE.GESTOR } }) },
       });
-      const svc = new ModuleOwnershipService(prisma);
+      const activations = buildActivations();
+      const svc = new ModuleOwnershipService(prisma, activations);
 
       await svc.unlink('m1', admin);
 
       expect(prisma.module.update).toHaveBeenCalledWith(expect.objectContaining({ data: { ownerId: null } }));
       expect(prisma.user.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'g1' }, data: { roleId: 'role-jugador' } }));
+      // Un código vivo de quien ya no posee nada ascendería a alguien sin motivo.
+      expect(activations.revokePendingFor).toHaveBeenCalledWith('g1');
     });
 
     it('NO degrada si al gestor le quedan otros módulos', async () => {
@@ -107,18 +135,21 @@ describe('ModuleOwnershipService', () => {
           count: jest.fn().mockResolvedValue(2),
         },
       });
-      const svc = new ModuleOwnershipService(prisma);
+      const activations = buildActivations();
+      const svc = new ModuleOwnershipService(prisma, activations);
 
       await svc.unlink('m1', admin);
 
       expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(activations.revokePendingFor).not.toHaveBeenCalled();
     });
 
     it('un gestor no puede desvincular un módulo que no es suyo', async () => {
       const prisma = buildPrisma({
         module: { findUnique: jest.fn().mockResolvedValue({ id: 'm1', ownerId: 'otro-gestor' }) },
       });
-      const svc = new ModuleOwnershipService(prisma);
+      const activations = buildActivations();
+      const svc = new ModuleOwnershipService(prisma, activations);
 
       await expect(svc.unlink('m1', gestor)).rejects.toBeInstanceOf(ForbiddenException);
     });

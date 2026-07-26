@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { ManagerActivationService } from '../invitations/manager-activation.service';
 import { ROLE } from '../../domain/rbac/permissions';
 
 /**
@@ -16,7 +17,10 @@ import { ROLE } from '../../domain/rbac/permissions';
  */
 @Injectable()
 export class ModuleOwnershipService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly activations: ManagerActivationService,
+  ) {}
 
   private async roleId(name: string): Promise<string> {
     const role = await this.prisma.role.findUniqueOrThrow({ where: { name } });
@@ -56,15 +60,29 @@ export class ModuleOwnershipService {
     const target = await this.prisma.user.findUnique({ where: { id: targetUserId }, include: { role: true } });
     if (!target) throw new NotFoundException(`Usuario ${targetUserId} no encontrado`);
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.module.update({ where: { id: moduleId }, data: { ownerId: targetUserId } });
-      // Promoción: un jugador que pasa a poseer un módulo se vuelve gestor.
-      if (target.role.name === ROLE.JUGADOR) {
-        await tx.user.update({ where: { id: targetUserId }, data: { roleId: await this.roleId(ROLE.GESTOR) } });
-      }
-    });
+    await this.prisma.module.update({ where: { id: moduleId }, data: { ownerId: targetUserId } });
 
-    return this.get(moduleId);
+    // VENDER NO ES ASCENDER (F5, §3.1). Antes, vincular convertía al comprador
+    // en gestor en el acto: se encontraba con permisos que nunca había aceptado
+    // y el admin no tenía constancia de haberle entregado nada. Ahora la venta
+    // abre un código de activación; el acceso de gestor queda activo cuando el
+    // comprador lo introduce.
+    const activation = await this.activations.open(targetUserId, moduleId, actor.userId);
+
+    const linked = await this.get(moduleId);
+    return {
+      ...linked,
+      activation: activation
+        ? {
+            id: activation.id,
+            expires_at: activation.expiresAt,
+            dispatch_note: activation.dispatchNote,
+            note:
+              'El comprador NO es gestor todavía: lo será cuando introduzca su código de ' +
+              'activación. Hasta entonces posee el módulo pero no ejerce.',
+          }
+        : null,
+    };
   }
 
   /**
@@ -92,6 +110,11 @@ export class ModuleOwnershipService {
         }
       }
     });
+
+    // Un código vivo de quien ya no posee nada es una promoción esperando a
+    // ocurrir sin motivo: se cierra al quedarse sin módulos (§3.1.6).
+    const remaining = await this.prisma.module.count({ where: { ownerId: previousOwnerId } });
+    if (remaining === 0) await this.activations.revokePendingFor(previousOwnerId);
 
     return this.get(moduleId);
   }

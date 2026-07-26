@@ -32,6 +32,7 @@ import { ChangePasswordPage } from "./pages/login/ChangePasswordPage";
 import { JoinPage } from "./pages/join/JoinPage";
 import { InvitationAcceptPage } from "./pages/invitations/InvitationAcceptPage";
 import { InvitationsPage } from "./pages/invitations/InvitationsPage";
+import { ManagerActivationPage } from "./pages/invitations/ManagerActivationPage";
 import { useAuth } from "./auth/AuthContext";
 
 export function App() {
@@ -85,6 +86,7 @@ export function App() {
         <Route path="/duelo" element={<DueloPage />} />
         <Route path="/participantes" element={<ParticipantsPage />} />
         <Route path="/invitaciones" element={<InvitationsPage />} />
+        <Route path="/acceso-gestor" element={<ManagerActivationPage />} />
         <Route path="/firmware" element={<FirmwarePage />} />
         <Route path="/incidencias" element={<IncidentsPage />} />
         <Route path="/usuarios" element={<UsersPage />} />
