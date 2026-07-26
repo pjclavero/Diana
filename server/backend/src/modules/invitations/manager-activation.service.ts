@@ -70,8 +70,11 @@ export class ManagerActivationService {
       include: { role: true },
     });
     if (!user) throw new NotFoundException(`Usuario ${userId} no encontrado`);
-    if (user.role.name === ROLE.ADMINISTRADOR) return null; // el admin ya puede todo
-    if (user.role.name === ROLE.GESTOR) return null; // ya ejerce; no hay nada que activar
+    // SÓLO se asciende a un jugador. Antes se abría código a cualquier rol que
+    // no fuera admin o gestor (operador, árbitro, consulta, mantenimiento), y
+    // al usarlo no ascendía a nadie: se consumía el código, se respondía que ya
+    // era gestor y no se podía ni regenerar ni revocar. Callejón sin salida.
+    if (user.role.name !== ROLE.JUGADOR) return null;
 
     const existing = await this.prisma.managerActivation.findFirst({
       where: { userId, status: ACTIVATION_STATUS.pending, expiresAt: { gt: new Date() } },
@@ -94,8 +97,11 @@ export class ManagerActivationService {
         });
         this.logger.log(`Ascenso a gestor abierto para ${user.username}.`);
         return activation;
-      } catch {
-        // Colisión del código único: se reintenta con otro.
+      } catch (error) {
+        // Sólo la colisión del código único se reintenta. Cualquier otro fallo
+        // (BD caída, clave foránea) se propaga: tragarlo lo disfrazaba de
+        // «no se pudo generar el código» tras cinco intentos inútiles.
+        if ((error as { code?: string }).code !== 'P2002') throw error;
       }
     }
     throw new BadRequestException('No se pudo generar el código de activación; inténtelo de nuevo.');
@@ -137,16 +143,26 @@ export class ManagerActivationService {
       );
     }
 
+    // Si entretanto le cambiaron el rol, el código NO se quema: se rechaza y
+    // sigue disponible. Consumirlo dejaba al usuario sin salida.
+    const rolActual = activation.user.role.name;
+    if (rolActual === ROLE.GESTOR) {
+      throw new BadRequestException('Ya tiene acceso de gestor: no hace falta activar nada.');
+    }
+    if (rolActual !== ROLE.JUGADOR) {
+      throw new BadRequestException(
+        `Su cuenta tiene el rol '${rolActual}', que no se asciende con este código. ` +
+          'Hable con el administrador.',
+      );
+    }
+
     const gestorId = await this.roleId(ROLE.GESTOR);
     await this.prisma.$transaction(async (tx) => {
       await tx.managerActivation.update({
         where: { id: activation.id },
         data: { status: ACTIVATION_STATUS.activated, activatedAt: new Date() },
       });
-      // Sólo asciende a un jugador: si entretanto lo hicieron admin, no se toca.
-      if (activation.user.role.name === ROLE.JUGADOR) {
-        await tx.user.update({ where: { id: activation.userId }, data: { roleId: gestorId } });
-      }
+      await tx.user.update({ where: { id: activation.userId }, data: { roleId: gestorId } });
       // Cualquier otro código pendiente suyo deja de valer.
       await tx.managerActivation.updateMany({
         where: { userId: activation.userId, status: ACTIVATION_STATUS.pending },
@@ -170,6 +186,13 @@ export class ManagerActivationService {
     if (!activation) throw new NotFoundException('Activación no encontrada.');
     if (activation.status === ACTIVATION_STATUS.activated) {
       throw new BadRequestException('Esa activación ya se usó: no se regenera.');
+    }
+    if (activation.status === ACTIVATION_STATUS.revoked) {
+      // Resucitar una revocada deshacía la revocación del §3.1.6 por la puerta
+      // de atrás. Si hay que volver a ascenderle, se le vuelve a vender.
+      throw new BadRequestException(
+        'Esa activación está revocada. Vuelva a vincularle un módulo para abrir una nueva.',
+      );
     }
     return this.prisma.managerActivation.update({
       where: { id },

@@ -222,7 +222,9 @@ export class IngestService {
           moduleSlug: d.module_id,
           eventId: d.event_id,
           message: d.message,
-          detail: { ...(d.detail as object), firmware_version: d.firmware_version },
+          // La versión va DEBAJO: si el módulo manda su propio
+          // `firmware_version` en el detalle, manda el suyo.
+          detail: { firmware_version: d.firmware_version, ...(d.detail as object) },
         })
         .catch(() => undefined);
     }

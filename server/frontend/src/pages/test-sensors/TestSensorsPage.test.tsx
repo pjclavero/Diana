@@ -90,3 +90,31 @@ describe("TestSensorsPage (F6)", () => {
     expect(await screen.findByText("Sin permiso")).toBeInTheDocument();
   });
 });
+
+describe("TestSensorsPage · el sondeo existe de verdad (F6 · B3)", () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it("vuelve a consultar sola: se podía borrar el temporizador y nada fallaba", async () => {
+    vi.useFakeTimers();
+    const consulta = vi.spyOn(apiClient, "getModuleDiagnostics").mockResolvedValue(empty);
+    renderPage();
+    await vi.waitFor(() => expect(consulta).toHaveBeenCalledTimes(1));
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(consulta).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(9000);
+    expect(consulta).toHaveBeenCalledTimes(5);
+    vi.useRealTimers();
+  });
+
+  it("al salir de la pantalla deja de consultar", async () => {
+    vi.useFakeTimers();
+    const consulta = vi.spyOn(apiClient, "getModuleDiagnostics").mockResolvedValue(empty);
+    const { unmount } = renderPage();
+    await vi.waitFor(() => expect(consulta).toHaveBeenCalledTimes(1));
+    unmount();
+    await vi.advanceTimersByTimeAsync(30_000);
+    // Sin `clearInterval`, la pantalla cerrada seguía pidiendo para siempre.
+    expect(consulta).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+});

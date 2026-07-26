@@ -4,7 +4,7 @@ import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/roles.decorator';
-import { LED_PATTERNS, ModuleDiagnosticsService } from './module-diagnostics.service';
+import { ModuleDiagnosticsService, TARGET_STATES } from './module-diagnostics.service';
 
 class IdentifyDto {
   @IsOptional()
@@ -15,8 +15,8 @@ class IdentifyDto {
 }
 
 class LedTestDto {
-  @IsIn(LED_PATTERNS as unknown as string[])
-  pattern!: string;
+  @IsIn(TARGET_STATES as unknown as string[])
+  state!: string;
 }
 
 class ResultsQueryDto {
@@ -86,7 +86,7 @@ export class ModuleDiagnosticsController {
     const result = await this.diagnostics.testLed(
       idOrSlug,
       targetIndex,
-      dto.pattern,
+      dto.state,
       this.actor(req),
     );
     await this.audit.record({

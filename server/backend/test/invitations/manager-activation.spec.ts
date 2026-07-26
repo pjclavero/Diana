@@ -75,6 +75,26 @@ describe('Ascenso a gestor (F5) · abrir el ascenso', () => {
     expect(prisma.managerActivation.create.mock.calls[0][0].data.dispatchNote).toMatch(/en mano/);
   });
 
+  it('a un rol que no es jugador NO se le abre ascenso (ni operador ni árbitro)', async () => {
+    for (const rol of ['operador', 'arbitro', 'consulta', 'mantenimiento']) {
+      const { service, prisma } = build({
+        user: { findUnique: jest.fn().mockResolvedValue({ ...jugador, role: { name: rol } }) },
+      });
+      expect(await service.open('u1', 'm1')).toBeNull();
+      expect(prisma.managerActivation.create).not.toHaveBeenCalled();
+    }
+  });
+
+  it('la caducidad del código es de 24 horas, ni más ni menos', async () => {
+    // Fijado con un literal: derivarlo de la constante haría que la prueba se
+    // moviera con ella y el plazo se pudiera alargar sin que nada fallara.
+    const { service, prisma } = build();
+    const antes = Date.now();
+    await service.open('u1', 'm1');
+    const expira: Date = prisma.managerActivation.create.mock.calls[0][0].data.expiresAt;
+    expect(Math.round((expira.getTime() - antes) / 3600_000)).toBe(24);
+  });
+
   it('a quien ya es gestor no se le abre nada', async () => {
     const { service, prisma } = build({
       user: { findUnique: jest.fn().mockResolvedValue({ ...jugador, role: { name: ROLE.GESTOR } }) },
@@ -209,16 +229,29 @@ describe('Ascenso a gestor (F5) · activar', () => {
     });
   });
 
-  it('a un administrador no se le cambia el rol al activar', async () => {
+  it('con un rol que no se asciende, el código NO se quema: se rechaza', async () => {
+    // Antes se marcaba `activated`, se respondía «ya es gestor» y no se podía
+    // ni regenerar ni revocar: el usuario quedaba en un callejón sin salida.
     const { service, prisma } = build({
       managerActivation: {
         findUnique: jest
           .fn()
-          .mockResolvedValue(pendiente({ user: { role: { name: ROLE.ADMINISTRADOR } } })),
+          .mockResolvedValue(pendiente({ user: { role: { name: 'operador' } } })),
       },
     });
-    await service.activate('ABCD2345', { userId: 'u1' });
+    await expect(service.activate('ABCD2345', { userId: 'u1' })).rejects.toThrow(/rol 'operador'/);
     expect(prisma.user.update).not.toHaveBeenCalled();
+    expect(prisma.managerActivation.update).not.toHaveBeenCalled();
+  });
+
+  it('a quien ya es gestor se le dice que no hace falta, sin consumir el código', async () => {
+    const { service, prisma } = build({
+      managerActivation: {
+        findUnique: jest.fn().mockResolvedValue(pendiente({ user: { role: { name: ROLE.GESTOR } } })),
+      },
+    });
+    await expect(service.activate('ABCD2345', { userId: 'u1' })).rejects.toThrow(/Ya tiene acceso/);
+    expect(prisma.managerActivation.update).not.toHaveBeenCalled();
   });
 
   it('un código vacío se rechaza sin ir a la base', async () => {
@@ -231,6 +264,27 @@ describe('Ascenso a gestor (F5) · activar', () => {
 });
 
 describe('Ascenso a gestor (F5) · administración', () => {
+  it('una activación REVOCADA no se regenera: eso deshacía la degradación', async () => {
+    const { service } = build({
+      managerActivation: {
+        findUnique: jest.fn().mockResolvedValue({
+          ...pendiente({ status: ACTIVATION_STATUS.revoked }),
+          user: { email: 'a@b.c' },
+        }),
+      },
+    });
+    await expect(service.regenerate('act-1')).rejects.toThrow(/revocada/);
+  });
+
+  it('un fallo de base NO se disfraza de colisión de código', async () => {
+    const { service } = build({
+      managerActivation: {
+        create: jest.fn().mockRejectedValue(Object.assign(new Error('BD caída'), { code: 'P1001' })),
+      },
+    });
+    await expect(service.open('u1', 'm1')).rejects.toThrow(/BD caída/);
+  });
+
   it('regenerar cambia el código y renueva la caducidad', async () => {
     const { service, prisma } = build({
       managerActivation: {
@@ -286,14 +340,19 @@ describe('Ascenso a gestor (F5) · administración', () => {
   });
 
   it('el propio usuario ve que tiene un ascenso pendiente, pero NO su código', async () => {
-    const { service } = build({
+    const { service, prisma } = build({
       managerActivation: {
-        findFirst: jest.fn().mockResolvedValue({ id: 'a', expiresAt: MANANA, createdAt: AHORA }),
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ id: 'a', expiresAt: MANANA, createdAt: AHORA, code: 'SECRETO1' }),
       },
     });
     const mine = await service.mine('u1');
     expect(mine.pending).toBe(true);
-    expect(JSON.stringify(mine)).not.toMatch(/code/i);
+    // Se comprueba el SELECT, no sólo la salida: si el `select` pidiera el
+    // código, un cambio en la respuesta lo filtraría sin que nada fallase.
+    expect(prisma.managerActivation.findFirst.mock.calls[0][0].select).not.toHaveProperty('code');
+    expect(JSON.stringify(mine)).not.toMatch(/SECRETO1/);
   });
 
   it('si su código caducó, se le dice que pida uno nuevo', async () => {

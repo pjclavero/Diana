@@ -3,9 +3,30 @@ import { ROLE } from '../../domain/rbac/permissions';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { MqttService } from '../mqtt/mqtt.service';
 
-/** Patrones de prueba de LED admitidos. El firmware valida los suyos. */
-export const LED_PATTERNS = ['solid', 'blink', 'chase', 'off'] as const;
-export type LedPattern = (typeof LED_PATTERNS)[number];
+/**
+ * Estados de diana que admite el contrato (`common.schema.json#targetState`).
+ *
+ * NO es una lista inventada: el contrato manda. La primera versión de esto se
+ * sacó de la manga unos «patrones» (`solid`, `blink`, `chase`) que el esquema
+ * de comandos no admite, así que `led_test` reventaba en la validación de
+ * salida y ninguna prueba de LED podía llegar al módulo. El panel, que ya
+ * mandaba `TargetState`, tenía razón desde el principio.
+ */
+export const TARGET_STATES = [
+  'off',
+  'safe',
+  'active',
+  'hit',
+  'countdown',
+  'penalty',
+  'error',
+  'calibration',
+  'locked',
+  'sensor_error',
+  'maintenance',
+  'disabled',
+] as const;
+export type TargetStateName = (typeof TARGET_STATES)[number];
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -68,16 +89,22 @@ export class ModuleDiagnosticsService {
     return this.dispatch(module.slug, 'identify', { duration_ms: durationMs });
   }
 
-  /** Prueba de LED de una diana concreta. */
-  async testLed(idOrSlug: string, targetIndex: number, pattern: string, actor: DiagnosticsActor) {
+  /**
+   * Prueba de LED de una diana. Los parámetros van como los define el contrato
+   * (`targets: [{target_index, state}]`), no como a uno le venga bien: el
+   * validador de salida rechaza cualquier campo que el esquema no contemple.
+   */
+  async testLed(idOrSlug: string, targetIndex: number, state: string, actor: DiagnosticsActor) {
     const module = await this.resolve(idOrSlug, actor);
     await this.resolveTarget(module.id, targetIndex);
-    if (!LED_PATTERNS.includes(pattern as LedPattern)) {
+    if (!TARGET_STATES.includes(state as TargetStateName)) {
       throw new BadRequestException(
-        `Patrón '${pattern}' no admitido. Use: ${LED_PATTERNS.join(', ')}.`,
+        `Estado '${state}' no admitido por el contrato. Use: ${TARGET_STATES.join(', ')}.`,
       );
     }
-    return this.dispatch(module.slug, 'led_test', { target_index: targetIndex, pattern });
+    return this.dispatch(module.slug, 'led_test', {
+      targets: [{ target_index: targetIndex, state }],
+    });
   }
 
   /**
@@ -100,14 +127,28 @@ export class ModuleDiagnosticsService {
     };
   }
 
-  /** Arranca la calibración de una diana. */
+  /**
+   * Arranca la calibración. El contrato v1 NO admite parámetros en
+   * `start_calibration`: la calibración es del MÓDULO, no de una diana suelta.
+   * Se comprueba igualmente que la diana exista y esté habilitada —pedir
+   * calibrar por una diana apagada no tiene sentido— y la respuesta declara el
+   * alcance real en vez de sugerir que se calibra sólo ésa.
+   */
   async calibrate(idOrSlug: string, targetIndex: number, actor: DiagnosticsActor) {
     const module = await this.resolve(idOrSlug, actor);
     const target = await this.resolveTarget(module.id, targetIndex);
     if (!target.enabled) {
       throw new BadRequestException(`La diana ${targetIndex} está deshabilitada: no se calibra.`);
     }
-    return this.dispatch(module.slug, 'start_calibration', { target_index: targetIndex });
+    const sent = this.dispatch(module.slug, 'start_calibration');
+    return {
+      ...sent,
+      target_index: target.targetIndex,
+      scope: 'module' as const,
+      note:
+        'El contrato v1 calibra el MÓDULO completo, no una diana suelta. ' +
+        'El resultado llega por `diagnostic`, no aquí.',
+    };
   }
 
   async abortCalibration(idOrSlug: string, actor: DiagnosticsActor) {

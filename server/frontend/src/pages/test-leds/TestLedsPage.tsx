@@ -13,6 +13,7 @@ export function TestLedsPage() {
   const { moduleId = "" } = useParams();
   const [preview, setPreview] = useState<Record<number, TargetState>>({});
   const [sending, setSending] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   /**
    * Envía un estado a una diana. Es un interruptor: si la diana ya está en ese
@@ -21,9 +22,21 @@ export function TestLedsPage() {
   async function apply(targetIndex: number, state: TargetState) {
     const next: TargetState = preview[targetIndex] === state ? "off" : state;
     setSending(`${targetIndex}-${state}`);
-    setPreview((p) => ({ ...p, [targetIndex]: next }));
+    setError(null);
     try {
-      await apiClient.testLed(moduleId, targetIndex, next);
+      const ack = await apiClient.testLed(moduleId, targetIndex, next);
+      // La rejilla se pinta DESPUÉS de que el servidor acepte, y sólo si la
+      // orden llegó al broker. Antes se pintaba antes del `await` y sin
+      // `catch`: el operador veía la diana encendida en pantalla mientras en la
+      // sala no se encendía nada. Era la misma pantalla de mentira que este
+      // bloque venía a eliminar.
+      if (ack.delivered === false) {
+        setError("La orden NO llegó al broker: el módulo no la ha recibido.");
+        return;
+      }
+      setPreview((p) => ({ ...p, [targetIndex]: next }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo enviar la orden.");
     } finally {
       setSending(null);
     }
@@ -32,9 +45,12 @@ export function TestLedsPage() {
   /** Apaga las 9 dianas del módulo. */
   async function turnAllOff() {
     setSending("all-off");
-    setPreview(Object.fromEntries(Array.from({ length: 9 }, (_, i) => [i + 1, "off" as TargetState])));
+    setError(null);
     try {
       await Promise.all(Array.from({ length: 9 }, (_, i) => apiClient.testLed(moduleId, i + 1, "off")));
+      setPreview(Object.fromEntries(Array.from({ length: 9 }, (_, i) => [i + 1, "off" as TargetState])));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudieron apagar todas las dianas.");
     } finally {
       setSending(null);
     }
@@ -96,6 +112,7 @@ export function TestLedsPage() {
             </tbody>
           </table>
         </div>
+      {error && <p role="alert">{error}</p>}
       </Card>
     </div>
   );

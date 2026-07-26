@@ -91,7 +91,9 @@ export function createRealApiClient(baseUrl: string): DianaApiClient {
     testLed: (moduleId, targetIndex, pattern) =>
       r<CommandAck>(`/modules/${moduleId}/targets/${targetIndex}/test-led`, {
         method: "POST",
-        body: JSON.stringify({ pattern }),
+        // El contrato habla de ESTADOS de diana (`targetState`), no de
+        // «patrones»: el nombre anterior era un invento del backend.
+        body: JSON.stringify({ state: pattern }),
       }),
 
     getTopology: (systemId) => r<Topology>(`/systems/${systemId}/topology`),

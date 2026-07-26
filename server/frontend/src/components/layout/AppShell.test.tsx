@@ -75,4 +75,12 @@ describe("AppShell (navegación responsive)", () => {
     expect(screen.queryByRole("link", { name: /firmware/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /módulos/i })).not.toBeInTheDocument();
   });
+
+  it("un jugador SÍ llega a «Acceso de gestor»: es su pantalla (F5, §3.1 paso 3)", () => {
+    // Su destinatario es justo un jugador recién comprador. Con el enlace
+    // filtrado por permisos, la pantalla sólo se alcanzaba tecleando la URL y
+    // el paso 3 del encargo no se podía ejercer desde el panel.
+    renderShell(JUGADOR);
+    expect(screen.getByRole("link", { name: /acceso de gestor/i })).toBeInTheDocument();
+  });
 });

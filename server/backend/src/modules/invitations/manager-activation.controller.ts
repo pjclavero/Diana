@@ -49,15 +49,29 @@ export class ManagerActivationController {
   @Post('activate')
   @ApiOperation({ summary: 'El comprador introduce su código y su acceso de gestor queda activo' })
   async activate(@Body() dto: ActivateDto, @Req() req: { user: AuthenticatedUser }) {
-    const result = await this.activations.activate(dto.code, { userId: req.user.userId });
-    await this.audit.record({
-      user: req.user,
-      action: 'manager.activate',
-      entity: 'user',
-      entityId: req.user.userId,
-      after: result,
-    });
-    return result;
+    try {
+      const result = await this.activations.activate(dto.code, { userId: req.user.userId });
+      await this.audit.record({
+        user: req.user,
+        action: 'manager.activate',
+        entity: 'user',
+        entityId: req.user.userId,
+        after: result,
+      });
+      return result;
+    } catch (error) {
+      // LOS INTENTOS FALLIDOS TAMBIÉN SE AUDITAN. Sin esto, probar códigos no
+      // dejaba ni rastro: nadie podría distinguir un dedazo de alguien
+      // tanteando. El código NO se registra, sólo el motivo del rechazo.
+      await this.audit.record({
+        user: req.user,
+        action: 'manager.activate_failed',
+        entity: 'user',
+        entityId: req.user.userId,
+        after: { reason: (error as Error).message },
+      });
+      throw error;
+    }
   }
 
   @Post(':id/regenerate')

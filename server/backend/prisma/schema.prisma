@@ -127,7 +127,8 @@ model ManagerActivation {
   /// Módulo cuya venta originó el ascenso; informativo y auditable.
   moduleId       String?   @map("module_id") @db.Uuid
   code           String    @unique @db.VarChar(16)
-  /// pending | activated | revoked | expired
+  /// pending | activated | revoked. «Caducado» NO es un estado guardado: se
+  /// deduce del reloj al leer, para que no dependa de que alguien barra la tabla.
   status         String    @default("pending") @db.VarChar(16)
   /// Resultado del último intento de envío (p. ej. "SMTP sin configurar").
   dispatchNote   String?   @map("dispatch_note") @db.VarChar(255)

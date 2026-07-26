@@ -53,7 +53,14 @@ export class ModuleOwnershipService {
     const module = await this.prisma.module.findUnique({ where: { id: moduleId } });
     if (!module) throw new NotFoundException(`Módulo ${moduleId} no encontrado`);
     if (module.ownerId) {
-      if (module.ownerId === targetUserId) return this.get(moduleId);
+      if (module.ownerId === targetUserId) {
+        // REPARACIÓN: si la venta se completó pero el código no llegó a
+        // crearse, reintentar `link` volvía aquí y salía sin abrir nada, así
+        // que el módulo quedaba vendido y el comprador sin código para
+        // siempre. `open` es idempotente, de modo que repetir no duplica.
+        const repaired = await this.activations.open(targetUserId, moduleId, actor.userId);
+        return { ...(await this.get(moduleId)), activation: repaired ? { id: repaired.id, expires_at: repaired.expiresAt, dispatch_note: repaired.dispatchNote, note: 'Ya estaba vendido: se reutiliza o se repara su código de activación.' } : null };
+      }
       throw new BadRequestException('El módulo ya tiene dueño; desvincúlelo antes de reasignarlo.');
     }
 

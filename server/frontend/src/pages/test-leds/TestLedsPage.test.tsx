@@ -48,3 +48,29 @@ describe("TestLedsPage (G-A: toggle y apagar)", () => {
     expect(screen.getByRole("button", { name: "← Volver" })).toBeInTheDocument();
   });
 });
+
+describe("TestLedsPage · no pinta lo que no ha ocurrido (F6 · B2)", () => {
+  it("si el servidor rechaza la orden, la diana NO se pinta encendida", async () => {
+    const { ApiError } = await import("../../api/client");
+    vi.spyOn(apiClient, "testLed").mockRejectedValue(new ApiError("Estado no admitido"));
+    renderPage();
+    await userEvent.click(screen.getAllByRole("button", { name: /Aplicar estado .* en la diana 1/ })[0]);
+    expect(await screen.findByText("Estado no admitido")).toBeInTheDocument();
+  });
+
+  it("si la orden no llegó al broker se dice, y tampoco se pinta", async () => {
+    vi.spyOn(apiClient, "testLed").mockResolvedValue({ command_id: "c1", delivered: false });
+    renderPage();
+    await userEvent.click(screen.getAllByRole("button", { name: /Aplicar estado .* en la diana 1/ })[0]);
+    expect(await screen.findByText(/NO llegó al broker/)).toBeInTheDocument();
+  });
+
+  it("manda un ESTADO del contrato, no un patrón inventado", async () => {
+    const led = vi.spyOn(apiClient, "testLed").mockResolvedValue({ command_id: "c1", delivered: true });
+    renderPage();
+    await userEvent.click(screen.getAllByRole("button", { name: /Aplicar estado .* en la diana 1/ })[0]);
+    await waitFor(() => expect(led).toHaveBeenCalled());
+    const estado = led.mock.calls[0][2];
+    expect(["off", "safe", "active", "hit", "countdown", "penalty", "error", "calibration", "maintenance"]).toContain(estado);
+  });
+});

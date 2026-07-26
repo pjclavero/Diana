@@ -44,6 +44,11 @@ const NAV_SECTIONS: { title: string; links: NavLinkDef[] }[] = [
       { to: "/equipos", label: "Equipos", perm: "teams:read" },
       { to: "/participantes", label: "Participantes", perm: "participants:read" },
       { to: "/invitaciones", label: "Invitaciones", perm: "players:write" },
+      // SIN `perm`: su destinatario es un jugador recién comprador, cuyo único
+      // permiso es `profile:read`. Con un permiso delante, el enlace se le
+      // filtraba y la pantalla sólo era alcanzable tecleando la URL — es decir,
+      // el paso 3 del §3.1 no se podía ejercer desde el panel.
+      { to: "/acceso-gestor", label: "Acceso de gestor" },
     ],
   },
   {

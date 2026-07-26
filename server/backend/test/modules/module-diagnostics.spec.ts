@@ -1,5 +1,8 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ModuleDiagnosticsService } from '../../src/modules/modules/module-diagnostics.service';
+import { CommandBuilder } from '../../src/contracts/command-builder';
+import { ContractValidator } from '../../src/contracts/contract-validator';
+import { TARGET_STATES } from '../../src/modules/modules/module-diagnostics.service';
 
 const MODULE = { id: 'm1', slug: 'mod-a', ownerId: 'u-gestor' };
 const ADMIN = { userId: 'u-admin', role: 'administrador' };
@@ -39,7 +42,7 @@ describe('Diagnóstico de módulo (F6) · quién puede', () => {
   it('un gestor ajeno NO enciende los LED de un módulo que no es suyo', async () => {
     const { service, sendModuleCommand } = build();
     // 404 y no 403: a quien no le corresponde, el módulo ni siquiera existe.
-    await expect(service.testLed('mod-a', 3, 'blink', OTHER)).rejects.toBeInstanceOf(
+    await expect(service.testLed('mod-a', 3, 'active', OTHER)).rejects.toBeInstanceOf(
       NotFoundException,
     );
     expect(sendModuleCommand).not.toHaveBeenCalled();
@@ -68,16 +71,15 @@ describe('Diagnóstico de módulo (F6) · quién puede', () => {
 });
 
 describe('Diagnóstico · lo que se ordena de verdad', () => {
-  it('la prueba de LED va con la diana y el patrón', async () => {
+  it('la prueba de LED va como la define el contrato: targets[{index, state}]', async () => {
     const { service, sendModuleCommand } = build();
-    await service.testLed('mod-a', 3, 'chase', ADMIN);
+    await service.testLed('mod-a', 3, 'active', ADMIN);
     expect(sendModuleCommand).toHaveBeenCalledWith('mod-a', 'led_test', {
-      target_index: 3,
-      pattern: 'chase',
+      targets: [{ target_index: 3, state: 'active' }],
     });
   });
 
-  it('un patrón inventado se rechaza en vez de mandarlo al firmware', async () => {
+  it('un estado inventado se rechaza en vez de mandarlo al firmware', async () => {
     const { service, sendModuleCommand } = build();
     await expect(service.testLed('mod-a', 3, 'discoteca', ADMIN)).rejects.toBeInstanceOf(
       BadRequestException,
@@ -87,24 +89,26 @@ describe('Diagnóstico · lo que se ordena de verdad', () => {
 
   it('una diana fuera de rango se rechaza', async () => {
     const { service } = build();
-    await expect(service.testLed('mod-a', 10, 'solid', ADMIN)).rejects.toBeInstanceOf(
+    await expect(service.testLed('mod-a', 10, 'active', ADMIN)).rejects.toBeInstanceOf(
       BadRequestException,
     );
   });
 
   it('una diana que el módulo no tiene da 404', async () => {
     const { service } = build({ target: { findFirst: jest.fn().mockResolvedValue(null) } });
-    await expect(service.testLed('mod-a', 5, 'solid', ADMIN)).rejects.toBeInstanceOf(
+    await expect(service.testLed('mod-a', 5, 'active', ADMIN)).rejects.toBeInstanceOf(
       NotFoundException,
     );
   });
 
-  it('la calibración se pide por diana', async () => {
+  it('la calibración se pide SIN parámetros y se declara que es del módulo', async () => {
+    // El contrato v1 no admite parámetros aquí: mandarlos hacía que el
+    // validador de salida tumbara la publicación y la calibración no salía.
     const { service, sendModuleCommand } = build();
-    await service.calibrate('mod-a', 3, ADMIN);
-    expect(sendModuleCommand).toHaveBeenCalledWith('mod-a', 'start_calibration', {
-      target_index: 3,
-    });
+    const res = await service.calibrate('mod-a', 3, ADMIN);
+    expect(sendModuleCommand).toHaveBeenCalledWith('mod-a', 'start_calibration', undefined);
+    expect(res.scope).toBe('module');
+    expect(res.note).toMatch(/calibra el MÓDULO completo/);
   });
 
   it('una diana deshabilitada no se calibra', async () => {
@@ -140,7 +144,7 @@ describe('Diagnóstico · ordenar no es saber el resultado', () => {
     const { service } = build({
       mqtt: { sendModuleCommand: jest.fn(() => ({ command_id: 'c1', delivered: false })) },
     });
-    const res = await service.testLed('mod-a', 3, 'solid', ADMIN);
+    const res = await service.testLed('mod-a', 3, 'active', ADMIN);
     expect(res.delivered).toBe(false);
     expect(res.note).toMatch(/NO llegó al broker/);
   });
@@ -163,5 +167,45 @@ describe('Diagnóstico · ordenar no es saber el resultado', () => {
     const { service, prisma } = build();
     await service.results('mod-a', ADMIN, 5000);
     expect(prisma.incident.findMany.mock.calls[0][0].take).toBe(100);
+  });
+});
+
+describe('Los comandos emitidos CUMPLEN el contrato congelado', () => {
+  // Esto es lo que nadie comprobaba: `led_test` y `start_calibration` se
+  // emitían con parámetros que el esquema no admite (`additionalProperties:
+  // false`), así que la publicación reventaba en el validador de salida y la
+  // prueba de LED no llegaba jamás al módulo.
+  const validator = new ContractValidator();
+  const builder = new CommandBuilder();
+
+  const valida = (action: string, params?: Record<string, unknown>) => {
+    const command = builder.moduleCommand('mod-a', action, params);
+    return validator.validate('module-command.schema.json', command as never);
+  };
+
+  it('identify', () => expect(valida('identify', { duration_ms: 4000 }).ok).toBe(true));
+  it('self_test', () => expect(valida('self_test').ok).toBe(true));
+  it('abort_calibration', () => expect(valida('abort_calibration').ok).toBe(true));
+  it('start_calibration', () => expect(valida('start_calibration').ok).toBe(true));
+
+  it('led_test con la forma del contrato', () => {
+    const r = valida('led_test', { targets: [{ target_index: 3, state: 'active' }] });
+    expect(r.ok).toBe(true);
+  });
+
+  it('led_test con la forma INVENTADA que había antes NO valida', () => {
+    const r = valida('led_test', { target_index: 3, pattern: 'blink' });
+    expect(r.ok).toBe(false);
+  });
+
+  it('start_calibration con parámetros NO valida', () => {
+    expect(valida('start_calibration', { target_index: 3 }).ok).toBe(false);
+  });
+
+  it('todos los estados admitidos por el servicio son válidos en el contrato', () => {
+    for (const state of TARGET_STATES) {
+      const r = valida('led_test', { targets: [{ target_index: 1, state }] });
+      expect([state, r.ok]).toEqual([state, true]);
+    }
   });
 });
