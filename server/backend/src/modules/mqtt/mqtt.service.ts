@@ -73,7 +73,12 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Publica validando antes contra el esquema del tópico. */
-  publish(topic: string, payload: Record<string, unknown>, retain = false): void {
+  /**
+   * Publica y DICE si ha salido. Antes devolvía void y un `return` silencioso
+   * cuando no había cliente: quien ordenaba una pausa no podía distinguir
+   * «ordenada» de «descartada» (defecto D3 del supervisor de G-I).
+   */
+  publish(topic: string, payload: Record<string, unknown>, retain = false): boolean {
     const parsed = parseTopic(topic);
     if (!parsed) throw new Error(`Tópico fuera del contrato v1: ${topic}`);
 
@@ -86,9 +91,16 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
     }
     if (!this.client) {
       this.logger.warn(`Publicación descartada (sin cliente MQTT): ${topic}`);
-      return;
+      return false;
+    }
+    if (!this.client.connected) {
+      // mqtt.js encola en vez de fallar: la orden NO ha salido todavía.
+      this.logger.warn(`Publicación encolada, sin conexión con el broker: ${topic}`);
+      this.client.publish(topic, JSON.stringify(payload), { qos: parsed.qos, retain });
+      return false;
     }
     this.client.publish(topic, JSON.stringify(payload), { qos: parsed.qos, retain });
+    return true;
   }
 
   /** Comando a un módulo (contrato §6). */
@@ -111,8 +123,10 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
     expiresInMs?: number,
   ): Record<string, unknown> {
     const command = this.commands.systemCommand(systemId, action, extra, { expiresInMs });
-    this.publish(topics.systemCommand(systemId), command);
-    return command;
+    // `delivered=false` = el broker no la ha recibido (sin cliente o sin
+    // conexión). Quien la ordena debe poder decirlo en pantalla.
+    const delivered = this.publish(topics.systemCommand(systemId), command);
+    return { ...command, delivered };
   }
 
   /** Orden OTA. Sin firma no sale del backend. */

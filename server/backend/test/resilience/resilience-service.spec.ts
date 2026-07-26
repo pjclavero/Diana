@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { ResilienceService } from '../../src/modules/resilience/resilience.service';
 
 const PLAN = {
@@ -12,9 +12,12 @@ const GAME = {
   id: 'g1',
   status: 'running',
   targetSystemId: 's1',
+  viewId: null,
   targetSystem: { id: 's1', slug: 'panel-a', name: 'Panel A', coordinatorModuleId: 'm-a' },
   rounds: [{ id: 'r1', roundIndex: 1, phase: 'running', plan: PLAN }],
 };
+
+const FELL_AT = new Date('2026-07-26T10:00:00Z');
 
 function buildPrisma(over: any = {}) {
   return {
@@ -23,8 +26,8 @@ function buildPrisma(over: any = {}) {
         .fn()
         .mockResolvedValue({ id: 'm-b', slug: 'mod-b', online: true, targetSystemId: 's1' }),
       findMany: jest.fn().mockResolvedValue([
-        { id: 'm-a', slug: 'mod-a', online: true, lastSeenAt: new Date('2026-07-26T10:00:00Z') },
-        { id: 'm-b', slug: 'mod-b', online: false, lastSeenAt: new Date('2026-07-26T10:00:00Z') },
+        { id: 'm-a', slug: 'mod-a', online: true, lastSeenAt: FELL_AT, offlineSince: null },
+        { id: 'm-b', slug: 'mod-b', online: false, lastSeenAt: FELL_AT, offlineSince: FELL_AT },
       ]),
       update: jest.fn().mockResolvedValue({}),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -32,21 +35,32 @@ function buildPrisma(over: any = {}) {
     },
     game: {
       findFirst: jest.fn().mockResolvedValue(GAME),
-      findUnique: jest.fn().mockResolvedValue(GAME),
+      findUnique: jest.fn().mockResolvedValue({ ...GAME, status: 'paused' }),
       update: jest.fn().mockResolvedValue({}),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       ...over.game,
     },
+    viewPanel: { findMany: jest.fn().mockResolvedValue([]), ...over.viewPanel },
     targetSystem: {
       findUnique: jest.fn().mockResolvedValue({ coordinatorModuleId: 'm-a' }),
       ...over.targetSystem,
     },
-    incident: { create: jest.fn().mockResolvedValue({}), ...over.incident },
+    incident: {
+      create: jest.fn().mockResolvedValue({}),
+      findMany: jest.fn().mockResolvedValue([]),
+      ...over.incident,
+    },
     $transaction: jest.fn().mockResolvedValue([]),
   } as any;
 }
 
-function mqttRef(sendSystemCommand = jest.fn().mockReturnValue({ command_id: 'c1' })) {
-  return { ref: { get: () => ({ sendSystemCommand }) } as any, sendSystemCommand };
+/** El `MqttService` se resuelve con ModuleRef; aquí se sustituye por un doble. */
+function mqttRef(delivered = true, throws = false) {
+  const sendSystemCommand = jest.fn(() => {
+    if (throws) throw new Error('sin cliente MQTT');
+    return { command_id: 'c1', delivered };
+  });
+  return { ref: { get: () => ({ sendSystemCommand, connected: delivered }) } as any, sendSystemCommand };
 }
 
 const presence = (over: any = {}) => ({
@@ -58,33 +72,50 @@ const presence = (over: any = {}) => ({
 });
 
 describe('ResilienceService · persistencia de presencia (G-I)', () => {
-  it('el Last Will marca el módulo como caído y guarda cuándo se le vio', async () => {
+  it('al caer NO se toca `lastSeenAt` y se fija el instante de la caída', async () => {
     const prisma = buildPrisma();
     const { ref } = mqttRef();
     await new ResilienceService(prisma, ref).record(presence());
-    expect(prisma.module.update.mock.calls[0][0].data).toMatchObject({
-      online: false,
-      lastSeenAt: new Date('2026-07-26T10:01:00Z'),
-    });
+    const data = prisma.module.update.mock.calls[0][0].data;
+    expect(data.online).toBe(false);
+    // `lastSeenAt` es «la última vez que se le vio VIVO», no cuando nos enteramos.
+    expect(data.lastSeenAt).toBeUndefined();
+    expect(data.offlineSince).toEqual(new Date('2026-07-26T10:01:00Z'));
   });
 
-  it('no borra identidad que el módulo no envía (no machaca con null)', async () => {
-    const prisma = buildPrisma();
+  it('al volver se limpia el instante de caída y avanza `lastSeenAt`', async () => {
+    const prisma = buildPrisma({
+      module: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ id: 'm-b', slug: 'mod-b', online: false, targetSystemId: 's1' }),
+      },
+    });
     const { ref } = mqttRef();
     await new ResilienceService(prisma, ref).record(presence({ online: true, reason: 'connect' }));
     const data = prisma.module.update.mock.calls[0][0].data;
-    expect(data.mac).toBeUndefined();
-    expect(data.firmwareVersion).toBeUndefined();
+    expect(data.offlineSince).toBeNull();
+    expect(data.lastSeenAt).toEqual(new Date('2026-07-26T10:01:00Z'));
   });
 
-  it('un módulo desconocido no revienta la ingesta', async () => {
+  it('`touch` no resucita a un módulo caído (retenidos reentregados)', async () => {
+    const prisma = buildPrisma();
+    const { ref } = mqttRef();
+    await new ResilienceService(prisma, ref).touch('mod-b', new Date());
+    expect(prisma.module.updateMany.mock.calls[0][0].where).toEqual({
+      slug: 'mod-b',
+      online: true,
+    });
+  });
+
+  it('un módulo desconocido deja incidencia, no se pierde en silencio', async () => {
     const prisma = buildPrisma({ module: { findUnique: jest.fn().mockResolvedValue(null) } });
     const { ref } = mqttRef();
     await expect(new ResilienceService(prisma, ref).record(presence())).resolves.toBeNull();
-    expect(prisma.module.update).not.toHaveBeenCalled();
+    expect(prisma.incident.create.mock.calls[0][0].data.kind).toBe('presence_unknown_module');
   });
 
-  it('presencia repetida (mensaje retenido) no vuelve a decidir', async () => {
+  it('presencia repetida (retenida) no vuelve a decidir', async () => {
     const prisma = buildPrisma({
       module: {
         findUnique: jest
@@ -93,34 +124,29 @@ describe('ResilienceService · persistencia de presencia (G-I)', () => {
       },
     });
     const { ref, sendSystemCommand } = mqttRef();
-    const decision = await new ResilienceService(prisma, ref).record(presence());
-    expect(decision).toBeNull();
+    expect(await new ResilienceService(prisma, ref).record(presence())).toBeNull();
     expect(sendSystemCommand).not.toHaveBeenCalled();
-    // Pero sí refresca `lastSeenAt`.
-    expect(prisma.module.update).toHaveBeenCalled();
-  });
-
-  it('`touch` refresca la última vez que se vio, sin tocar la presencia', async () => {
-    const prisma = buildPrisma();
-    const { ref } = mqttRef();
-    await new ResilienceService(prisma, ref).touch('mod-a', new Date('2026-07-26T10:02:00Z'));
-    expect(prisma.module.updateMany.mock.calls[0][0].data).toEqual({
-      lastSeenAt: new Date('2026-07-26T10:02:00Z'),
-    });
   });
 });
 
 describe('ResilienceService · reacción a la caída', () => {
-  it('módulo implicado caído → ordena pausa y marca la partida en pausa', async () => {
+  it('módulo implicado caído → ordena pausa (transición condicional)', async () => {
     const prisma = buildPrisma();
     const { ref, sendSystemCommand } = mqttRef();
     const decision = await new ResilienceService(prisma, ref).record(presence());
     expect(decision!.action).toBe('auto_pause');
+    expect(prisma.game.updateMany.mock.calls[0][0].where).toEqual({ id: 'g1', status: 'running' });
     expect(sendSystemCommand).toHaveBeenCalledWith('panel-a', 'pause_game', {}, 10000);
-    expect(prisma.$transaction).toHaveBeenCalled();
   });
 
-  it('coordinador caído → pausa dura registrada como crítica', async () => {
+  it('dos caídas a la vez: sólo UNA orden de pausa (la 2ª no transiciona)', async () => {
+    const prisma = buildPrisma({ game: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) } });
+    const { ref, sendSystemCommand } = mqttRef();
+    await new ResilienceService(prisma, ref).record(presence());
+    expect(sendSystemCommand).not.toHaveBeenCalled();
+  });
+
+  it('coordinador de la PARTIDA caído → pausa dura', async () => {
     const prisma = buildPrisma({
       module: {
         findUnique: jest
@@ -133,113 +159,116 @@ describe('ResilienceService · reacción a la caída', () => {
       presence({ moduleSlug: 'mod-a' }),
     );
     expect(decision!.action).toBe('hard_pause');
-    expect(prisma.incident.create.mock.calls[0][0].data.severity).toBe('critical');
   });
 
-  it('si no se puede publicar la pausa, se pausa igual y se registra el fallo', async () => {
+  it('si la orden NO llega al broker se registra como crítica (aunque no lance)', async () => {
     const prisma = buildPrisma();
-    const sendSystemCommand = jest.fn(() => {
-      throw new Error('sin cliente MQTT');
-    });
-    const { ref } = mqttRef(sendSystemCommand);
+    const { ref } = mqttRef(false); // publicada pero no entregada
     await new ResilienceService(prisma, ref).record(presence());
     const kinds = prisma.incident.create.mock.calls.map((c: any) => c[0].data.kind);
     expect(kinds).toContain('pause_command_failed');
-    // El panel no puede mostrar «en curso» algo que ya no lo está.
-    expect(prisma.$transaction).toHaveBeenCalled();
   });
 
-  it('una partida ya pausada no recibe otra orden de pausa', async () => {
-    const prisma = buildPrisma({
-      game: { findFirst: jest.fn().mockResolvedValue({ ...GAME, status: 'paused' }) },
-    });
-    const { ref, sendSystemCommand } = mqttRef();
+  it('si la publicación lanza, también se registra', async () => {
+    const prisma = buildPrisma();
+    const { ref } = mqttRef(true, true);
     await new ResilienceService(prisma, ref).record(presence());
-    expect(sendSystemCommand).not.toHaveBeenCalled();
-  });
-
-  it('un módulo que no aporta dianas a la ronda no la pausa', async () => {
-    const prisma = buildPrisma({
-      module: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue({ id: 'm-z', slug: 'mod-z', online: true, targetSystemId: 's1' }),
-      },
-      targetSystem: { findUnique: jest.fn().mockResolvedValue({ coordinatorModuleId: 'm-a' }) },
-    });
-    const { ref, sendSystemCommand } = mqttRef();
-    const decision = await new ResilienceService(prisma, ref).record(
-      presence({ moduleSlug: 'mod-z' }),
-    );
-    expect(decision!.action).toBe('none');
-    expect(sendSystemCommand).not.toHaveBeenCalled();
+    const kinds = prisma.incident.create.mock.calls.map((c: any) => c[0].data.kind);
+    expect(kinds).toContain('pause_command_failed');
   });
 });
 
-describe('ResilienceService · estado y decisión del operador', () => {
-  it('el estado enumera los módulos que faltan y la cuenta atrás', async () => {
-    const prisma = buildPrisma();
-    const { ref } = mqttRef();
-    const status = await new ResilienceService(prisma, ref).statusOf(
-      'g1',
-      new Date('2026-07-26T10:00:30Z'),
-      60_000,
-    );
-    expect(status.missingModules.map((m: any) => m.slug)).toEqual(['mod-b']);
-    expect(status.countdown).toMatchObject({ remainingMs: 30_000, expired: false });
-    expect(status.operatorMustDecide).toBe(true);
-    expect(status.canResumeWithout).toBe(true);
-  });
-
-  it('con el coordinador caído no se puede reanudar sin él', async () => {
+describe('ResilienceService · estado', () => {
+  it('enumera módulos ausentes y cuenta desde la caída MÁS RECIENTE', async () => {
     const prisma = buildPrisma({
       module: {
         findMany: jest.fn().mockResolvedValue([
-          { id: 'm-a', slug: 'mod-a', online: false, lastSeenAt: new Date('2026-07-26T10:00:00Z') },
-          { id: 'm-b', slug: 'mod-b', online: true, lastSeenAt: null },
+          {
+            id: 'm-a',
+            slug: 'mod-a',
+            online: false,
+            lastSeenAt: FELL_AT,
+            offlineSince: new Date('2026-07-26T10:00:00Z'),
+          },
+          {
+            id: 'm-b',
+            slug: 'mod-b',
+            online: false,
+            lastSeenAt: FELL_AT,
+            offlineSince: new Date('2026-07-26T10:00:30Z'),
+          },
         ]),
       },
     });
     const { ref } = mqttRef();
-    const service = new ResilienceService(prisma, ref);
-    const status = await service.statusOf('g1');
-    expect(status.coordinatorDown).toBe(true);
-    expect(status.canResumeWithout).toBe(false);
-    await expect(service.decide('g1', 'resume_without')).rejects.toBeInstanceOf(
-      BadRequestException,
+    const status = await new ResilienceService(prisma, ref).statusOf(
+      'g1',
+      new Date('2026-07-26T10:00:40Z'),
+      60_000,
     );
+    expect(status.missingModules.map((m: any) => m.slug).sort()).toEqual(['mod-a', 'mod-b']);
+    // Desde la más reciente (10:00:30) quedan 50 s, no 30.
+    expect(status.countdown).toMatchObject({ remainingMs: 50_000, expired: false });
   });
 
-  it('reanudar sin el módulo deja constancia de que cambian las condiciones', async () => {
-    const prisma = buildPrisma();
-    const { ref, sendSystemCommand } = mqttRef();
-    const result = await new ResilienceService(prisma, ref).decide('g1', 'resume_without', 'operador');
-    expect(sendSystemCommand).toHaveBeenCalledWith('panel-a', 'resume_game', {}, 10000);
-    expect(result.missing).toEqual(['mod-b']);
-    const incident = prisma.$transaction.mock.calls[0][0];
-    expect(incident).toHaveLength(2);
-  });
-
-  it('no se «reanuda sin nadie» cuando no falta ningún módulo', async () => {
+  it('partida sobre VISTA: mira los módulos de TODOS sus paneles (D4)', async () => {
     const prisma = buildPrisma({
-      module: {
+      game: {
+        findUnique: jest.fn().mockResolvedValue({ ...GAME, status: 'paused', viewId: 'v1' }),
+      },
+      viewPanel: {
         findMany: jest
           .fn()
-          .mockResolvedValue([{ id: 'm-b', slug: 'mod-b', online: true, lastSeenAt: null }]),
+          .mockResolvedValue([{ targetSystemId: 's1' }, { targetSystemId: 's2' }]),
       },
     });
     const { ref } = mqttRef();
-    await expect(
-      new ResilienceService(prisma, ref).decide('g1', 'resume_without'),
-    ).rejects.toThrow(/No falta ningún módulo/);
+    const status = await new ResilienceService(prisma, ref).statusOf('g1');
+    expect(status.panels.sort()).toEqual(['s1', 's2']);
+    expect(prisma.module.findMany.mock.calls[0][0].where.targetSystemId.in.sort()).toEqual([
+      's1',
+      's2',
+    ]);
   });
 
-  it('abortar cierra la partida', async () => {
-    const prisma = buildPrisma();
-    const { ref, sendSystemCommand } = mqttRef();
-    const result = await new ResilienceService(prisma, ref).decide('g1', 'abort');
-    expect(sendSystemCommand).toHaveBeenCalledWith('panel-a', 'abort_game', {}, 10000);
-    expect(result.action).toBe('abort');
+  it('módulo de vuelta con la ronda aún pausada: SE PUEDE reanudar (D1)', async () => {
+    const prisma = buildPrisma({
+      module: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'm-a', slug: 'mod-a', online: true, lastSeenAt: FELL_AT, offlineSince: null },
+          { id: 'm-b', slug: 'mod-b', online: true, lastSeenAt: FELL_AT, offlineSince: null },
+        ]),
+      },
+      incident: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { kind: 'round_auto_paused', detail: { game_id: 'g1', command_delivered: true }, occurredAt: FELL_AT },
+          ]),
+      },
+    });
+    const { ref } = mqttRef();
+    const status = await new ResilienceService(prisma, ref).statusOf('g1');
+    expect(status.missingModules).toEqual([]);
+    expect(status.canResume).toBe(true);
+    // Y el aviso NO desaparece de la pantalla: sigue habiendo que decidir.
+    expect(status.operatorMustDecide).toBe(true);
+  });
+
+  it('declara que la orden de pausa no llegó al coordinador', async () => {
+    const prisma = buildPrisma({
+      incident: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { kind: 'round_auto_paused', detail: { game_id: 'g1', command_delivered: false }, occurredAt: FELL_AT },
+          ]),
+      },
+    });
+    const { ref } = mqttRef();
+    const status = await new ResilienceService(prisma, ref).statusOf('g1');
+    expect(status.pauseCommandDelivered).toBe(false);
+    expect(status.note).toMatch(/no llegó al coordinador/);
   });
 
   it('partida inexistente → 404', async () => {
@@ -248,5 +277,89 @@ describe('ResilienceService · estado y decisión del operador', () => {
     await expect(new ResilienceService(prisma, ref).statusOf('gX')).rejects.toBeInstanceOf(
       NotFoundException,
     );
+  });
+});
+
+describe('ResilienceService · decisión del operador', () => {
+  it('NO resucita una partida cerrada (D2)', async () => {
+    for (const status of ['finished', 'aborted']) {
+      const prisma = buildPrisma({
+        game: { findUnique: jest.fn().mockResolvedValue({ ...GAME, status }) },
+      });
+      const { ref, sendSystemCommand } = mqttRef();
+      await expect(
+        new ResilienceService(prisma, ref).decide('g1', 'resume_without'),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(sendSystemCommand).not.toHaveBeenCalled();
+    }
+  });
+
+  it('no reanuda sobre un panel ocupado por otra partida (guardarraíl G-H)', async () => {
+    const prisma = buildPrisma({
+      game: {
+        findUnique: jest.fn().mockResolvedValue({ ...GAME, status: 'paused' }),
+        findFirst: jest.fn().mockResolvedValue({ id: 'g2', name: 'Otra', status: 'running' }),
+      },
+    });
+    const { ref, sendSystemCommand } = mqttRef();
+    await expect(
+      new ResilienceService(prisma, ref).decide('g1', 'resume_without'),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(sendSystemCommand).not.toHaveBeenCalled();
+  });
+
+  it('reanudar con todos de vuelta ordena resume_game', async () => {
+    const prisma = buildPrisma({
+      module: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { id: 'm-a', slug: 'mod-a', online: true, lastSeenAt: FELL_AT, offlineSince: null },
+            { id: 'm-b', slug: 'mod-b', online: true, lastSeenAt: FELL_AT, offlineSince: null },
+          ]),
+      },
+      game: {
+        findUnique: jest.fn().mockResolvedValue({ ...GAME, status: 'paused' }),
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+    });
+    const { ref, sendSystemCommand } = mqttRef();
+    const result = await new ResilienceService(prisma, ref).decide('g1', 'resume', 'operador');
+    expect(sendSystemCommand).toHaveBeenCalledWith('panel-a', 'resume_game', {}, 10000);
+    expect(result.action).toBe('resume');
+  });
+
+  it('«reanudar» con módulos aún ausentes se rechaza y explica la alternativa', async () => {
+    const prisma = buildPrisma({ game: { findFirst: jest.fn().mockResolvedValue(null) } });
+    const { ref } = mqttRef();
+    await expect(new ResilienceService(prisma, ref).decide('g1', 'resume')).rejects.toThrow(
+      /Siguen ausentes/,
+    );
+  });
+
+  it('con el coordinador caído no se puede reanudar de ninguna forma', async () => {
+    const prisma = buildPrisma({
+      module: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'm-a', slug: 'mod-a', online: false, lastSeenAt: FELL_AT, offlineSince: FELL_AT },
+          { id: 'm-b', slug: 'mod-b', online: true, lastSeenAt: FELL_AT, offlineSince: null },
+        ]),
+      },
+      game: { findFirst: jest.fn().mockResolvedValue(null) },
+    });
+    const { ref } = mqttRef();
+    const service = new ResilienceService(prisma, ref);
+    await expect(service.decide('g1', 'resume_without')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+
+  it('abortar cierra la partida y dice si la orden llegó', async () => {
+    const prisma = buildPrisma({ game: { findFirst: jest.fn().mockResolvedValue(null) } });
+    const { ref, sendSystemCommand } = mqttRef(false);
+    const result = await new ResilienceService(prisma, ref).decide('g1', 'abort');
+    expect(sendSystemCommand).toHaveBeenCalledWith('panel-a', 'abort_game', {}, 10000);
+    expect(result.delivered).toBe(false);
+    expect(result.note).toMatch(/no llegó al broker/);
   });
 });

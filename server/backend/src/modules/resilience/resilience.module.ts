@@ -7,8 +7,8 @@ import { RequirePermissions } from '../auth/roles.decorator';
 import { ResilienceService } from './resilience.service';
 
 class DecisionDto {
-  @IsIn(['resume_without', 'abort'])
-  action!: 'resume_without' | 'abort';
+  @IsIn(['resume', 'resume_without', 'abort'])
+  action!: 'resume' | 'resume_without' | 'abort';
 }
 
 /**

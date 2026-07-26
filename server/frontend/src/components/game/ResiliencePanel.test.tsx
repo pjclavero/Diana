@@ -9,8 +9,16 @@ function status(over: Partial<ResilienceStatus> = {}): ResilienceStatus {
   return {
     game: { id: "g1", status: "paused", panel: "Panel A" },
     round: { id: "r1", index: 1, phase: "running" },
+    panels: ["s1"],
+    paused: true,
+    pausedByResilience: true,
+    pauseCommandDelivered: true,
+    brokerConnected: true,
+    canResume: false,
     coordinatorDown: false,
-    missingModules: [{ slug: "mod-b", lastSeenAt: "2026-07-26T10:00:00Z" }],
+    missingModules: [
+      { slug: "mod-b", lastSeenAt: "2026-07-26T10:00:00Z", offlineSince: "2026-07-26T10:00:00Z" },
+    ],
     involvedModules: 3,
     countdown: { elapsedMs: 20_000, remainingMs: 40_000, expired: false },
     operatorMustDecide: true,
@@ -23,9 +31,15 @@ function status(over: Partial<ResilienceStatus> = {}): ResilienceStatus {
 describe("ResiliencePanel (G-I)", () => {
   beforeEach(() => vi.restoreAllMocks());
 
-  it("sin caídas no ocupa sitio en pantalla", async () => {
+  it("sin nada que decidir no ocupa sitio en pantalla", async () => {
     vi.spyOn(api, "getResilienceStatus").mockResolvedValue(
-      status({ missingModules: [], operatorMustDecide: false, countdown: null }),
+      status({
+        missingModules: [],
+        operatorMustDecide: false,
+        pausedByResilience: false,
+        paused: false,
+        countdown: null,
+      }),
     );
     const { container } = render(<ResiliencePanel gameId="g1" />);
     await waitFor(() => expect(api.getResilienceStatus).toHaveBeenCalled());
@@ -52,7 +66,7 @@ describe("ResiliencePanel (G-I)", () => {
       status({
         coordinatorDown: true,
         canResumeWithout: false,
-        missingModules: [{ slug: "mod-a", lastSeenAt: null }],
+        missingModules: [{ slug: "mod-a", lastSeenAt: null, offlineSince: null }],
         note: "Pausa dura: sin coordinador no hay tiempos fiables. No se puede reanudar sin él.",
       }),
     );
@@ -100,5 +114,42 @@ describe("ResiliencePanel (G-I)", () => {
 
     expect(await screen.findByText("No se puede reanudar sin el coordinador")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Abortar la ronda" })).toBeEnabled();
+  });
+
+  it("si el módulo vuelve, la ronda NO queda sin salida: se puede reanudar (D1)", async () => {
+    vi.spyOn(api, "getResilienceStatus").mockResolvedValue(
+      status({
+        missingModules: [],
+        countdown: null,
+        canResume: true,
+        canResumeWithout: false,
+        operatorMustDecide: true,
+      }),
+    );
+    const decide = vi
+      .spyOn(api, "decideResilience")
+      .mockResolvedValue({ action: "resume", missing: [] });
+
+    render(<ResiliencePanel gameId="g1" />);
+    expect(await screen.findByText(/Todos los módulos han vuelto/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Reanudar" }));
+    await waitFor(() => expect(decide).toHaveBeenCalledWith("g1", "resume"));
+  });
+
+  it("avisa cuando la orden de pausa NO llegó al coordinador (D3)", async () => {
+    vi.spyOn(api, "getResilienceStatus").mockResolvedValue(
+      status({ pauseCommandDelivered: false, brokerConnected: false }),
+    );
+    render(<ResiliencePanel gameId="g1" />);
+    expect(await screen.findByText(/no llegó al coordinador/)).toBeInTheDocument();
+    expect(screen.getByText(/sin conexión con el broker MQTT/)).toBeInTheDocument();
+  });
+
+  it("no afirma una pausa que no existe (D7)", async () => {
+    vi.spyOn(api, "getResilienceStatus").mockResolvedValue(
+      status({ paused: false, pausedByResilience: false }),
+    );
+    render(<ResiliencePanel gameId="g1" />);
+    expect(await screen.findByText(/La ronda NO está en pausa/)).toBeInTheDocument();
   });
 });

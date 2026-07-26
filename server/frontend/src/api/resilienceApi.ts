@@ -36,12 +36,19 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 export interface ResilienceStatus {
   game: { id: string; status: string; panel: string };
   round: { id: string; index: number; phase: string } | null;
+  panels: string[];
+  paused: boolean;
+  pausedByResilience: boolean;
+  /** null = no consta; false = la orden de pausa NO llegó al broker. */
+  pauseCommandDelivered: boolean | null;
+  brokerConnected: boolean | null;
   coordinatorDown: boolean;
-  missingModules: { slug: string; lastSeenAt: string | null }[];
+  missingModules: { slug: string; lastSeenAt: string | null; offlineSince: string | null }[];
   involvedModules: number;
   countdown: { elapsedMs: number; remainingMs: number; expired: boolean } | null;
   operatorMustDecide: boolean;
   canResumeWithout: boolean;
+  canResume: boolean;
   note: string | null;
 }
 
@@ -51,8 +58,8 @@ export function getResilienceStatus(gameId: string): Promise<ResilienceStatus> {
 
 export function decideResilience(
   gameId: string,
-  action: "resume_without" | "abort",
-): Promise<{ action: string; missing: string[] }> {
+  action: "resume" | "resume_without" | "abort",
+): Promise<{ action: string; missing: string[]; delivered?: boolean; note?: string | null }> {
   return req(`/resilience/games/${gameId}/decision`, {
     method: "POST",
     body: JSON.stringify({ action }),

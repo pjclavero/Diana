@@ -46,7 +46,7 @@ export function ResiliencePanel({ gameId }: { gameId: string }) {
     return () => clearInterval(timer);
   }, [load]);
 
-  async function decide(action: "resume_without" | "abort") {
+  async function decide(action: "resume" | "resume_without" | "abort") {
     setBusy(true);
     setError(null);
     try {
@@ -59,8 +59,10 @@ export function ResiliencePanel({ gameId }: { gameId: string }) {
     }
   }
 
-  // Sin caídas no se ocupa sitio en pantalla.
-  if (!status || (!status.operatorMustDecide && status.missingModules.length === 0)) return null;
+  // Sin nada que decidir no se ocupa sitio. OJO: una ronda pausada por una
+  // caída sigue necesitando decisión aunque el módulo ya haya vuelto; si no, se
+  // quedaba congelada y sin salida en el panel.
+  if (!status || !status.operatorMustDecide) return null;
 
   return (
     <Card title={status.coordinatorDown ? "Pausa dura: ha caído el coordinador" : "Módulo caído"}>
@@ -69,11 +71,24 @@ export function ResiliencePanel({ gameId }: { gameId: string }) {
           <p>
             <strong>Sin coordinador no hay tiempos fiables.</strong> {status.note}
           </p>
-        ) : (
+        ) : status.missingModules.length > 0 ? (
           <p>
-            La ronda está en pausa automática. Faltan:{" "}
+            {status.paused ? "La ronda está en pausa." : "La ronda NO está en pausa."} Faltan:{" "}
             <strong>{status.missingModules.map((m) => m.slug).join(", ")}</strong> de{" "}
             {status.involvedModules} módulo(s) implicados.
+          </p>
+        ) : (
+          <p>
+            Todos los módulos han vuelto. La ronda sigue <strong>en pausa</strong>: reanudarla es
+            decisión suya.
+          </p>
+        )}
+
+        {status.pauseCommandDelivered === false && (
+          <p>
+            <strong>Atención:</strong> la orden de pausa no llegó al coordinador
+            {status.brokerConnected === false ? " (sin conexión con el broker MQTT)" : ""}. El
+            hardware puede seguir en marcha aunque aquí figure pausada.
           </p>
         )}
 
@@ -88,6 +103,11 @@ export function ResiliencePanel({ gameId }: { gameId: string }) {
         {error && <p role="status">{error}</p>}
 
         <div className="resilience__actions">
+          {status.canResume && (
+            <button type="button" onClick={() => decide("resume")} disabled={busy}>
+              Reanudar
+            </button>
+          )}
           <button
             type="button"
             onClick={() => decide("resume_without")}

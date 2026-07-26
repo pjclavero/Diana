@@ -196,6 +196,8 @@ export class IngestService {
     }
 
     if (parsed.kind === 'module-hit') {
+      // Un impacto es la prueba de vida más fuerte que hay (D12).
+      await this.presence?.touch(parsed.id, receivedAt).catch(() => undefined);
       return this.ingestHit(payload as unknown as HitEventPayload, receivedAt);
     }
 

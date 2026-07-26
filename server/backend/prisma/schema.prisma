@@ -244,6 +244,10 @@ model Module {
   queueDepth       Int               @default(0) @map("queue_depth")
   configVersion    Int               @default(0) @map("config_version")
   lastSeenAt       DateTime?         @map("last_seen_at") @db.Timestamptz(6)
+  /// Instante en que el módulo se dio por caído (transición a offline). Es el
+  /// origen de la cuenta atrás de reconexión: `lastSeenAt` no sirve, porque un
+  /// LWT retenido reentregado la reiniciaría (G-I/D6).
+  offlineSince     DateTime?         @map("offline_since") @db.Timestamptz(6)
   maintenance      Boolean           @default(false)
   createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)

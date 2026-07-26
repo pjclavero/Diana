@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import {
@@ -18,6 +24,8 @@ const INCIDENT_KIND = {
   online: 'module_online',
   autoPause: 'round_auto_paused',
   hardPause: 'round_hard_paused',
+  pauseFailed: 'pause_command_failed',
+  resumed: 'round_resumed',
 } as const;
 
 /**
@@ -49,10 +57,14 @@ export class ResilienceService implements PresenceSinkPort {
     return this.moduleRef.get(MqttService, { strict: false });
   }
 
-  /** Señal de vida sin cambio de presencia. */
+  /**
+   * Señal de vida sin cambio de presencia. Sólo cuenta para un módulo que ya
+   * consta EN LÍNEA: los mensajes retenidos se reentregan al reconectar el
+   * backend y reiniciaban la ventana de reconexión de un módulo muerto (D6).
+   */
   async touch(moduleSlug: string, at: Date): Promise<void> {
     await this.prisma.module.updateMany({
-      where: { slug: moduleSlug },
+      where: { slug: moduleSlug, online: true },
       data: { lastSeenAt: at },
     });
   }
@@ -63,7 +75,22 @@ export class ResilienceService implements PresenceSinkPort {
       select: { id: true, slug: true, online: true, targetSystemId: true },
     });
     if (!module) {
+      // No se pierde en silencio: un módulo real que no esté dado de alta es
+      // invisible para la detección de caídas, y eso hay que poder verlo (D8).
       this.logger.warn(`Presencia de un módulo desconocido: ${update.moduleSlug}`);
+      await this.prisma.incident
+        .create({
+          data: {
+            kind: 'presence_unknown_module',
+            severity: 'warning',
+            source: 'resilience',
+            message:
+              `Presencia de '${update.moduleSlug}', que no está dado de alta: ` +
+              'sus caídas no se detectarán hasta registrarlo.',
+            detail: { online: update.online, reason: update.reason } as never,
+          },
+        })
+        .catch(() => undefined);
       return null;
     }
 
@@ -72,7 +99,12 @@ export class ResilienceService implements PresenceSinkPort {
       where: { id: module.id },
       data: {
         online: update.online,
-        lastSeenAt: update.at,
+        // `lastSeenAt` sólo avanza si el módulo está VIVO. Al caer, la última
+        // vez que se le vio es la de antes, no el instante en que nos enteramos
+        // (defecto D6). Y así un LWT retenido reentregado no reinicia la cuenta.
+        lastSeenAt: update.online ? update.at : undefined,
+        // Instante de la caída: se fija sólo en la transición a offline.
+        offlineSince: update.online ? null : changed ? update.at : undefined,
         // Los datos de identidad sólo se refrescan si el módulo los envía.
         bootId: update.bootId ?? undefined,
         firmwareVersion: update.firmwareVersion ?? undefined,
@@ -107,18 +139,25 @@ export class ResilienceService implements PresenceSinkPort {
         })
       : null;
 
-    const system = module.targetSystemId
-      ? await this.prisma.targetSystem.findUnique({
-          where: { id: module.targetSystemId },
-          select: { coordinatorModuleId: true },
-        })
-      : null;
+    // El coordinador que manda es el de la PARTIDA (quien consolida T2), no el
+    // del panel del módulo: en una vista multipanel, el principal de un panel
+    // secundario no es la autoridad temporal de esa ronda (D10).
+    const coordinatorId = game
+      ? game.targetSystem.coordinatorModuleId
+      : module.targetSystemId
+        ? (
+            await this.prisma.targetSystem.findUnique({
+              where: { id: module.targetSystemId },
+              select: { coordinatorModuleId: true },
+            })
+          )?.coordinatorModuleId ?? null
+        : null;
 
     const round = game?.rounds[0] ?? null;
     const decision = decidePresenceChange({
       moduleSlug: module.slug,
       online: update.online,
-      isCoordinator: system?.coordinatorModuleId === module.id,
+      isCoordinator: coordinatorId === module.id,
       involvedInRound: round ? this.roundInvolves(round.plan, module.slug) : false,
       gameStatus: game?.status ?? null,
     });
@@ -160,39 +199,96 @@ export class ResilienceService implements PresenceSinkPort {
     decision: ResilienceDecision,
     moduleSlug: string,
   ): Promise<void> {
-    if (game.status === 'paused') return; // ya estaba pausada: no se repite la orden
+    // Transición CONDICIONAL: si dos módulos caen a la vez, sólo la primera
+    // llamada pasa de `running` a `paused` y sólo ella ordena la pausa. Con un
+    // `update` por id se publicaban dos `pause_game` (defecto D5).
+    const transitioned = await this.prisma.game.updateMany({
+      where: { id: game.id, status: 'running' },
+      data: { status: 'paused' },
+    });
+    if (transitioned.count === 0) return; // ya estaba pausada o cambió de estado
 
-    // Primero la orden al coordinador; si no se puede dar, se registra y se
-    // pausa igualmente en el backend para que el panel no mienta.
+    let delivered = false;
+    let failure: string | null = null;
     try {
-      this.mqtt.sendSystemCommand(game.targetSystem.slug, 'pause_game', {}, 10000);
+      const command = this.mqtt.sendSystemCommand(game.targetSystem.slug, 'pause_game', {}, 10000);
+      delivered = (command as { delivered?: boolean }).delivered === true;
+      if (!delivered) failure = 'El broker MQTT no ha recibido la orden (sin conexión).';
     } catch (error) {
-      this.logger.error(`No se pudo publicar la pausa: ${(error as Error).message}`);
+      failure = (error as Error).message;
+    }
+
+    if (failure) {
+      // La ronda está pausada en el backend pero el hardware NO lo sabe. Se deja
+      // constancia para que el panel pueda decirlo (D3): la pantalla no puede
+      // afirmar «ronda en pausa» sin matizar que la orden no salió.
+      this.logger.error(`No se pudo ordenar la pausa: ${failure}`);
       await this.prisma.incident.create({
         data: {
-          kind: 'pause_command_failed',
+          kind: INCIDENT_KIND.pauseFailed,
           severity: 'critical',
           source: 'resilience',
-          message:
-            `La ronda se marca en pausa pero NO se pudo ordenar al coordinador: ` +
-            (error as Error).message,
+          targetSystemId: null,
+          message: `La ronda se marca en pausa pero NO se ordenó al coordinador: ${failure}`,
+          detail: { game_id: game.id, module_slug: moduleSlug } as never,
         },
       });
     }
 
-    await this.prisma.$transaction([
-      this.prisma.game.update({ where: { id: game.id }, data: { status: 'paused' } }),
-      this.prisma.incident.create({
-        data: {
-          kind:
-            decision.action === 'hard_pause' ? INCIDENT_KIND.hardPause : INCIDENT_KIND.autoPause,
-          severity: decision.severity,
-          source: 'resilience',
-          message: decision.reason,
-          detail: { game_id: game.id, module_slug: moduleSlug } as never,
+    await this.prisma.incident.create({
+      data: {
+        kind: decision.action === 'hard_pause' ? INCIDENT_KIND.hardPause : INCIDENT_KIND.autoPause,
+        severity: decision.severity,
+        source: 'resilience',
+        message: decision.reason,
+        detail: {
+          game_id: game.id,
+          module_slug: moduleSlug,
+          command_delivered: delivered,
+        } as never,
+      },
+    });
+  }
+
+  /** Paneles implicados: los de la vista, o el panel único de la partida (D4). */
+  private async panelsOfGame(game: { targetSystemId: string; viewId: string | null }) {
+    if (!game.viewId) return [game.targetSystemId];
+    const panels = await this.prisma.viewPanel.findMany({
+      where: { viewId: game.viewId },
+      select: { targetSystemId: true },
+    });
+    return [...new Set([game.targetSystemId, ...panels.map((p) => p.targetSystemId)])];
+  }
+
+  /** ¿Sigue pausada por una caída, y salió la orden? */
+  private async pauseContext(gameId: string) {
+    const incidents = await this.prisma.incident.findMany({
+      where: {
+        source: 'resilience',
+        kind: {
+          in: [
+            INCIDENT_KIND.autoPause,
+            INCIDENT_KIND.hardPause,
+            INCIDENT_KIND.pauseFailed,
+            INCIDENT_KIND.resumed,
+            'round_resumed_without_module',
+            'round_aborted',
+          ],
         },
-      }),
-    ]);
+      },
+      orderBy: { occurredAt: 'desc' },
+      take: 25,
+      select: { kind: true, detail: true, occurredAt: true },
+    });
+    const mine = incidents.filter(
+      (i) => (i.detail as { game_id?: string } | null)?.game_id === gameId,
+    );
+    const last = mine[0] ?? null;
+    const pausedByResilience =
+      last !== null && (last.kind === INCIDENT_KIND.autoPause || last.kind === INCIDENT_KIND.hardPause);
+    const commandDelivered =
+      last === null ? null : ((last.detail as { command_delivered?: boolean } | null)?.command_delivered ?? null);
+    return { pausedByResilience, commandDelivered, since: last?.occurredAt ?? null };
   }
 
   /**
@@ -210,9 +306,12 @@ export class ResilienceService implements PresenceSinkPort {
     if (!game) throw new NotFoundException(`Partida ${gameId} no encontrada`);
 
     const round = game.rounds[0] ?? null;
+    // TODOS los paneles de la partida: con una vista multipanel, mirar sólo el
+    // panel principal dejaba la ronda pausada sin aviso ni salida (D4).
+    const panelIds = await this.panelsOfGame(game);
     const modules = await this.prisma.module.findMany({
-      where: { targetSystemId: game.targetSystemId },
-      select: { id: true, slug: true, online: true, lastSeenAt: true },
+      where: { targetSystemId: { in: panelIds } },
+      select: { id: true, slug: true, online: true, lastSeenAt: true, offlineSince: true },
       orderBy: { slug: 'asc' },
     });
 
@@ -222,88 +321,179 @@ export class ResilienceService implements PresenceSinkPort {
       (m) => m.id === game.targetSystem.coordinatorModuleId && !m.online,
     );
 
-    // La cuenta atrás arranca en la caída más reciente que conocemos.
-    const since = offline.reduce<Date | null>((oldest, m) => {
-      if (!m.lastSeenAt) return oldest;
-      return oldest === null || m.lastSeenAt < oldest ? m.lastSeenAt : oldest;
+    // La ventana se cuenta desde la caída MÁS RECIENTE: es la última que hay
+    // que esperar (con dos módulos fuera, el plazo no puede darse por agotado
+    // por el que lleva más tiempo).
+    const since = offline.reduce<Date | null>((latest, m) => {
+      const fell = m.offlineSince ?? m.lastSeenAt;
+      if (!fell) return latest;
+      return latest === null || fell > latest ? fell : latest;
     }, null);
     const countdown = since ? reconnectCountdown({ since, now, graceMs }) : null;
+
+    const pause = await this.pauseContext(gameId);
+    const paused = game.status === 'paused';
+    // Si el módulo vuelve, la ronda NO se reanuda sola: sigue pausada y hay que
+    // poder reanudarla desde el panel. Antes el aviso desaparecía y la partida
+    // quedaba congelada sin salida (D1).
+    const canResume = paused && pause.pausedByResilience && offline.length === 0 && !coordinatorDown;
 
     return {
       game: { id: game.id, status: game.status, panel: game.targetSystem.name },
       round: round ? { id: round.id, index: round.roundIndex, phase: round.phase } : null,
+      panels: panelIds,
+      paused,
+      pausedByResilience: pause.pausedByResilience,
+      // null = no consta; false = la orden de pausa NO llegó al broker.
+      pauseCommandDelivered: pause.commandDelivered,
+      brokerConnected: this.brokerConnected(),
       coordinatorDown,
       missingModules: offline.map((m) => ({
         slug: m.slug,
         lastSeenAt: m.lastSeenAt,
+        offlineSince: m.offlineSince,
       })),
       involvedModules: involved.length,
       countdown,
       // El operador decide; el backend nunca reanuda solo.
-      operatorMustDecide: offline.length > 0 || coordinatorDown,
-      canResumeWithout: offline.length > 0 && !coordinatorDown,
+      operatorMustDecide: (paused && pause.pausedByResilience) || offline.length > 0 || coordinatorDown,
+      canResumeWithout: paused && offline.length > 0 && !coordinatorDown,
+      canResume,
       note: coordinatorDown
         ? 'Pausa dura: sin coordinador no hay tiempos fiables. No se puede reanudar sin él.'
-        : null,
+        : pause.commandDelivered === false
+          ? 'ATENCIÓN: la orden de pausa no llegó al coordinador. El backend la da por pausada, pero el hardware puede seguir en marcha.'
+          : null,
     };
   }
 
-  /**
-   * Decisión del operador tras una caída: reanudar sin el módulo, o abortar.
-   * Reanudar sin el coordinador NO se admite: los tiempos no serían fiables.
-   */
-  async decide(gameId: string, action: 'resume_without' | 'abort', actor?: string) {
-    const status = await this.statusOf(gameId);
-    if (action === 'resume_without' && status.coordinatorDown) {
-      throw new BadRequestException(
-        'No se puede reanudar sin el coordinador: sin él no hay tiempos fiables.',
+  private brokerConnected(): boolean | null {
+    try {
+      return (this.moduleRef.get(MqttService, { strict: false }) as MqttService).connected;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Ningún otro juego puede estar ocupando los paneles al reanudar (G-H). */
+  private async assertPanelsFreeForResume(game: {
+    id: string;
+    targetSystemId: string;
+    viewId: string | null;
+  }) {
+    const panelIds = await this.panelsOfGame(game);
+    const conflict = await this.prisma.game.findFirst({
+      where: {
+        id: { not: game.id },
+        status: { in: ['armed', 'running', 'paused'] },
+        OR: [
+          { targetSystemId: { in: panelIds } },
+          { view: { panels: { some: { targetSystemId: { in: panelIds } } } } },
+        ],
+      },
+      select: { id: true, name: true, status: true },
+    });
+    if (conflict) {
+      throw new ConflictException(
+        `El panel está ocupado por la partida ${conflict.name ?? conflict.id} (${conflict.status}).`,
       );
     }
-    if (action === 'resume_without' && status.missingModules.length === 0) {
-      throw new BadRequestException('No falta ningún módulo: use la reanudación normal.');
-    }
+  }
 
+  /**
+   * Decisión del operador tras una caída: reanudar (con todos de vuelta),
+   * reanudar sin el módulo, o abortar. Reanudar sin el coordinador NO se admite.
+   */
+  async decide(gameId: string, action: 'resume' | 'resume_without' | 'abort', actor?: string) {
     const game = await this.prisma.game.findUnique({
       where: { id: gameId },
       include: { targetSystem: { select: { slug: true } } },
     });
     if (!game) throw new NotFoundException(`Partida ${gameId} no encontrada`);
 
+    // Una partida cerrada no se resucita desde aquí (D2): antes `decide` no
+    // miraba el estado y devolvía una partida `finished` a `running`.
+    const allowedFrom: Record<typeof action, string[]> = {
+      resume: ['paused'],
+      resume_without: ['paused'],
+      abort: ['running', 'paused'],
+    };
+    if (!allowedFrom[action]?.includes(game.status)) {
+      throw new ConflictException(
+        `No se puede '${action}' sobre una partida en estado '${game.status}'.`,
+      );
+    }
+
+    const status = await this.statusOf(gameId);
+    if (action !== 'abort') {
+      if (status.coordinatorDown) {
+        throw new BadRequestException(
+          'No se puede reanudar sin el coordinador: sin él no hay tiempos fiables.',
+        );
+      }
+      if (action === 'resume_without' && status.missingModules.length === 0) {
+        throw new BadRequestException('No falta ningún módulo: use la reanudación normal.');
+      }
+      if (action === 'resume' && status.missingModules.length > 0) {
+        throw new BadRequestException(
+          `Siguen ausentes: ${status.missingModules.map((m) => m.slug).join(', ')}. ` +
+            'Use «reanudar sin él» si quiere continuar igualmente.',
+        );
+      }
+      // Reanudar vuelve a ocupar hardware: el guardarraíl de G-H también aquí.
+      await this.assertPanelsFreeForResume(game);
+    }
+
     const command = this.mqtt.sendSystemCommand(
       game.targetSystem.slug,
-      action === 'resume_without' ? 'resume_game' : 'abort_game',
+      action === 'abort' ? 'abort_game' : 'resume_game',
       {},
       10000,
     );
+    const delivered = (command as { delivered?: boolean }).delivered === true;
 
     await this.prisma.$transaction([
       this.prisma.game.update({
         where: { id: gameId },
         data:
-          action === 'resume_without'
-            ? { status: 'running' }
-            : { status: 'aborted', finishedAt: new Date() },
+          action === 'abort'
+            ? { status: 'aborted', finishedAt: new Date() }
+            : { status: 'running' },
       }),
       this.prisma.incident.create({
         data: {
-          kind: action === 'resume_without' ? 'round_resumed_without_module' : 'round_aborted',
+          kind:
+            action === 'abort'
+              ? 'round_aborted'
+              : action === 'resume'
+                ? INCIDENT_KIND.resumed
+                : 'round_resumed_without_module',
           severity: 'warning',
           source: 'resilience',
           message:
-            action === 'resume_without'
-              ? `El operador reanuda la ronda SIN los módulos: ${status.missingModules
-                  .map((m) => m.slug)
-                  .join(', ')}. Las condiciones de la prueba han cambiado.`
-              : 'El operador aborta la ronda tras una caída de módulo.',
+            action === 'abort'
+              ? 'El operador aborta la ronda tras una caída de módulo.'
+              : action === 'resume'
+                ? 'El operador reanuda la ronda: todos los módulos han vuelto.'
+                : `El operador reanuda la ronda SIN los módulos: ${status.missingModules
+                    .map((m) => m.slug)
+                    .join(', ')}. Las condiciones de la prueba han cambiado.`,
           detail: {
             game_id: gameId,
             missing: status.missingModules.map((m) => m.slug),
             decided_by: actor ?? null,
+            command_delivered: delivered,
           } as never,
         },
       }),
     ]);
 
-    return { action, command, missing: status.missingModules.map((m) => m.slug) };
+    return {
+      action,
+      command,
+      delivered,
+      missing: status.missingModules.map((m) => m.slug),
+      note: delivered ? null : 'La orden no llegó al broker MQTT: el hardware puede no haberla recibido.',
+    };
   }
 }

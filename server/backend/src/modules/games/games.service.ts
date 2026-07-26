@@ -243,6 +243,23 @@ export class GamesService {
       reactionDelayMs: input.reaction_delay_ms ?? null,
     };
 
+    // El plan se compara luego con `Module.slug` (resiliencia): si alguien lo
+    // construye con UUID, nada estaría «implicado» y ninguna caída pausaría la
+    // ronda, sin un solo error visible (D11). Se exige que existan de verdad.
+    const referenced = [...new Set(input.targets.map((t) => t.module_id))];
+    if (referenced.length > 0) {
+      const known = await this.prisma.module.findMany({
+        where: { slug: { in: referenced } },
+        select: { slug: true },
+      });
+      const missing = referenced.filter((slug) => !known.some((m) => m.slug === slug));
+      if (missing.length > 0) {
+        throw new BadRequestException(
+          `La ronda referencia módulos que no existen (por slug): ${missing.join(', ')}.`,
+        );
+      }
+    }
+
     let plan;
     try {
       plan = this.engine.planRound(config);
