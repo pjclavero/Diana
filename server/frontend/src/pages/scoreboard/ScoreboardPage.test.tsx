@@ -17,6 +17,7 @@ function board(over: Partial<Scoreboard> = {}): Scoreboard {
     },
     round: { id: "r1", index: 1, phase: "finished", mode: "sequence" },
     panels: ["s1"],
+    multiPanel: false,
     warnings: [],
     ranking: [
       {
@@ -31,6 +32,7 @@ function board(over: Partial<Scoreboard> = {}): Scoreboard {
         accuracyValid: 0.83,
         provisional: false,
         attributed: true,
+        inferred: false,
         position: 1,
       },
       {
@@ -45,12 +47,15 @@ function board(over: Partial<Scoreboard> = {}): Scoreboard {
         accuracyValid: null,
         provisional: true,
         attributed: true,
+        inferred: false,
         position: 2,
       },
     ],
     board: [
       {
         moduleSlug: "mod-a",
+        targetSystemId: "s1",
+        panelName: "Panel A",
         x: 0,
         y: 0,
         targets: [
@@ -60,7 +65,7 @@ function board(over: Partial<Scoreboard> = {}): Scoreboard {
         ],
       },
     ],
-    totals: { detected: 2, valid: 1, invalid: 1, unattributed: 0 },
+    totals: { detected: 2, valid: 1, invalid: 1, unattributed: 0, inferred: 0 },
     ...over,
   };
 }
@@ -185,7 +190,7 @@ describe("ScoreboardPage (G-G · marcador tipo dardos)", () => {
     vi.spyOn(api, "getScoreboard").mockResolvedValue(
       board({
         warnings: ["2 impacto(s) de esta ronda no están atribuidos a ningún jugador."],
-        totals: { detected: 2, valid: 2, invalid: 0, unattributed: 2 },
+        totals: { detected: 2, valid: 2, invalid: 0, unattributed: 2, inferred: 0 },
         ranking: [
           {
             participantId: "p1",
@@ -199,6 +204,7 @@ describe("ScoreboardPage (G-G · marcador tipo dardos)", () => {
             accuracyValid: null,
             provisional: true,
             attributed: false,
+            inferred: false,
             position: null,
           },
         ],
@@ -213,6 +219,86 @@ describe("ScoreboardPage (G-G · marcador tipo dardos)", () => {
     // Y la fila no reclama posición: se muestra un guion, no un «1».
     const fila = screen.getByText("Ana").closest("tr")!;
     expect(fila.querySelectorAll("td")[0].textContent).toBe("—");
+  });
+
+  it("distingue un acierto DEDUCIDO de uno medido, sin alarma de «sin atribuir»", async () => {
+    vi.spyOn(api, "getScoreboard").mockResolvedValue(
+      board({
+        warnings: [
+          "Los 7 impacto(s) de esta ronda no vienen atribuidos a ningún jugador; se adjudican al único participante de la partida. Es una deducción, no una medida.",
+        ],
+        totals: { detected: 7, valid: 7, invalid: 0, unattributed: 0, inferred: 7 },
+        ranking: [
+          {
+            participantId: "p1",
+            name: "Ana",
+            temporary: false,
+            teamName: null,
+            validHits: 7,
+            invalidHits: 0,
+            totalTimeUs: 4_000_000,
+            penaltiesMs: null,
+            accuracyValid: null,
+            provisional: true,
+            attributed: true,
+            inferred: true,
+            position: 1,
+          },
+        ],
+      }),
+    );
+
+    renderAt();
+
+    expect(await screen.findByText("deducido")).toBeInTheDocument();
+    expect(screen.getByText(/deducción, no una medida/)).toBeInTheDocument();
+    // Nada queda sin repartir: la alarma de «sin atribuir» no debe aparecer.
+    expect(screen.queryByText(/impacto\(s\) sin atribuir/)).not.toBeInTheDocument();
+  });
+
+  it("con varios paneles identifica a cuál pertenece cada módulo", async () => {
+    vi.spyOn(api, "getScoreboard").mockResolvedValue(
+      board({
+        panels: ["s1", "s2"],
+        multiPanel: true,
+        board: [
+          {
+            moduleSlug: "mod-a",
+            targetSystemId: "s1",
+            panelName: "Panel A",
+            x: 0,
+            y: 0,
+            targets: [{ targetIndex: 1, state: "hit", hits: 1, lastClassification: null }],
+          },
+          {
+            moduleSlug: "mod-k",
+            targetSystemId: "s2",
+            panelName: "Panel B",
+            x: 0,
+            y: 0,
+            targets: [{ targetIndex: 1, state: "pending", hits: 0, lastClassification: null }],
+          },
+        ],
+      }),
+    );
+
+    renderAt();
+
+    // Mismas coordenadas (0,0) en dos paneles: sin el panel serían el mismo módulo.
+    expect(await screen.findByText("Panel: Panel A")).toBeInTheDocument();
+    expect(screen.getByText("Panel: Panel B")).toBeInTheDocument();
+    expect(screen.getByText(/2 paneles \(vista\)/)).toBeInTheDocument();
+  });
+
+  it("el botón de refresco manual vuelve a pedir el marcador", async () => {
+    const get = vi.spyOn(api, "getScoreboard").mockResolvedValue(board());
+
+    renderAt();
+    await screen.findByText("Ana");
+    expect(get).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(screen.getByRole("button", { name: "Actualizar ahora" }));
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
   });
 
   it("si el marcador falla lo dice, sin pintar un marcador vacío", async () => {

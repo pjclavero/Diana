@@ -115,6 +115,7 @@ export class ScoreboardService {
       select: {
         slug: true,
         targetSystemId: true,
+        targetSystem: { select: { id: true, name: true } },
         position: { select: { x: true, y: true } },
         targets: { select: { targetIndex: true } },
       },
@@ -122,6 +123,9 @@ export class ScoreboardService {
     });
     const boardInput: BoardModuleInput[] = modules.map((m) => ({
       moduleSlug: m.slug,
+      targetSystemId: m.targetSystemId ?? game.targetSystemId,
+      // Con varios paneles, la coordenada sólo se entiende junto al panel.
+      panelName: m.targetSystem?.name ?? game.targetSystem.name,
       x: m.position?.x ?? null,
       y: m.position?.y ?? null,
       targetIndexes: m.targets.map((t) => t.targetIndex),
@@ -139,6 +143,7 @@ export class ScoreboardService {
         ? { id: round.id, index: round.roundIndex, phase: round.phase, mode: round.mode }
         : null,
       panels: panelIds,
+      multiPanel: panelIds.length > 1,
       ranking: rankingResult.entries,
       warnings: rankingResult.warnings,
       board: buildBoard(boardInput, hits),
@@ -147,6 +152,7 @@ export class ScoreboardService {
         valid: hits.filter((h) => h.countsForScore).length,
         invalid: hits.filter((h) => !h.countsForScore).length,
         unattributed: rankingResult.unattributedHits,
+        inferred: rankingResult.inferredHits,
       },
     };
   }

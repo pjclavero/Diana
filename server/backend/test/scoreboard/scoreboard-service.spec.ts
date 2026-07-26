@@ -35,7 +35,13 @@ function buildPrisma(over: any = {}) {
     result: { findMany: jest.fn().mockResolvedValue([]), ...over.result },
     module: {
       findMany: jest.fn().mockResolvedValue([
-        { slug: 'mod-a', position: { x: 0, y: 0 }, targets: [{ targetIndex: 1 }, { targetIndex: 2 }] },
+        {
+          slug: 'mod-a',
+          targetSystemId: 's1',
+          targetSystem: { id: 's1', name: 'Panel A' },
+          position: { x: 0, y: 0 },
+          targets: [{ targetIndex: 1 }, { targetIndex: 2 }],
+        },
       ]),
       ...over.module,
     },
@@ -109,7 +115,7 @@ describe('ScoreboardService (G-G)', () => {
     const board = await new ScoreboardService(prisma).forGame('g1');
     expect(board.round).toBeNull();
     expect(prisma.hitEvent.findMany).not.toHaveBeenCalled();
-    expect(board.totals).toEqual({ detected: 0, valid: 0, invalid: 0, unattributed: 0 });
+    expect(board.totals).toEqual({ detected: 0, valid: 0, invalid: 0, unattributed: 0, inferred: 0 });
     expect(board.ranking[0]).toMatchObject({ name: 'Ana', validHits: 0 });
   });
 
@@ -123,7 +129,7 @@ describe('ScoreboardService (G-G)', () => {
       },
     });
     const board = await new ScoreboardService(prisma).forGame('g1');
-    expect(board.totals).toEqual({ detected: 2, valid: 1, invalid: 1, unattributed: 0 });
+    expect(board.totals).toEqual({ detected: 2, valid: 1, invalid: 1, unattributed: 0, inferred: 0 });
     expect(board.ranking[0]).toMatchObject({ validHits: 1, invalidHits: 1, totalTimeUs: 1500 });
     expect(board.board[0].targets[0].state).toBe('hit');
     expect(board.board[0].targets[1].state).toBe('invalid');

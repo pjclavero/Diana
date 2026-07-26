@@ -55,14 +55,21 @@ export interface ScoreboardEntry {
   provisional: boolean;
   /** false = fila sin datos atribuibles; NO es un cero. */
   attributed: boolean;
+  /**
+   * true = los aciertos NO están medidos por jugador: se deducen porque esta
+   * persona es la única de la ronda. Deducido no es lo mismo que medido.
+   */
+  inferred: boolean;
   /** `null` cuando la fila no es clasificable (sin datos atribuidos). */
   position: number | null;
 }
 
 export interface ScoreboardRanking {
   entries: ScoreboardEntry[];
-  /** Impactos de la ronda que no se pueden asignar a ningún jugador. */
+  /** Impactos que siguen SIN poder repartirse tras aplicar la deducción. */
   unattributedHits: number;
+  /** Impactos sin dueño adjudicados por deducción (único jugador de la ronda). */
+  inferredHits: number;
   /** Avisos que la pantalla DEBE mostrar; nunca se rellena un hueco en silencio. */
   warnings: string[];
 }
@@ -86,12 +93,20 @@ export function buildRanking(
   // El impacto MQTT no dice de quién es: hoy el sistema no ata impacto a jugador
   // (`HitEvent.participantId` queda a NULL). Con un solo participante la
   // atribución es inequívoca; con varios, NO se reparte a ojo.
-  const unattributed = hits.filter((h) => h.participantId === null);
+  const withoutOwner = hits.filter((h) => h.participantId === null).length;
   const soleParticipant = participants.length === 1 ? participants[0].id : null;
   const effectiveHits: ScoreboardHit[] =
     soleParticipant === null
       ? hits
       : hits.map((h) => (h.participantId === null ? { ...h, participantId: soleParticipant } : h));
+
+  const inferredHits = soleParticipant === null ? 0 : withoutOwner;
+  if (inferredHits > 0) {
+    warnings.push(
+      `Los ${inferredHits} impacto(s) de esta ronda no vienen atribuidos a ningún jugador; se ` +
+        'adjudican al único participante de la partida. Es una deducción, no una medida.',
+    );
+  }
 
   const unattributedRemaining = effectiveHits.filter((h) => h.participantId === null).length;
   if (unattributedRemaining > 0) {
@@ -129,6 +144,7 @@ export function buildRanking(
       accuracyValid: result && result.accuracyStatus === 'computed' ? result.accuracyValid : null,
       provisional: !result,
       attributed: !unknown,
+      inferred: !result && inferredHits > 0 && p.id === soleParticipant,
       position: null,
     };
   });
@@ -162,7 +178,7 @@ export function buildRanking(
       return a.position - b.position || a.name.localeCompare(b.name);
     });
 
-  return { entries, unattributedHits: unattributed.length, warnings };
+  return { entries, unattributedHits: unattributedRemaining, inferredHits, warnings };
 }
 
 export interface BoardTargetCell {
@@ -176,6 +192,9 @@ export interface BoardTargetCell {
 
 export interface BoardModule {
   moduleSlug: string;
+  /** Panel al que pertenece: las coordenadas son POR panel (@@unique(system,x,y)). */
+  targetSystemId: string;
+  panelName: string;
   x: number | null;
   y: number | null;
   targets: BoardTargetCell[];
@@ -183,6 +202,8 @@ export interface BoardModule {
 
 export interface BoardModuleInput {
   moduleSlug: string;
+  targetSystemId: string;
+  panelName: string;
   x: number | null;
   y: number | null;
   targetIndexes: number[];
@@ -195,6 +216,8 @@ export interface BoardModuleInput {
 export function buildBoard(modules: BoardModuleInput[], hits: ScoreboardHit[]): BoardModule[] {
   return modules.map((module) => ({
     moduleSlug: module.moduleSlug,
+    targetSystemId: module.targetSystemId,
+    panelName: module.panelName,
     x: module.x,
     y: module.y,
     targets: [...module.targetIndexes]

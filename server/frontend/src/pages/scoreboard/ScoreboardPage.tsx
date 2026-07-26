@@ -141,7 +141,11 @@ export function ScoreboardPage() {
         <>
           <Card title={board.game.name ?? `Partida ${board.game.id.slice(0, 8)}`}>
             <p>
-              Modo <strong>{board.game.mode.name}</strong> · Panel {board.game.panel.name} · Estado{" "}
+              Modo <strong>{board.game.mode.name}</strong> ·{" "}
+              {board.multiPanel
+                ? `${board.panels.length} paneles (vista)`
+                : `Panel ${board.game.panel.name}`}{" "}
+              · Estado{" "}
               <strong>{board.game.status}</strong>
               {board.round ? ` · Ronda ${board.round.index} (${board.round.phase})` : " · sin rondas todavía"}
             </p>
@@ -204,6 +208,7 @@ export function ScoreboardPage() {
                             <span className="badge badge--warn">provisional</span>
                           )}
                           {!row.attributed && <span className="badge badge--warn">sin datos</span>}
+                          {row.inferred && <span className="badge badge--warn">deducido</span>}
                         </td>
                         <td>{formatAccuracy(row.accuracyValid)}</td>
                         <td>
@@ -230,6 +235,11 @@ export function ScoreboardPage() {
                       {module.moduleSlug}
                       {module.x !== null && module.y !== null ? ` (${module.x}, ${module.y})` : " (sin posición)"}
                     </h3>
+                    {board.multiPanel && (
+                      // Las coordenadas son POR panel: sin el panel, dos módulos
+                      // distintos se leerían como el mismo (0, 0).
+                      <p className="scoreboard-module__panel">Panel: {module.panelName}</p>
+                    )}
                     <div className="scoreboard-targets" role="grid" aria-label={`Dianas de ${module.moduleSlug}`}>
                       {module.targets.map((target) => (
                         <div

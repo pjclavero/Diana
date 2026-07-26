@@ -115,14 +115,38 @@ describe('Marcador de partida (G-G) · ranking', () => {
     expect(warnings.join(' ')).toMatch(/no están atribuidos/);
   });
 
-  it('con UN solo jugador la atribución es inequívoca: los impactos son suyos', () => {
-    const { entries: ranking, warnings } = buildRanking(
+  it('con UN solo jugador la atribución se DEDUCE, y se dice que es una deducción', () => {
+    const { entries: ranking, warnings, unattributedHits, inferredHits } = buildRanking(
       [ana],
       [],
       [hit({ participantId: null }), hit({ participantId: null, targetIndex: 2 })],
     );
-    expect(ranking[0]).toMatchObject({ validHits: 2, attributed: true, position: 1 });
-    expect(warnings).toEqual([]);
+    expect(ranking[0]).toMatchObject({ validHits: 2, attributed: true, inferred: true, position: 1 });
+    // Ya no queda nada sin repartir: no debe saltar la alarma de «sin atribuir».
+    expect(unattributedHits).toBe(0);
+    expect(inferredHits).toBe(2);
+    expect(warnings.join(' ')).toMatch(/deducción, no una medida/);
+  });
+
+  it('un impacto ya atribuido de verdad NO se marca como deducido', () => {
+    const { entries: ranking, inferredHits } = buildRanking([ana], [], [hit()]);
+    expect(ranking[0]).toMatchObject({ validHits: 1, inferred: false });
+    expect(inferredHits).toBe(0);
+  });
+
+  it('la rejilla identifica el panel de cada módulo (coordenadas por panel)', () => {
+    const board = buildBoard(
+      [
+        { moduleSlug: 'mod-a', targetSystemId: 's1', panelName: 'Panel A', x: 0, y: 0, targetIndexes: [1] },
+        { moduleSlug: 'mod-k', targetSystemId: 's2', panelName: 'Panel B', x: 0, y: 0, targetIndexes: [1] },
+      ],
+      [],
+    );
+    // Mismas coordenadas, paneles distintos: sin el panel serían indistinguibles.
+    expect(board.map((m) => [m.panelName, m.x, m.y])).toEqual([
+      ['Panel A', 0, 0],
+      ['Panel B', 0, 0],
+    ]);
   });
 
   it('las penalizaciones en vivo son desconocidas, no cero', () => {
@@ -188,8 +212,8 @@ describe('Marcador de partida (G-G) · ranking', () => {
 
 describe('Marcador de partida (G-G) · estado de las dianas', () => {
   const modules = [
-    { moduleSlug: 'mod-a', x: 0, y: 0, targetIndexes: [3, 1, 2] },
-    { moduleSlug: 'mod-b', x: 1, y: 0, targetIndexes: [1] },
+    { moduleSlug: 'mod-a', targetSystemId: 's1', panelName: 'Panel A', x: 0, y: 0, targetIndexes: [3, 1, 2] },
+    { moduleSlug: 'mod-b', targetSystemId: 's1', panelName: 'Panel A', x: 1, y: 0, targetIndexes: [1] },
   ];
 
   it('marca acertada, no válida y pendiente por diana', () => {
@@ -217,7 +241,10 @@ describe('Marcador de partida (G-G) · estado de las dianas', () => {
   });
 
   it('conserva la posición del módulo en la matriz (y admite que no la tenga)', () => {
-    const board = buildBoard([{ moduleSlug: 'mod-c', x: null, y: null, targetIndexes: [1] }], []);
+    const board = buildBoard(
+      [{ moduleSlug: 'mod-c', targetSystemId: 's1', panelName: 'Panel A', x: null, y: null, targetIndexes: [1] }],
+      [],
+    );
     expect(board[0]).toMatchObject({ moduleSlug: 'mod-c', x: null, y: null });
   });
 });

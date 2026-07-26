@@ -41,6 +41,8 @@ export interface ScoreboardEntry {
   accuracyValid: number | null;
   provisional: boolean;
   attributed: boolean;
+  /** true = aciertos DEDUCIDOS (único jugador), no medidos por jugador. */
+  inferred: boolean;
   position: number | null;
 }
 
@@ -53,6 +55,8 @@ export interface BoardTarget {
 
 export interface BoardModule {
   moduleSlug: string;
+  targetSystemId: string;
+  panelName: string;
   x: number | null;
   y: number | null;
   targets: BoardTarget[];
@@ -68,11 +72,18 @@ export interface Scoreboard {
   };
   round: { id: string; index: number; phase: string; mode: string } | null;
   panels: string[];
+  multiPanel: boolean;
   ranking: ScoreboardEntry[];
   /** Avisos del backend que hay que enseñar tal cual (huecos declarados). */
   warnings: string[];
   board: BoardModule[];
-  totals: { detected: number; valid: number; invalid: number; unattributed: number };
+  totals: {
+    detected: number;
+    valid: number;
+    invalid: number;
+    unattributed: number;
+    inferred: number;
+  };
 }
 
 export interface ParticipantHistory {
