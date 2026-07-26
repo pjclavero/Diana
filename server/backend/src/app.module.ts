@@ -23,6 +23,7 @@ import { MqttModule } from './modules/mqtt/mqtt.module';
 import { ParticipantsModule } from './modules/participants/participants.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
 import { ViewsModule } from './modules/views/views.module';
+import { MatrixLayoutsModule } from './modules/matrix-layouts/matrix-layouts.module';
 import { PenaltiesModule } from './modules/penalties/penalties.module';
 import { PlayersModule } from './modules/players/players.module';
 import { PresetsModule } from './modules/presets/presets.module';
@@ -67,6 +68,7 @@ import { WebsocketModule } from './modules/websocket/websocket.module';
     ParticipantsModule,
     InvitationsModule,
     ViewsModule,
+    MatrixLayoutsModule,
     HitsModule,
     PenaltiesModule,
     AmmoModule,

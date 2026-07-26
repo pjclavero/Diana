@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { GameEngine } from '../../domain/game/engine';
 import { createDefaultRegistry, GameModeRegistry } from '../../domain/game/registry';
@@ -29,6 +34,13 @@ export interface CreateRoundInput {
   reaction_delay_ms?: [number, number] | null;
 }
 
+/** Estados que ocupan hardware: mientras la partida esté en uno de ellos, el panel no está libre. */
+export const ACTIVE_GAME_STATUSES: Array<'armed' | 'running' | 'paused'> = [
+  'armed',
+  'running',
+  'paused',
+];
+
 /**
  * Orquestación administrativa de partidas.
  *
@@ -56,6 +68,81 @@ export class GamesService {
       return seed;
     }
     return Date.now() % 2_147_483_647;
+  }
+
+  /**
+   * Paneles que ocupa una partida: los de su vista si juega sobre una vista
+   * (G-H, Opción B), o el panel único en caso contrario.
+   */
+  private async panelsOf(game: { id: string; targetSystemId: string; viewId: string | null }) {
+    if (!game.viewId) return [game.targetSystemId];
+    const panels = await this.prisma.viewPanel.findMany({
+      where: { viewId: game.viewId },
+      select: { targetSystemId: true },
+    });
+    const ids = new Set(panels.map((p) => p.targetSystemId));
+    ids.add(game.targetSystemId);
+    return [...ids];
+  }
+
+  /**
+   * Guardarraíl de concurrencia (G-H): un panel sólo puede estar en UNA partida
+   * activa a la vez. Dos partidas simultáneas sobre el mismo hardware darían
+   * órdenes contradictorias al coordinador y tiempos no fiables.
+   *
+   * Partidas activas = armed | running | paused. `draft`, `finished` y `aborted`
+   * no ocupan panel.
+   */
+  async assertPanelsFree(game: {
+    id: string;
+    targetSystemId: string;
+    viewId: string | null;
+  }): Promise<void> {
+    const panelIds = await this.panelsOf(game);
+    const conflict = await this.prisma.game.findFirst({
+      where: {
+        id: { not: game.id },
+        status: { in: ACTIVE_GAME_STATUSES },
+        OR: [
+          { targetSystemId: { in: panelIds } },
+          { view: { panels: { some: { targetSystemId: { in: panelIds } } } } },
+        ],
+      },
+      select: { id: true, name: true, status: true, targetSystem: { select: { slug: true } } },
+    });
+    if (conflict) {
+      throw new ConflictException(
+        `El panel ya está ocupado por la partida ${conflict.name ?? conflict.id} (${conflict.status}). ` +
+          'Finalízala o abórtala antes de empezar otra.',
+      );
+    }
+  }
+
+  /** Partidas activas por panel, para pintar ocupación en el panel web. */
+  async panelOccupancy() {
+    const games = await this.prisma.game.findMany({
+      where: { status: { in: ACTIVE_GAME_STATUSES } },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        targetSystemId: true,
+        viewId: true,
+        view: { select: { panels: { select: { targetSystemId: true } } } },
+      },
+    });
+    const items = games.flatMap((game) => {
+      const panelIds = game.viewId
+        ? [...new Set([game.targetSystemId, ...game.view!.panels.map((p) => p.targetSystemId)])]
+        : [game.targetSystemId];
+      return panelIds.map((targetSystemId) => ({
+        targetSystemId,
+        gameId: game.id,
+        name: game.name,
+        status: game.status,
+      }));
+    });
+    return { items, total: items.length };
   }
 
   async create(input: CreateGameInput) {
@@ -148,6 +235,9 @@ export class GamesService {
 
     const plan = round.plan as unknown as { activations: Array<{ targets: TargetRef[] }> } | null;
     if (!plan) throw new BadRequestException('La ronda no tiene plan calculado');
+
+    // Guardarraíl G-H: nadie más puede estar usando este panel (o los de su vista).
+    await this.assertPanelsFree(game);
 
     const targets = Array.from(
       new Map(

@@ -122,3 +122,50 @@
     color: #e5e7eb;
   }
 }
+
+/* Matrices favoritas y ayudas del editor (G-H) */
+.topology-hint {
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.topology-layout-form {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.topology-layouts {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.topology-layouts li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+}
+
+.topology-layouts__actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+@media (prefers-color-scheme: dark) {
+  .topology-layouts li {
+    border-color: #374151;
+  }
+  .topology-hint {
+    color: #9ca3af;
+  }
+}

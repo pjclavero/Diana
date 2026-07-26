@@ -58,12 +58,13 @@ model User {
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  role         Role         @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  role         Role           @relation(fields: [roleId], references: [id], onDelete: Restrict)
   players      Player[]
   auditLogs    AuditLog[]
-  ownedModules Module[]     @relation("ModuleOwner")
-  ownedPresets GamePreset[] @relation("PresetOwner")
-  ownedViews   View[]       @relation("ViewOwner")
+  ownedModules Module[]       @relation("ModuleOwner")
+  ownedPresets GamePreset[]   @relation("PresetOwner")
+  ownedViews   View[]         @relation("ViewOwner")
+  ownedLayouts MatrixLayout[] @relation("LayoutOwner")
 
   @@index([roleId])
   @@index([active])
@@ -347,17 +348,17 @@ model SensorCalibration {
 // ---------------------------------------------------------------------------
 
 model GameMode {
-  id          String   @id @default(uuid()) @db.Uuid
+  id           String   @id @default(uuid()) @db.Uuid
   /// Clave de la estrategia registrada en el motor: random, sequence,
   /// all_against_clock, reaction.
-  key         String   @unique @db.VarChar(48)
-  name        String   @db.VarChar(128)
-  description String?  @db.VarChar(1024)
+  key          String   @unique @db.VarChar(48)
+  name         String   @db.VarChar(128)
+  description  String?  @db.VarChar(1024)
   /// Esquema JSON de los parámetros aceptados por el modo.
-  paramsSchema Json?   @map("params_schema")
-  enabled     Boolean  @default(true)
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  paramsSchema Json?    @map("params_schema")
+  enabled      Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   presets GamePreset[]
   games   Game[]
@@ -488,26 +489,26 @@ model ViewPanel {
 }
 
 model Round {
-  id                  String     @id @default(uuid()) @db.Uuid
-  gameId              String     @map("game_id") @db.Uuid
-  roundIndex          Int        @map("round_index")
-  phase               RoundPhase @default(armed)
-  mode                String     @db.VarChar(48)
-  seed                BigInt?
+  id                 String     @id @default(uuid()) @db.Uuid
+  gameId             String     @map("game_id") @db.Uuid
+  roundIndex         Int        @map("round_index")
+  phase              RoundPhase @default(armed)
+  mode               String     @db.VarChar(48)
+  seed               BigInt?
   /// Plan generado por la estrategia del modo (orden y activaciones).
-  plan                Json?
-  countdownMs         Int        @default(3000) @map("countdown_ms")
-  timeLimitMs         Int?       @map("time_limit_ms")
-  penaltyMs           Int        @default(0) @map("penalty_ms")
-  strictOrder         Boolean    @default(false) @map("strict_order")
-  reactionDelayMinMs  Int?       @map("reaction_delay_min_ms")
-  reactionDelayMaxMs  Int?       @map("reaction_delay_max_ms")
+  plan               Json?
+  countdownMs        Int        @default(3000) @map("countdown_ms")
+  timeLimitMs        Int?       @map("time_limit_ms")
+  penaltyMs          Int        @default(0) @map("penalty_ms")
+  strictOrder        Boolean    @default(false) @map("strict_order")
+  reactionDelayMinMs Int?       @map("reaction_delay_min_ms")
+  reactionDelayMaxMs Int?       @map("reaction_delay_max_ms")
   /// Duración consolidada por el COORDINADOR (T2), en microsegundos.
-  durationUs          BigInt?    @map("duration_us")
-  startedAt           DateTime?  @map("started_at") @db.Timestamptz(6)
-  finishedAt          DateTime?  @map("finished_at") @db.Timestamptz(6)
-  createdAt           DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt           DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  durationUs         BigInt?    @map("duration_us")
+  startedAt          DateTime?  @map("started_at") @db.Timestamptz(6)
+  finishedAt         DateTime?  @map("finished_at") @db.Timestamptz(6)
+  createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   game         Game          @relation(fields: [gameId], references: [id], onDelete: Cascade)
   participants Participant[]
@@ -522,17 +523,17 @@ model Round {
 }
 
 model Participant {
-  id       String  @id @default(uuid()) @db.Uuid
-  gameId   String  @map("game_id") @db.Uuid
-  roundId  String? @map("round_id") @db.Uuid
-  playerId String? @map("player_id") @db.Uuid
+  id        String  @id @default(uuid()) @db.Uuid
+  gameId    String  @map("game_id") @db.Uuid
+  roundId   String? @map("round_id") @db.Uuid
+  playerId  String? @map("player_id") @db.Uuid
   /// Nombre de un jugador TEMPORAL (§3.4): identidad por partida, sin `User` ni
   /// `Player`, sin estadística acumulada. Excluyente con `playerId`. Dos temporales
   /// con el mismo nombre en partidas distintas NO tienen relación.
   guestName String? @map("guest_name") @db.VarChar(128)
-  teamId   String? @map("team_id") @db.Uuid
-  slot     Int     @default(1)
-  lane     String? @db.VarChar(32)
+  teamId    String? @map("team_id") @db.Uuid
+  slot      Int     @default(1)
+  lane      String? @db.VarChar(32)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -594,31 +595,31 @@ model HitEvent {
   localSequence   BigInt @map("local_sequence")
 
   // --- T1 · captura en el ESP32. Propiedad del firmware. Inmutable. ---
-  deviceBootId   String @map("device_boot_id") @db.Uuid
-  deviceUptimeUs BigInt @map("device_uptime_us")
-  deviceEventUs  BigInt @map("device_event_us")
+  deviceBootId   String  @map("device_boot_id") @db.Uuid
+  deviceUptimeUs BigInt  @map("device_uptime_us")
+  deviceEventUs  BigInt  @map("device_event_us")
   deviceEpochMs  BigInt? @map("device_epoch_ms")
 
   // --- T2 · consolidación del coordinador. Propiedad del principal. Inmutable. ---
-  coordinatorRecvUs     BigInt? @map("coordinator_recv_us")
-  coordinatorElapsedUs  BigInt? @map("coordinator_elapsed_us")
-  clockOffsetUs         BigInt? @map("clock_offset_us")
-  offsetUncertaintyUs   BigInt? @map("offset_uncertainty_us")
+  coordinatorRecvUs    BigInt? @map("coordinator_recv_us")
+  coordinatorElapsedUs BigInt? @map("coordinator_elapsed_us")
+  clockOffsetUs        BigInt? @map("clock_offset_us")
+  offsetUncertaintyUs  BigInt? @map("offset_uncertainty_us")
 
   // --- T3 y T4 · propiedad del backend. Nunca viajan en el payload MQTT. ---
   receivedAt  DateTime @map("received_at") @db.Timestamptz(6)
   persistedAt DateTime @default(now()) @map("persisted_at") @db.Timestamptz(6)
 
-  amplitude          Int
-  threshold          Int
-  noiseFloor         Int?              @map("noise_floor")
-  neighbours         Json?
-  targetStateBefore  TargetState       @map("target_state_before")
-  classification     HitClassification
-  classificationReason String?         @map("classification_reason") @db.VarChar(120)
-  firmwareVersion    String            @map("firmware_version") @db.VarChar(32)
+  amplitude            Int
+  threshold            Int
+  noiseFloor           Int?              @map("noise_floor")
+  neighbours           Json?
+  targetStateBefore    TargetState       @map("target_state_before")
+  classification       HitClassification
+  classificationReason String?           @map("classification_reason") @db.VarChar(120)
+  firmwareVersion      String            @map("firmware_version") @db.VarChar(32)
   /// Reenvío desde la cola local. NO implica duplicado (ADR-0003).
-  replay             Boolean           @default(false)
+  replay               Boolean           @default(false)
 
   /// Marca del backend: el evento llegó fuera de la ventana admisible.
   /// Marcar != corregir. T1 y T2 permanecen intactos.
@@ -666,18 +667,18 @@ enum ShotCountSource {
 /// conceptos del dosier 17.2. `remainingKnown = false` ⇒ disparos y precisiones
 /// son NULL y la API responde `not_computable` (ADR-0006).
 model ShotCount {
-  id            String          @id @default(uuid()) @db.Uuid
-  participantId String          @map("participant_id") @db.Uuid
-  source        ShotCountSource @default(manual)
-  initialAmmo   Int             @map("initial_ammo")
-  remainingAmmo Int?            @map("remaining_ammo")
-  remainingKnown Boolean        @default(false) @map("remaining_known")
-  mustUseAllAmmo Boolean        @default(false) @map("must_use_all_ammo")
+  id             String          @id @default(uuid()) @db.Uuid
+  participantId  String          @map("participant_id") @db.Uuid
+  source         ShotCountSource @default(manual)
+  initialAmmo    Int             @map("initial_ammo")
+  remainingAmmo  Int?            @map("remaining_ammo")
+  remainingKnown Boolean         @default(false) @map("remaining_known")
+  mustUseAllAmmo Boolean         @default(false) @map("must_use_all_ammo")
   /// Derivado y persistido sólo cuando es calculable. NUNCA se rellena
   /// sustituyendo lo desconocido por la munición inicial.
-  shotsFired    Int?            @map("shots_fired")
-  recordedAt    DateTime        @default(now()) @map("recorded_at") @db.Timestamptz(6)
-  recordedBy    String?         @map("recorded_by") @db.VarChar(64)
+  shotsFired     Int?            @map("shots_fired")
+  recordedAt     DateTime        @default(now()) @map("recorded_at") @db.Timestamptz(6)
+  recordedBy     String?         @map("recorded_by") @db.VarChar(64)
 
   participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
 
@@ -728,7 +729,7 @@ model Result {
   participantId String @map("participant_id") @db.Uuid
 
   position       Int?
-  score          Int    @default(0)
+  score          Int     @default(0)
   /// Tiempo consolidado por el coordinador (T2), microsegundos.
   totalTimeUs    BigInt? @map("total_time_us")
   firstHitUs     BigInt? @map("first_hit_us")
@@ -738,14 +739,14 @@ model Result {
   penaltiesCount Int     @default(0) @map("penalties_count")
   penaltiesMs    Int     @default(0) @map("penalties_ms")
 
-  initialAmmo   Int?    @map("initial_ammo")
-  remainingAmmo Int?    @map("remaining_ammo")
+  initialAmmo    Int?           @map("initial_ammo")
+  remainingAmmo  Int?           @map("remaining_ammo")
   /// NULL cuando la munición restante es desconocida (ADR-0006).
-  shotsFired    Int?    @map("shots_fired")
-  accuracyTotal Float?  @map("accuracy_total")
-  accuracyValid Float?  @map("accuracy_valid")
+  shotsFired     Int?           @map("shots_fired")
+  accuracyTotal  Float?         @map("accuracy_total")
+  accuracyValid  Float?         @map("accuracy_valid")
   accuracyStatus AccuracyStatus @default(not_computable) @map("accuracy_status")
-  accuracyReason String? @map("accuracy_reason") @db.VarChar(255)
+  accuracyReason String?        @map("accuracy_reason") @db.VarChar(255)
 
   computedAt DateTime @default(now()) @map("computed_at") @db.Timestamptz(6)
 
@@ -766,17 +767,17 @@ enum StatisticScope {
 }
 
 model Statistic {
-  id       String         @id @default(uuid()) @db.Uuid
-  scope    StatisticScope
-  metric   String         @db.VarChar(64)
-  playerId String?        @map("player_id") @db.Uuid
-  gameId   String?        @map("game_id") @db.Uuid
-  roundId  String?        @map("round_id") @db.Uuid
-  value    Float?
-  valueJson Json?         @map("value_json")
-  periodStart DateTime?   @map("period_start") @db.Timestamptz(6)
-  periodEnd   DateTime?   @map("period_end") @db.Timestamptz(6)
-  computedAt  DateTime    @default(now()) @map("computed_at") @db.Timestamptz(6)
+  id          String         @id @default(uuid()) @db.Uuid
+  scope       StatisticScope
+  metric      String         @db.VarChar(64)
+  playerId    String?        @map("player_id") @db.Uuid
+  gameId      String?        @map("game_id") @db.Uuid
+  roundId     String?        @map("round_id") @db.Uuid
+  value       Float?
+  valueJson   Json?          @map("value_json")
+  periodStart DateTime?      @map("period_start") @db.Timestamptz(6)
+  periodEnd   DateTime?      @map("period_end") @db.Timestamptz(6)
+  computedAt  DateTime       @default(now()) @map("computed_at") @db.Timestamptz(6)
 
   player Player? @relation(fields: [playerId], references: [id], onDelete: Cascade)
   game   Game?   @relation(fields: [gameId], references: [id], onDelete: Cascade)
@@ -876,18 +877,18 @@ model Incident {
 /// Nunca contiene credenciales: el servicio de auditoría redacta los campos
 /// sensibles antes de escribir.
 model AuditLog {
-  id           String   @id @default(uuid()) @db.Uuid
-  actorUserId  String?  @map("actor_user_id") @db.Uuid
-  actorUsername String? @map("actor_username") @db.VarChar(64)
-  actorRole    String?  @map("actor_role") @db.VarChar(32)
-  action       String   @db.VarChar(64)
-  entity       String   @db.VarChar(64)
-  entityId     String?  @map("entity_id") @db.VarChar(64)
-  before       Json?
-  after        Json?
-  ip           String?  @db.VarChar(45)
-  userAgent    String?  @map("user_agent") @db.VarChar(255)
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id            String   @id @default(uuid()) @db.Uuid
+  actorUserId   String?  @map("actor_user_id") @db.Uuid
+  actorUsername String?  @map("actor_username") @db.VarChar(64)
+  actorRole     String?  @map("actor_role") @db.VarChar(32)
+  action        String   @db.VarChar(64)
+  entity        String   @db.VarChar(64)
+  entityId      String?  @map("entity_id") @db.VarChar(64)
+  before        Json?
+  after         Json?
+  ip            String?  @db.VarChar(45)
+  userAgent     String?  @map("user_agent") @db.VarChar(255)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
 
@@ -895,4 +896,28 @@ model AuditLog {
   @@index([entity, entityId])
   @@index([actorUserId, createdAt])
   @@map("audit_log")
+}
+
+/// Matriz favorita (G-H): instantánea con nombre de la colocación de módulos de
+/// un panel. Se guarda por SLUG de módulo, no por id, para poder aplicarla a un
+/// panel distinto o tras sustituir hardware.
+model MatrixLayout {
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String   @db.VarChar(128)
+  description    String?  @db.VarChar(512)
+  ownerId        String?  @map("owner_id") @db.Uuid
+  /// Panel del que se capturó (informativo; la matriz es aplicable a cualquiera).
+  originSystemId String?  @map("origin_system_id") @db.Uuid
+  /// [{ slug, x, y, rotation }]
+  cells          Json
+  favorite       Boolean  @default(false)
+  createdBy      String?  @map("created_by") @db.VarChar(64)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  owner User? @relation("LayoutOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@unique([ownerId, name])
+  @@index([ownerId])
+  @@map("matrix_layouts")
 }

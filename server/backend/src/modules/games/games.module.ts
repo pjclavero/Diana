@@ -41,6 +41,13 @@ export class GamesController {
     return { items, total: items.length };
   }
 
+  @Get('panel-occupancy')
+  @RequirePermissions('games:read')
+  @ApiOperation({ summary: 'Paneles ocupados ahora mismo por partidas activas (G-H)' })
+  panelOccupancy() {
+    return this.games.panelOccupancy();
+  }
+
   @Get(':id')
   @RequirePermissions('games:read')
   get(@Param('id') id: string) {
