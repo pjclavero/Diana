@@ -141,7 +141,12 @@ verify-constraints  ->  up -d  ->  ps (healthy)  ->  tests integración  ->
 test-acl  ->  simulador  ->  backup/restore aislado  ->  reboot
 ```
 
-## 8. Incidencias reales del primer despliegue (2026-07-21) y su corrección
+## 8. Incidencias reales de los despliegues (2026-07-21 … 2026-07-26) y su corrección
+
+> Este apartado empezó siendo «incidencias del primer despliegue» y ha ido creciendo con los
+> siguientes. Están en orden cronológico: las cinco primeras son del arranque inicial; después
+> vienen las de los redespliegues del lote G (2026-07-22) y las de infraestructura de la VM
+> (2026-07-26).
 
 El stack **nunca había arrancado** antes de este despliegue. Se encontraron y
 corrigieron cinco defectos reales que lo impedían; ninguno era de utillaje. Cada
@@ -196,7 +201,10 @@ tras `migrate deploy` en cada entorno nuevo.
 se observó repetidamente que `docker compose build backend` "terminaba" pero el `dist/`
 seguía sin el cambio (rutas/campos nuevos → 500), y `--no-cache` fallaba con
 `frontend grpc server closed unexpectedly` / `no such job`. **Causa raíz real:** la VM
-tiene ~1 GB de RAM efectiva (balloon), y con los 8 contenedores en marcha + el build,
+**no dispone de los 4 GB nominales** —está declarada `memory=4096` + `balloon=1024` (D-11)
+sobre un nodo Proxmox sobrecomprometido, así que el globo le quita memoria; el día en que se
+observó esto se anotó **~1 GB efectivo, cifra no vuelta a medir desde entonces**—, y con los
+8 contenedores en marcha + el build,
 **BuildKit muere por OOM a mitad de compilar y deja la imagen anterior** — NO es un
 problema de caché. **Procedimiento fiable para reconstruir el backend en esta VM:**
 1. Liberar RAM parando lo no esencial: `docker compose stop worker backup postgres-test mosquitto frontend backend` (deja `postgres` + `proxy`).
@@ -243,8 +251,31 @@ comando) y no termina nunca. Usar un patrón que no coincida con el propio coman
 | ACL de Mosquitto (`test-acl.sh`) | 🟡 5/7 | Las 4 denegaciones críticas (aislamiento entre módulos, no auto-escribir `config`/`command`/`ota`) **pasan**. Los 2 «FAIL» son falsos negativos del arnés (carrera sub/pub), verificado a mano |
 | **F-02 (suplantación por client_id)** | 🔴 **CONFIRMADO EN VIVO** | credenciales de m1 + `client_id=m2` publican en el tópico de m2 y el backend lo recibe. Mitigación = decisión de contrato (ver `docs/security/findings.md`) |
 | Simulador → broker real | ✅ conecta y completa escenario | escenario 02 «partida completa» ejecutado; una credencial de módulo vale por la ACL-por-`client_id` |
-| Simulador → backend → **PostgreSQL** (ingesta e2e) | 🔴 **NO verificado** | tras el escenario, `hit_events = 0` y sin logs de ingesta en el backend (conectado a MQTT). El backend se suscribe (`BACKEND_SUBSCRIPTIONS`) pero no persistió: probablemente el escenario aislado no dispara la orquestación de partida que genera impactos persistibles. **Requiere investigación de WP-02/WP-05** (X-18) |
+| Simulador → backend → **PostgreSQL** (ingesta e2e) | 🔴 **NO verificado** | tras el escenario, `hit_events = 0` y sin logs de ingesta en el backend (conectado a MQTT). El backend se suscribe (`BACKEND_SUBSCRIPTIONS`) pero no persistió. **La causa no se ha determinado.** Hipótesis sin comprobar, anotada para quien lo investigue: que el escenario aislado no dispare la orquestación de partida que genera impactos persistibles. **Requiere investigación de WP-02/WP-05** (X-18-INGESTA; renombrado el 2026-07-26 para no chocar con el X-18 de §2.4 en `STATUS.md`). **Sin reintentar desde 2026-07-21** |
 
 **Pendiente de despliegue, no ejecutado aún:** copia de seguridad + restauración en
 base aislada, y `reboot` de la VM verificando que el stack vuelve solo (`onboot` +
 `restart`).
+
+## 10. Despliegue del lote G-A…G-I (2026-07-26)
+
+`develop` @ **`045fdd1`** en `/opt/diana`. Registrado en el commit `8220a45`.
+
+| Comprobación | Resultado | Evidencia |
+|---|---|---|
+| Copia de la base **antes** de tocar nada | ✅ | tomada como primer paso del procedimiento |
+| Migraciones aplicadas contra la base viva | ✅ **4/4** | `matrix_layouts`, `participant_panel`, `module_board_and_deploy_guard`, `module_offline_since` |
+| Esquema real tras migrar | ✅ | tabla `matrix_layouts`, columnas `participants.target_system_id`, `modules.target_board`, `modules.offline_since`, e índice parcial de «un despliegue OTA en vuelo» |
+| Imágenes reconstruidas (backend, frontend, worker) | ✅ | con el procedimiento de RAM liberada del §8 |
+| Stack completo healthy | ✅ **8/8** | contenedores del perfil base |
+| Panel y API por el proxy | ✅ | panel 200, API 200 |
+| Rutas nuevas | ✅ **6/6 responden 401** | existen y exigen autenticación; contrastado con el **404** de una ruta inexistente, para que el 401 no se confunda con «cualquier cosa da 401» |
+| **Integración contra PostgreSQL real** | ✅ **7/7** | incluye N8, la concurrencia del cerrojo de panel: dos `start` simultáneos → gana exactamente uno, el otro 409, la perdedora ni marcada ni con la ronda arrancada. **El primer intento FALLÓ** y destapó un defecto de la propia prueba (creaba ambas partidas en `armed`, estado que ya ocupa panel, así que se rechazaban mutuamente sin ejercitar el cerrojo); corregido a `draft` y reejecutado |
+| **Verificación funcional con credenciales reales** | 🔴 **NO EJECUTADA** | nadie se autenticó en la API ni jugó una partida. Todo lo anterior es verificación de **superficie**: contenedores, esquema y códigos de respuesta. La hará el operador |
+| Ingesta e2e (X-18-INGESTA) | 🔴 **no reintentada** | sigue como quedó el 2026-07-21 |
+| Restauración de copia y `reboot` | 🔴 **no ejecutados** | siguen siendo el cierre pendiente del ciclo |
+
+**Lo que quedó fuera de este despliegue:** el commit `133d760` (D9, barrido de obsolescencia de
+G-I) es **posterior**. Está en `develop`, probado en local y con la cuarta supervisión en
+curso, pero **no corre en la VM**. Mientras no se redespliegue, la detección de caída que hay
+en producción depende por completo del Last Will.

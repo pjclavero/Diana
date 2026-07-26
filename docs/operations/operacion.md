@@ -15,8 +15,18 @@ docker compose logs -f backend
 docker compose down           # para y elimina contenedores (CONSERVA volúmenes)
 ```
 
-`restart: unless-stopped` en todos los servicios persistentes: tras un
-`reboot` de la VM, el stack vuelve solo (verificado en la sección "Reinicio").
+`restart: unless-stopped` en todos los servicios persistentes. **Corrección (2026-07-26):**
+este documento decía que el retorno tras `reboot` estaba «verificado en la sección Reinicio».
+**No lo está.** Esa sección sólo da el comando; **el `reboot` de la VM con comprobación del
+retorno automático nunca se ha ejecutado** (`deployment/procedimiento.md`, cierre del §9). La
+configuración está puesta; el comportamiento no está demostrado.
+
+> **Antes de tocar esta VM, lee `deployment/procedimiento.md` §8.** Hay tres trampas reales y
+> repetidas: (1) `docker compose up -d` puede reintentar el one-shot `migrate` y abortar el
+> arranque del backend; (2) **compilar con todo levantado mata a BuildKit por falta de memoria**
+> y deja la imagen anterior corriendo, con un `build` que parece haber terminado bien; (3) **el
+> DNS de la VM está roto** (MagicDNS de Tailscale), así que `git`, `docker pull` y `npm` fallan
+> con «Could not resolve host» hasta que el operador lo arregle.
 
 ## Datos que persisten (volúmenes nombrados)
 
@@ -102,8 +112,13 @@ docker compose exec -T postgres psql "$DATABASE_URL" -c "SELECT count(*) FROM hi
 ```bash
 sudo reboot
 # Tras volver:
-docker compose ps    # todo debe recuperarse solo (restart: unless-stopped)
+docker compose ps    # comprobar servicio a servicio que vuelven todos
 ```
+
+**NO EJECUTADO.** A 2026-07-26 nadie ha reiniciado la VM 109 para comprobar que el stack
+vuelve solo. Es una de las dos comprobaciones que faltan para cerrar el ciclo de despliegue
+(la otra es la **restauración** de una copia en base aislada, tampoco ejecutada). Hasta que se
+haga, esto es un procedimiento, no una verificación.
 
 ## Notas de seguridad de esta instalación (pendientes)
 

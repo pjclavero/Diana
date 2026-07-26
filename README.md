@@ -58,6 +58,14 @@ python3 contracts/validate.py --verbose
 
 ## Estado del proyecto
 
+**A 2026-07-26:** el stack está desplegado y sano en la VM 109 (`develop` @ `045fdd1`, 8/8
+contenedores `healthy`) con panel, autenticación real, propiedad de módulos, ciclo de firmware
+y OTA del lado del servidor, modos de juego, marcador y detección de caída de módulo. **Lo que
+todavía no ha ocurrido nunca:** que alguien juegue una partida completa desde el panel con
+credenciales reales, que el firmware se compile con ESP-IDF, y que exista una PCB. Además hay
+hallazgos de seguridad abiertos y serios (suplantación de módulo por `client_id` **confirmada
+en vivo**, y sin TLS en ninguna capa).
+
 El estado vivo de cada paquete de trabajo está en
 [`docs/coordination/STATUS.md`](docs/coordination/STATUS.md); el plan, en
 [`MASTER_PLAN.md`](docs/coordination/MASTER_PLAN.md); las pruebas y su resultado real, en

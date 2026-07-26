@@ -2,6 +2,13 @@
 
 **Fecha:** 2026-07-21 · **Rama integrada:** `develop` @ `9fd4431` · **VM:** `diana-server` (109, 192.168.1.209)
 
+> **DOCUMENTO HISTÓRICO — no describe el estado de hoy.** Es la fotografía del 2026-07-21 y se
+> conserva sin retocar para no falsear el historial. Después de esta fecha llegaron el programa
+> F1-F6, el lote G-A…G-I, el cierre de deudas y el despliegue del 2026-07-26. **El estado vivo
+> está en `docs/coordination/STATUS.md`**; el recuento de tareas frente al encargo, en
+> `docs/INFORME-TAREAS-vs-ENCARGO.md` (revisado el 2026-07-26). Lo que aquí se dé por pendiente
+> puede estar hecho, y al revés: las cifras de pruebas de este informe son las de aquel día.
+
 Este documento responde de forma honesta a «¿está todo hecho? ¿falta algo?». Sigue la
 estructura del §25 del encargo. **No** se usa «debería funcionar» ni «probablemente»: lo
 marcado ✅ está ejecutado con evidencia; lo demás se clasifica sin maquillar.

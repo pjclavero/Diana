@@ -2,7 +2,12 @@
 
 > **Origen:** requisitos de producto del responsable, 2026-07-21 (conversación de dirección).
 > Fuente normativa de producto para el panel web y su backend. Complementa el dosier y el
-> encargo (`docs/coordination/PROGRAM_BRIEF.md`). Estado: **borrador para confirmar**.
+> encargo (`docs/coordination/PROGRAM_BRIEF.md`).
+>
+> **Estado del documento a 2026-07-26:** ya no es un borrador. Las decisiones de §0-§5 están
+> confirmadas por la dirección y en su mayoría **implementadas y desplegadas**; §6.8 y §6.9
+> describen lo construido. Lo que este documento describa como pendiente hay que contrastarlo
+> con `docs/coordination/STATUS.md`, que es el documento vivo de estado.
 
 Este documento fija lo que el usuario debe poder hacer desde el panel de Diana. Nace de
 constatar (hallazgos X-21/X-22) que el panel y el backend se construyeron sobre modelos de
@@ -136,21 +141,25 @@ El gestor no se «solicita» en abstracto: nace de **vender/vincular un módulo*
 > `Statistic` acumulada, sin acceso; sus números viven sólo en el `Result`/`Participant` de esa
 > partida. El registrado acumula `Statistic` de forma **global**, transversal a los gestores.
 
-## 4. Qué existe ya y qué es nuevo (verificado en el código, 2026-07-21)
+## 4. Qué existe ya y qué es nuevo
 
-| Elemento | Estado |
-|---|---|
-| `FirmwareVersion` (versión, sha256, firma) + `Deployment` por módulo | 🟢 modelo existe; faltan endpoints y UI |
-| `ModulePosition` (topología) | 🟢 modelo existe; falta endpoint |
-| `Player.userId` (jugador↔usuario) + `Statistic` | 🟢 modelo existe; falta vista con auth de jugador |
-| `GameMode` / `GamePreset` (tipos de partida) | 🟢 existe |
-| Diagnóstico self-test | 🟡 parcial; faltan test-sensor y test-led |
-| Roles **jugador/gestor/admin** | 🔴 hoy 5 roles técnicos distintos, sin rol jugador |
-| **Propiedad de módulo** (`owner`) + vincular/desvincular | 🔴 nuevo: `Module` no tiene dueño |
-| **Aprobación usuario→gestor + código** | 🔴 nuevo |
-| **Usuarios temporales** | 🔴 nuevo |
-| **Reset de estadísticas por partida** | 🔴 nuevo |
-| **Login en el panel** (JWT) + rutas reales panel↔backend | 🔴 nuevo (X-21/X-22) |
+Primera columna de estado: **inventario original, verificado en el código el 2026-07-21**, que
+es el que justificó el plan. Segunda columna: **dónde está cada cosa hoy, 2026-07-26**,
+verificado en el código de `develop` @ `133d760`.
+
+| Elemento | Estado 2026-07-21 | Estado 2026-07-26 |
+|---|---|---|
+| `FirmwareVersion` (versión, sha256, firma) + `Deployment` por módulo | 🟢 modelo existe; faltan endpoints y UI | ✅ **hecho y desplegado** (F3 + G-B): subida del binario con sha256 y tamaño calculados por el servidor, descarga pública para el módulo, aceptación por el gestor → `Deployment` + OTA por MQTT, compatibilidad de placa y un despliegue en vuelo garantizado por índice único. **Nunca ha terminado en un dispositivo real** |
+| `ModulePosition` (topología) | 🟢 modelo existe; falta endpoint | ✅ **hecho** (G-H): `GET/PUT /api/topology/panels[/:idOrSlug]` con la matriz real, selector de panel y matrices favoritas por slug |
+| `Player.userId` (jugador↔usuario) + `Statistic` | 🟢 modelo existe; falta vista con auth de jugador | ✅ **hecho** (G-D + G-G): ficha e histórico del jugador en el marcador; el temporal se declara **sin histórico** |
+| `GameMode` / `GamePreset` (tipos de partida) | 🟢 existe | ✅ + **presets por gestor** (G-F, 5 por gestor). Aviso operativo: `game_modes` hay que **sembrarlo** en cada entorno nuevo (`procedimiento.md` §8) |
+| Diagnóstico self-test | 🟡 parcial; faltan test-sensor y test-led | 🔴 **sigue sin cerrarse contra el backend real.** La UI existe y G-A la arregló, pero llama al adaptador de demostración: el backend **no expone** `test-led`, `test-sensor`, `calibrate` ni `commands/identify`; sólo `self_test`. Es F6 y el resto vivo de X-21 |
+| Roles **jugador/gestor/admin** | 🔴 hoy 5 roles técnicos distintos, sin rol jugador | ✅ **hecho y desplegado** (F1), conservando los roles técnicos |
+| **Propiedad de módulo** (`owner`) + vincular/desvincular | 🔴 nuevo: `Module` no tiene dueño | ✅ **hecho y desplegado** (F2): `Module.ownerId`, `link`/`unlink`, y el acotado por dueño llega ya hasta paneles y matrices |
+| **Aprobación usuario→gestor + código** | 🔴 nuevo | 🟡 **parcial** (F5/G-D): hay invitación por correo con código visible y auditado, regenerable y revocable, + panel SMTP sólo-admin. Falta el **código de activación específico del ascenso a gestor** (§3.1 pasos 3-5) y el **envío real** de correo |
+| **Usuarios temporales** | 🔴 nuevo | ✅ **hecho y desplegado** (G-D.2): identidad por partida (XOR `playerId`/`guestName`), sin `User` y **sin estadística acumulada por construcción**, no por convención |
+| **Reset de estadísticas por partida** | 🔴 nuevo | 🔴 **sin hacer.** Comprobado el 2026-07-26: no hay endpoint ni servicio de reset |
+| **Login en el panel** (JWT) + rutas reales panel↔backend | 🔴 nuevo (X-21/X-22) | ✅ login **hecho y desplegado** (F1; cierra X-22). Rutas reales: 🟡 **las pantallas nuevas sí**, las heredadas siguen en datos de demostración (X-21 parcial) |
 
 ## 5. Decisiones (2026-07-21)
 
@@ -190,8 +199,14 @@ Decisiones:
   `games.service`). Falta: UI para gestionar varias a la vez + **guardarraíl «un juego en
   curso por panel»**. Caso límite deseado: 4 paneles con 1 módulo cada uno en **demo
   independiente**.
-- **Juntos** (2+ paneles en **una misma** partida): **NO soportado hoy** (un `Game` está
-  atado a un solo `TargetSystem`). **DECIDIDO (2026-07-22): destino = Opción B** — una entidad
+- **Juntos** (2+ paneles en **una misma** partida): *(**este párrafo quedó superado el
+  2026-07-26**: la Opción B **se construyó** en G-H.1 —entidad `View`, `Game.viewId`, migración
+  `20260722210000_views`, `/api/views` y `ViewsPage`— en vez de diferirse, y el guardarraíl «un
+  juego por panel» cubre ya las partidas sobre vistas multipanel. Se conserva el texto original
+  porque explica **por qué** el motor no hubo que tocarlo. La **consolidación de tiempos T2 con
+  dos coordinadores sigue SIN resolver**, como anticipaba el último punto.)* **NO soportado
+  hoy** (un `Game` está atado a un solo `TargetSystem`). **DECIDIDO (2026-07-22): destino =
+  Opción B** — una entidad
   **`View`** (agrupa paneles) por encima del panel; **tope en ese nivel** (2 paneles completos
   ya son un conjunto enorme de dianas; no habrá agrupaciones superiores). **NO se construye
   ahora:** se difiere a una actualización posterior y hoy sólo se dejan las **costuras** para
@@ -211,10 +226,19 @@ Decisiones:
     difiere y hoy no se cruzan paneles, no hace falta resolverlo aún.
 
 ### 6.3 Resiliencia y reconexión (bloque G-I) — **defaults FIJADOS**
+
+> **DESACTUALIZADO desde el 2026-07-26: los «huecos» que describe este apartado están
+> implementados.** Lo que sigue se conserva como la **decisión de producto original** del
+> 2026-07-22, porque es lo que fijó los defaults. **El estado real está en §6.9.** Dos
+> precisiones que este texto ya no acierta: (a) el `ingest` **sí** consume y persiste la
+> presencia, y el motor **sí** reacciona a las caídas; (b) decir que G-I «cierra X-06/X-18» era
+> optimista — **X-06 (contrato WebSocket) sigue abierto** y la ingesta e2e tampoco se ha
+> vuelto a verificar.
+
 Cimientos ya contratados: presencia `module/{id}/presence` retenida + Last Will; `boot_id`
 por arranque (ADR-0003) + idempotencia evitan duplicar impactos al reconectar. **Huecos
-reales hoy:** el `ingest` aún no consume la presencia para actualizar `online/bootId/
-lastSeenAt`, y el motor **no** reacciona a caídas (control manual). Ligado a X-06/X-18.
+reales al escribir esto (2026-07-22):** el `ingest` aún no consume la presencia para
+actualizar `online/bootId/lastSeenAt`, y el motor **no** reacciona a caídas (control manual).
 Comportamiento por defecto **decidido (2026-07-22):**
 - **Cae un módulo implicado en la ronda** → **auto-pausa** de la ronda + aviso en panel +
   cuenta atrás de reconexión; si no vuelve en X s, el **operador** decide *reanudar-sin-él*
@@ -250,7 +274,15 @@ como en F5 (§3.1).
   + stats del jugador actual + estado visual de las dianas + acierto/fallo.
 - **G-H** Matriz avanzada: **favoritas**, nivel **panel**/paginación (§6.1) y **concurrencia**
   (§6.2, con la decisión «juntos» pendiente).
-- **G-I** Resiliencia y reconexión (§6.3); cierra X-06/X-18.
+- **G-I** Resiliencia y reconexión (§6.3). *(Se anotó «cierra X-06/X-18»; **no fue así**: lo
+  que cerró es la detección de caída de módulo —§6.9—, no el contrato WebSocket ni la ingesta
+  extremo a extremo.)*
+
+> **Estado de los bloques a 2026-07-26** (fuente: `docs/coordination/STATUS.md`, que es el
+> documento vivo): G-A…G-H **cerrados con supervisor independiente y desplegados** en la VM
+> 109; G-I **desplegado salvo D9** (el barrido de obsolescencia, `133d760`), que está en
+> `develop` con tres supervisiones `NO CONFORME` ya corregidas y **la cuarta en curso**, sin
+> desplegar. **Nadie ha verificado el lote con credenciales reales jugando una partida.**
 
 ### 6.7 Coordinador, emparejamiento y red (2026-07-22) — decisiones
 
@@ -276,6 +308,14 @@ Decisiones:
 > Implementación real de estas tres depende de **retomar el firmware** (hoy el gran pendiente:
 > nunca compilado con ESP-IDF; AUTO, aplicación de config, descarga OTA `esp_https_ota` y
 > sincronización de reloj están sin terminar). El **contrato** sí se puede ampliar ya (DECISIÓN 1).
+>
+> **Hecho el 2026-07-26 (`ade9a21`):** DECISIÓN 1 aplicada — `coordinator_module_id` está en el
+> esquema `module-config` (aditivo, con ejemplo validado), y el backend compone y publica la
+> configuración deseada real (`GET /api/modules/:id/config/desired`,
+> `POST /api/modules/:id/config/push`), subiendo `config_version`. La respuesta **dice
+> explícitamente que publicar el deseo NO es aplicarlo**: eso sólo lo confirma el módulo en
+> `config/reported`, y hoy **no hay ningún módulo que pueda confirmarlo**. La autoelección AUTO
+> sigue **bloqueada** por el firmware.
 
 ### 6.8 Concurrencia, matrices favoritas y marcador (2026-07-26) — implementado
 
@@ -305,6 +345,13 @@ Cierre de los bloques **G-H** y **G-G** del lote. Decisiones que quedan fijadas:
   **jugador temporal** aparece explícitamente **sin histórico** en lugar de con ceros.
 
 ### 6.9 Detección de caída de módulo (2026-07-26) — implementado
+
+> **Qué de esto corre hoy en la VM 109.** Todo lo de este apartado **salvo el barrido de
+> obsolescencia** (los puntos «No todo se sabe por el Last Will», «Callar no es lo mismo que no
+> ser oído» y «Un módulo dado por muerto puede volver»): ese trabajo es D9 (`133d760`), es
+> **posterior al despliegue**, tiene **tres supervisiones `NO CONFORME` ya corregidas y la
+> cuarta en curso**, y **no está desplegado**. Mientras no se redespliegue, en producción la
+> detección de caída depende por completo del Last Will, con el agujero que aquí se describe.
 
 Cierre del bloque **G-I**. Lo que §6.3 daba por «hueco» era peor de lo descrito: la presencia
 MQTT **se validaba y se descartaba**, así que `Module.online` no lo escribía nadie y **ninguna
@@ -366,4 +413,5 @@ caída se detectaba jamás**. Estado real ahora:
 - **En pantalla se dice desde cuándo**, módulo a módulo, y se avisa de «Módulo sin señal»
   antes incluso de que el barrido lo declare caído.
 
-_Actualizado con el lote de mejoras · 2026-07-22; G-H y G-G · 2026-07-26; G-I y D9 · 2026-07-26_
+_Actualizado con el lote de mejoras · 2026-07-22; G-H y G-G · 2026-07-26; G-I y D9 · 2026-07-26;
+barrido de documentación (§4, §6.2, §6.3, §6.6, §6.7, §6.9 y cabecera) · 2026-07-26_

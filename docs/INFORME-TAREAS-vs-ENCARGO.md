@@ -1,6 +1,14 @@
 # Diana · Informe de tareas frente al encargo
 
-**Fecha:** 2026-07-21 · **Rama:** `develop` @ HEAD · **VM:** `diana-server` (109, 192.168.1.209)
+**Fecha:** 2026-07-26 (revisión completa de estados) · **Rama:** `develop` @ `133d760` ·
+**Desplegado en la VM:** `develop` @ `045fdd1` · **VM:** `diana-server` (109, 192.168.1.209)
+
+> **Aviso de alcance de esta revisión.** Los estados se han contrastado el 2026-07-26 contra el
+> código de `develop` y el historial de git. **No se ha tocado la VM 109** para hacerla, ni por
+> lectura: lo que aquí figura como verificado en la VM procede de las verificaciones anteriores
+> registradas en `deployment/procedimiento.md` §8-§9 y en el commit de despliegue `8220a45`.
+> **La verificación funcional con credenciales reales sigue sin hacerse**: nadie ha jugado una
+> partida de principio a fin desde el panel.
 
 Este informe recorre **todas** las tareas del encargo (requisitos de programa) y del dosier
 (requisitos de producto) y marca, una a una, si están hechas o no. Después, para cada tarea
@@ -46,7 +54,7 @@ ejecutada. Lo no probado no se marca hecho.
 | A23 | Documentación de recuperación | 🟡 |
 | A24 | VM Proxmox nueva y dedicada | ✅ |
 | A25 | Despliegue real en la VM | 🟡 |
-| A26 | Documentación de la VM en `s9-server` | 🔴 |
+| A26 | Documentación de la VM en `s9-server` | 🟡 |
 | A27 | CI reproducible | 🟡 |
 | A28 | Estado del proyecto y hoja de ruta actualizados | ✅ |
 
@@ -67,7 +75,7 @@ ejecutada. Lo no probado no se marca hecho.
 | B11 | Herramientas: git, curl, wget, jq, unzip, ca-certificates | 🟡 |
 | B12 | `gh` (CLI de GitHub) | 🔴 |
 | B13 | Tailscale instalado | ✅ |
-| B14 | Tailscale unido a la tailnet | 🔴 |
+| B14 | Tailscale unido a la tailnet | 🟡 |
 | B15 | PostgreSQL/Node/Mosquitto NO en el host (sólo en Docker) | ✅ |
 | B16 | Integración con la política de copias del homelab | ✅ |
 
@@ -148,9 +156,14 @@ exportación CSV, 5 roles. **Desplegado y `healthy` en la VM**; la API responde 
 (`/api/health` → `{"status":"ok"}`). 157 tests unitarios + 5 de integración (ver A14).
 
 **A7 · Motor de partidas — 🟡**
-Cuatro modos implementados y probados en host (añadir uno no toca el núcleo; semilla
-explícita para reproducibilidad). **Resto abierto:** la ingesta e2e de impactos hasta
-PostgreSQL no se verificó (X-18); faltan los modos `memory` y `no_shoot`.
+**Cinco** modos implementados y probados en host (`random`, `sequence`, `reaction`,
+`all_against_clock` y **`duelo`**, añadido en G-E; añadir uno no toca el núcleo; semilla
+explícita para reproducibilidad). Desde G-I el motor además **reacciona a la caída de un
+módulo**: auto-pausa de la ronda si el caído participa, pausa dura si es el coordinador de la
+partida, y nunca reanuda solo. **Resto abierto:** la ingesta e2e de impactos hasta PostgreSQL
+**sigue sin verificarse** (X-18-INGESTA, sin reintentar desde 2026-07-21); faltan los modos
+`memory` y `no_shoot`, que están en el contrato y no en el código (comprobado el 2026-07-26 en
+`src/domain/game/strategies/`).
 
 **A8 · PostgreSQL — ✅**
 **Migración aplicada contra base viva** (`20260720120000_init`), lo que nunca se había hecho.
@@ -158,19 +171,39 @@ Restricciones verificadas: 24 tablas, índices únicos de idempotencia, 4 marcas
 `BIGINT`/`timestamptz`. No expuesto al host.
 
 **A9 · Panel web — ✅**
-19 pantallas, editor de matriz 3×3, vista en directo, regla de precisión no calculable. Ningún
-estado se comunica sólo por color. **E2E ejecutados con navegador real: 18/18** (contra
-adaptador mock; el contrato contra el backend real queda en X-06).
+19 pantallas iniciales, hoy **más de 30 rutas** tras F1–F3 y el lote G (login, módulos,
+propiedad, firmware, jugadores, equipos, participantes, presets, vistas, matrices, marcador,
+duelo, demo, invitaciones, unirse por QR, resiliencia). Editor de matriz 3×3 con datos reales,
+regla de precisión no calculable, ningún estado comunicado sólo por color. **E2E ejecutados con
+navegador real: 18/18** (contra adaptador mock). Unitarias del frontend a `133d760`: **131/131**,
+con `tsc` y `oxlint` limpios.
+**Matiz que hay que decir:** la imagen de producción se compila con `VITE_API_MODE=mock`
+(`server/frontend/Dockerfile:19`). Las pantallas nuevas no dependen de ese modo —tienen cliente
+propio contra `/api` real con JWT— pero las **heredadas** (estado del sistema, telemetría y
+configuración de módulo, calibración, prueba de sensores/LED, diagnósticos, incidencias)
+siguen colgando de `realAdapter`, cuyas rutas el backend no expone: enseñan **datos de
+demostración**, y el propio panel lo declara. Es el resto vivo de X-21.
 
 **A10 · WebSocket tiempo real — 🟡**
-Gateway `/live` implementado en el backend. **Resto abierto:** el enrutado del WebSocket por
-el proxy nginx no está resuelto (X-06/F-08): `/ws/` no casa con el namespace socket.io; la
-vista en directo por WS aún no es alcanzable por el proxy. El REST completo sí lo es.
+Gateway implementado en el backend (`namespace: '/live'`, `path: '/ws/socket.io'`), con salas
+por partida. **Resto abierto y precisado el 2026-07-26 leyendo el código:** el panel abre un
+**WebSocket crudo** contra `${VITE_WS_URL}/games/:id/live`
+(`server/frontend/src/api/realGameSocket.ts:41`), y un `WebSocket` nativo **no habla el
+protocolo de socket.io**. Es decir, el problema no es sólo de enrutado del proxy: los dos
+extremos hablaban protocolos distintos, y por eso **la vista en directo nunca pudo funcionar
+contra el backend real** (X-06). El REST sí es alcanzable por el proxy.
+**Corregido en código el mismo 2026-07-26 (`5c3b7ac`), después de escribirse el párrafo
+anterior:** el panel pasa a `socket.io-client`, el gateway sirve en `/ws/socket.io` con salas
+reales por partida —antes emitía a **todos** los clientes— y recuerda el último estado para
+quien se suscribe. Se sigue en 🟡 y no en ✅ por tres razones concretas: **no está desplegado**,
+**no se ha probado con un navegador real contra el backend desplegado**, y **el canal en directo
+no exige autenticación**: el namespace no valida el JWT.
 
 **A11 · Simulador — 🟡**
 33/33 tests. **Conecta al Mosquitto real y completa un escenario de partida** (una credencial
 de módulo basta por la ACL-por-client_id). **Resto abierto:** los impactos no se persistieron
-en PostgreSQL (X-18).
+en PostgreSQL (X-18-INGESTA). Sin reintentar desde 2026-07-21; el simulador tampoco se ha
+vuelto a ejecutar contra el broker desde entonces.
 
 **A12 · Stack Docker Compose — ✅**
 Stack autocontenido con perfiles (base/dev/test/simulator/monitoring), healthchecks, ACL,
@@ -180,11 +213,18 @@ broker, prefijo `/api` del proxy, Dockerfiles ausentes) — detalle en
 `deployment/procedimiento.md` §8.
 
 **A13 · Pruebas unitarias — ✅**
-Reproducidas ejecutando (WP-11): contratos 43/0, firmware 389/389, simulador 33/33, backend
-157, frontend 30/30.
+Reproducidas ejecutando por calidad (WP-11, 2026-07-21): contratos 43/0, firmware 389/389,
+simulador 33/33, backend 157, frontend 30/30. **A `133d760` (2026-07-26), según los commits que
+las ejecutaron:** backend **471 pasan + 7 saltadas** (las saltadas exigen `DATABASE_URL`),
+frontend **131/131**, `tsc -b`, `tsc --noEmit` y `oxlint` limpios. Firmware y simulador **no se
+han vuelto a ejecutar** desde el 2026-07-21: sus cifras son las de entonces.
+**Verificación por mutación (G-I/D9):** 12 mutaciones aplicadas sobre el código real
+(8 backend + 4 frontend); las 12 mueren. Es la única parte del proyecto con esa evidencia.
 
 **A14 · Pruebas de integración — ✅**
-**5/5 contra PostgreSQL real.** Demuestran lo que la memoria no puede: idempotencia
+**5/5 contra PostgreSQL real** en 2026-07-21, y **7/7** en el despliegue del 2026-07-26 tras
+añadirse la prueba de concurrencia del cerrojo de panel (N8), que hasta ese día estaba escrita
+pero **declarada como no ejecutada**. Demuestran lo que la memoria no puede: idempotencia
 garantizada por la base (índice único + tupla `(module,boot,seq)`, incluso concurrente) y
 microsegundos que sobreviven en `BigInt`. Reproducido dos veces. Se corrigió de paso un
 defecto del propio test (medía el límite de `double` de JS, no la columna).
@@ -192,7 +232,9 @@ defecto del propio test (medía el límite de `double` de JS, no la columna).
 **A15 · Pruebas E2E — 🟡**
 Frontend 18/18 con navegador. **Resto abierto:** los 16 escenarios E2E obligatorios del §19
 están como placeholder honesto (`test.fixme`, 0 aserciones), documentados uno a uno; ninguno
-implementado (requieren el stack completo con datos).
+implementado (requieren el stack completo con datos). **Comprobado de nuevo el 2026-07-26:**
+`tests/e2e/scenarios.spec.ts` sigue con los 16 `test.fixme` (E-01…E-16) y `docs/testing/` sigue
+vacío salvo su `.gitkeep.md` (X-17 abierto).
 
 **A16 · Pruebas de seguridad — 🟡**
 Modelo de amenazas + 18 hallazgos con evidencia; `npm audit`; escaneo de secretos; ACL probada
@@ -222,17 +264,45 @@ VM 109 `diana-server` creada (KVM, 4 vCPU, `memory=4096`+`balloon=1024`, 50 GB, 
 clave.
 
 **A25 · Despliegue real — 🟡**
-Stack sano y API respondiendo (ver A12). **Resto abierto:** copia de seguridad + restauración
-en base aislada + `reboot` verificando el retorno automático, aún **no ejecutados**.
+Stack sano y API respondiendo (ver A12). **Último despliegue: 2026-07-26** (`develop` @
+`045fdd1`): 4 migraciones aplicadas contra la base viva, imágenes backend/frontend/worker
+reconstruidas, **8/8 contenedores `healthy`**, copia de la base tomada antes de tocar nada.
+**Resto abierto:** (a) **restauración** en base aislada y **`reboot`** verificando el retorno
+automático **siguen sin ejecutarse**; (b) el HEAD de `develop` (`133d760`, D9) **no está
+desplegado**; (c) la verificación viva fue de superficie (contenedores, esquema y códigos HTTP),
+**sin autenticarse con credenciales reales ni jugar una partida**; (d) dos incidencias de
+infraestructura abiertas en la VM, el **DNS roto** (MagicDNS de Tailscale) y la **memoria por
+debajo de lo nominal**, que obliga a parar contenedores para poder compilar sin que BuildKit
+muera por OOM (`deployment/procedimiento.md` §8).
 
 **A27 · CI reproducible — 🟡**
 5 workflows escritos con YAML validado (`ci`, `firmware-idf`, `integration`, `e2e`, `nightly`),
 incluido el que compila el firmware con ESP-IDF. **Resto abierto:** no se han ejecutado en
 GitHub Actions todavía; su verde real está por confirmar.
 
+**A26 · Documentación de la VM en `s9-server` — 🟡**
+Según `docs/INFORME-ESTADO-2026-07-21.md` §3 se entregaron las fichas `maquinas/vm109-diana.md`
+y `servicios/diana.md` y se actualizaron `indice.md` e `inventario.md`, en el **PR #7** de
+`s9-server` (rama `feat/diana-vm109`). **No verificable desde este repositorio** —vive en otro
+repo— y **el merge lo hace el operador**. Además, la ficha describe el estado a **2026-07-21**:
+no incluye el lote G-A…G-I, ni el despliegue del 2026-07-26, ni las incidencias de DNS y RAM.
+Pasa de 🔴 a 🟡 por eso: escrito y entregado, sin mergear y desactualizado.
+
 **A28 · Estado y hoja de ruta — ✅**
 `docs/phases/ROADMAP.md` (12 fases con estado real), `STATUS.md`, `INFORME-ESTADO-2026-07-21.md`
-y este informe.
+y este informe. Los dos informes con fecha en el nombre son **fotografías** de su día y se
+conservan como tales; el estado vivo está en `STATUS.md`.
+
+### Lote G-A…G-I y programa F1–F6 (posteriores al encargo original)
+
+No son tareas del encargo §1, sino requisitos de producto añadidos por la dirección los días
+2026-07-21 y 2026-07-22 (`docs/product/alcance-panel-roles-firmware.md` §6). Estado a
+2026-07-26: **G-A…G-H cerrados con supervisor independiente y desplegados**; **G-I desplegado
+salvo D9**, cuyo barrido de obsolescencia está en `develop` (`133d760`) con **tres
+supervisiones `NO CONFORME` ya corregidas y la cuarta EN CURSO**, sin desplegar. F1, F2 y F3
+cerradas y desplegadas; F4 y F5 mayoritariamente entregadas por G-D con restos abiertos
+(reset de estadística por partida; código de activación de gestor; envío real de correo);
+**F6 (diagnóstico) sigue sin cablear al backend**. Detalle por bloque en `STATUS.md`.
 
 ### B. VM y sistema (resumen de lo hecho)
 
@@ -245,8 +315,13 @@ presentes, Tailscale instalado y `tailscaled active`. Ningún runtime de aplicac
 
 **B12 · 🔴** — `gh` (CLI de GitHub) **no instalado** en la VM. Pendiente.
 
-**B14 · 🔴** — Tailscale **no unido a la tailnet** («Logged out»): falta la auth key, que el
-encargo permite dejar como único paso pendiente documentado.
+**B14 · 🟡** — Estaba como 🔴 («Logged out», sin auth key) desde el 2026-07-21. **Hoy hay
+indicio en contra, no comprobación:** la incidencia de DNS del 2026-07-26
+(`deployment/procedimiento.md` §8) registra que el único resolver de la VM era
+`100.100.100.100` con `search …ts.net`, es decir **MagicDNS de la tailnet**, que sólo se
+configura estando unida. **No lo he verificado**: este barrido de documentación no toca la VM.
+Queda como 🟡 con la contradicción declarada, a confirmar con un `tailscale status` cuando el
+operador entre. Y unida o no, **su DNS está roto**, que es el problema operativo real.
 
 ### D. Seguridad (resumen de lo hecho)
 
@@ -259,7 +334,20 @@ estricto, `helmet`, rate limiting, cabeceras y CSP.
 análisis de imágenes (Trivy) está en el nightly pero no ejecutado.
 
 **D9 · 🟡** — OTA con verificación sha256 + firma delegada a ESP-IDF + rollback A/B en el
-firmware; sin validar sobre hardware.
+firmware. Del lado del servidor el ciclo se cerró en G-B y en el bloque de deudas: subida del
+binario por el admin con **sha256 y tamaño calculados por el servidor** (no se cree al cliente),
+descarga pública para el módulo, **compatibilidad de placa** que rechaza en vez de suponer
+cuando la placa del módulo no consta, y «un despliegue en vuelo por módulo» garantizado por un
+**índice único parcial** en la base, no por una comprobación con carrera. **Sigue sin validarse
+sobre hardware**: el firmware nunca se ha compilado con ESP-IDF, así que ninguna OTA ha
+terminado nunca en un dispositivo real. Y con `MQTT_ENABLED` apagado, la orden de OTA se
+descarta en silencio y el `Deployment` queda en `sent` sin OTA real.
+
+**D4 · ✅ (medición envejecida)** — El `npm audit` que sostiene X-15 (23 vulnerabilidades en el
+backend, 12 altas; 3 altas en el worker; 5 en simuladores) se ejecutó el **2026-07-20** y **no
+se ha vuelto a ejecutar** desde entonces, pese a que el árbol de dependencias ha cambiado. La
+tarea del encargo (analizar dependencias) está hecha; el hallazgo X-15 sigue **abierto y sin
+remediar**.
 
 **D10 · 🔴** — **F-02 confirmado en vivo** (un módulo suplanta a otro por `client_id`); la
 mitigación exige alinear usuario=client_id=module_id, decisión de contrato para el supervisor.
@@ -271,6 +359,15 @@ verificación ejecutada (así se cazaron bugs reales de `.gitignore`, entorno y 
 
 **E2 · ✅** — Supervisor 1ª vuelta: dictamen `NO CONFORME` con 2 bloqueantes + 5 mayores, todos
 corregidos (H-01…H-07).
+
+**E3/E4 · 🔴 a nivel de programa, pero hay mucha supervisión real por bloque.** La 2ª vuelta
+sobre la Ola 0 y el dictamen final del programa **siguen sin emitirse**. Lo que sí existe, y no
+es poco, es un supervisor independiente por bloque en F1–F3 y en G-A…G-I, con **dictámenes
+adversos de verdad**: G-G fue `NO CONFORME` en su 1ª ronda (el marcador multijugador mostraba
+«0 aciertos» para todos porque nadie escribía `HitEvent.participantId`), y D9 de G-I encadenó
+**tres** `NO CONFORME` seguidos por el mismo error con caras distintas —confundir «el módulo
+calla» con «el backend está sordo»— antes de la 4ª supervisión, **en curso al cerrar este
+informe**. No se convalidan como E3/E4: son revisiones de bloque, no del programa.
 
 **E5 · ✅** — Calidad independiente (WP-11): **CONFORME CON OBSERVACIONES**, con las suites
 reproducidas ejecutando.
@@ -284,7 +381,8 @@ maquillado.
 tocar la red del host; cambio de la política de copias aditivo y con respaldo previo.
 
 **E8 · ✅** — Ramas temáticas, worktrees separados, commits pequeños de una sola naturaleza,
-integración sólo con pruebas verdes, fallos preexistentes reportados (X-07, X-16, X-18), sin
+integración sólo con pruebas verdes, fallos preexistentes reportados (X-07, X-16,
+X-18-INGESTA), sin
 force-push.
 
 **E10 · 🟡** — Hay informe de estado y este informe de tareas; el informe final §25
@@ -294,8 +392,15 @@ force-push.
 
 ## 3. Lo que falta, en una frase
 
-Cerrar el despliegue (copia/restauración/`reboot`), la ingesta e2e (X-18) y el WebSocket
-(X-06); instalar `gh` y unir Tailscale; documentar la VM en `s9-server` (A26); decidir F-02
-con el supervisor; y emitir la 2ª vuelta + dictamen final, para abrir el PR a `main` y el
-informe §25 definitivo. Todo lo que exige hardware (firmware en ESP-IDF, ensayos piezo,
-ERC/DRC, PCB) queda marcado como validación física pendiente, no como hecho.
+Cerrar el despliegue (restauración aislada y `reboot`), la ingesta e2e (X-18-INGESTA) y el
+WebSocket (X-06, que no es enrutado sino protocolos distintos en cada extremo); **hacer la
+verificación funcional con credenciales reales**, que nadie ha hecho; **arreglar el DNS y la
+memoria de la VM**, que hoy hacen frágil cualquier despliegue; cerrar el resto de X-21 (las
+pantallas heredadas, entre ellas el diagnóstico F6); cerrar D9 con su 4ª supervisión y
+desplegarlo; instalar `gh` y confirmar el estado de Tailscale; mergear y actualizar la
+documentación de la VM en `s9-server` (A26); decidir F-02 con el supervisor y activar TLS
+(F-07); atender las 23 vulnerabilidades de npm (X-15); y emitir la 2ª vuelta + dictamen final
+del programa, para abrir el PR a `main` y el informe §25 definitivo. Todo lo que exige hardware
+(firmware en ESP-IDF, ensayos piezo, ERC/DRC, PCB, 47 validaciones físicas, déficit de GPIO
+X-01, térmica de 137 °C X-02, strapping de GPIO 3 X-04) queda marcado como validación física
+pendiente, no como hecho.

@@ -4,6 +4,14 @@
 > (192.168.1.209 / Tailscale 100.117.178.92, panel en `:8080`).
 > Método por bloque: **implementación + tests + supervisor independiente** (§2.4) +
 > **verificación en vivo**. Fuente de producto: `docs/product/alcance-panel-roles-firmware.md`.
+>
+> **DOCUMENTO HISTÓRICO — su tabla de «Pendiente» (§5) está obsoleta.** Es la fotografía del
+> 2026-07-22, cuando sólo estaban cerrados F3, G-A y G-B. A 2026-07-26 están cerrados con
+> supervisor independiente **G-C, G-D, G-E, G-F, G-G y G-H**, y **G-I salvo su D9** (barrido de
+> obsolescencia: en `develop`, con la 4ª supervisión en curso, sin desplegar). También quedó
+> superado el §3: la Opción B (entidad `View`) **no se difirió, se construyó** en G-H.1. Sigue
+> siendo cierto el §4 completo, incluido que **el firmware nunca se ha compilado con ESP-IDF**.
+> Estado vivo en `docs/coordination/STATUS.md`.
 
 ## 1. Resumen ejecutivo
 

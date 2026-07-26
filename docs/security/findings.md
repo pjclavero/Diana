@@ -4,6 +4,18 @@
 ninguna de las líneas que audita y que **no corrige nada**: cada hallazgo se entrega al
 paquete propietario. Fecha: 2026-07-21. Rama `develop`, commit `e459f7d`.
 
+> **Nota de vigencia (2026-07-26, añadida por documentación, no por seguridad).** Este informe
+> es del 2026-07-21 y su contenido **no se ha retocado**. Dos cosas hay que saber antes de
+> leerlo:
+> 1. **F-13 está superado:** los `Dockerfile` de backend y worker **ya existen** y el stack
+>    **arranca y corre** en la VM 109 (8/8 contenedores `healthy` el 2026-07-26). Por tanto,
+>    todas las reproducciones que aquí figuran como «no ejecutada, el backend no arranca»
+>    (F-03, F-05, F-06, F-08, F-09, F-11, F-12…) **ya son ejecutables y siguen sin ejecutarse**.
+>    Es el hallazgo X-19 de `STATUS.md`, y la re-verificación **está pendiente**.
+> 2. **Lo crítico no ha cambiado:** F-02 (ACL por `client_id`, suplantación **confirmada en
+>    vivo**), F-07 (sin TLS en ninguna capa) y F-17 (23 vulnerabilidades npm en el backend,
+>    medidas el 2026-07-20 y **sin volver a medir**) siguen **abiertos y sin remediar**.
+
 Contexto en [`threat-model.md`](threat-model.md); salida literal de los comandos en
 [`evidence/`](evidence/); riesgos asumidos a propósito en
 [`accepted-risks.md`](accepted-risks.md).
@@ -41,7 +53,7 @@ credenciales privilegiadas), **Alta**, **Media**, **Baja**. Se justifican una a 
 | F-10 | El perfil `monitoring` monta la raíz del host y publica cAdvisor en todas las interfaces | Media | A7 | WP-01 | OBSERVADO |
 | F-11 | La contraseña inicial del administrador se escribe en el log del contenedor | Media | A3, A7 | WP-02 | DEDUCIDO |
 | F-12 | Los permisos viajan dentro del JWT y no hay revocación | Media | A6 | WP-02 | DEDUCIDO |
-| F-13 | Faltan los `Dockerfile` de backend y worker: el stack no se puede ejecutar | Alta | todos | WP-01, WP-02, WP-08 | OBSERVADO |
+| F-13 | Faltan los `Dockerfile` de backend y worker: el stack no se puede ejecutar | Alta | todos | WP-01, WP-02, WP-08 | **SUPERADO (2026-07-26)** — los Dockerfile existen y el stack corre; ver nota de cabecera y X-19 |
 | F-14 | Firmware sin secure boot ni cifrado de flash | Alta | A2, A5 | WP-04 | DEDUCIDO |
 | F-15 | `diana-admin` con `NOPASSWD:ALL`, grupo `docker` y una sola clave SSH | Media | A7 | WP-08 | OBSERVADO |
 | F-16 | Comandos aceptados sin verificar caducidad cuando no hay hora sincronizada | Media | A4 | WP-04 | DEDUCIDO |

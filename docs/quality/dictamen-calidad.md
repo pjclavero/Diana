@@ -3,6 +3,15 @@
 Revisión independiente de calidad sobre `develop` a 2026-07-21. Sólo evidencia
 ejecutada. La evidencia por suite está en `docs/quality/suites-evidence.md`.
 
+> **Nota de vigencia (2026-07-26).** Dictamen y cifras son los del 2026-07-21 y **no se
+> retocan**. Desde entonces el backend pasó de 157 a **471** pruebas y el frontend de 30 a
+> **131**, y se ejecutaron 7/7 de integración contra PostgreSQL real. De las observaciones de
+> este dictamen: X-19 (Dockerfile ya existían) **está resuelto**; **X-17** (46 punteros a un
+> `docs/testing/` vacío) sigue abierto, aunque los punteros ya no engañan
+> (`TEST_MATRIX.md`); **X-16/X-20** (worker sin pruebas de `tasks.ts`/`main.ts`) y **X-18**
+> (§2.4: implementa y prueba el mismo paquete) siguen **abiertos**. Este dictamen **no cubre**
+> el programa F1-F6 ni el lote G-A…G-I, que se supervisaron bloque a bloque aparte.
+
 ## Dictamen
 
 **CONFORME CON OBSERVACIONES.**
