@@ -1,0 +1,160 @@
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { ROLE } from '../../domain/rbac/permissions';
+import { PrismaService } from '../../common/prisma/prisma.service';
+import { MqttService } from '../mqtt/mqtt.service';
+
+/** Patrones de prueba de LED admitidos. El firmware valida los suyos. */
+export const LED_PATTERNS = ['solid', 'blink', 'chase', 'off'] as const;
+export type LedPattern = (typeof LED_PATTERNS)[number];
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export interface DiagnosticsActor {
+  userId?: string;
+  role?: string;
+}
+
+/**
+ * Diagnóstico de módulo y diana (F6).
+ *
+ * Una advertencia que atraviesa todo este servicio: **ordenar una prueba no es
+ * conocer su resultado**. Los comandos viajan por MQTT y el módulo responde
+ * cuando puede, por `module/{id}/diagnostic`. Aquí se devuelve el comando
+ * emitido y si el broker lo aceptó —nada más—. El panel esperaba de este
+ * servicio un `{ok, amplitude}` inmediato; devolver eso obligaría a inventar una
+ * medida que nadie ha tomado, así que se devuelve el encargo y el resultado se
+ * consulta aparte.
+ */
+@Injectable()
+export class ModuleDiagnosticsService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mqtt: MqttService,
+  ) {}
+
+  /** Comprueba que el módulo existe y que el actor puede tocarlo. */
+  private async resolve(idOrSlug: string, actor: DiagnosticsActor) {
+    const module = UUID.test(idOrSlug)
+      ? await this.prisma.module.findUnique({ where: { id: idOrSlug } })
+      : await this.prisma.module.findUnique({ where: { slug: idOrSlug } });
+    if (!module) throw new NotFoundException(`Módulo ${idOrSlug} no encontrado`);
+    const isAdmin = actor.role === ROLE.ADMINISTRADOR;
+    // Un gestor sólo diagnostica lo suyo. Encender los LED o disparar una
+    // calibración en un módulo ajeno se nota en la sala de al lado.
+    if (!isAdmin && module.ownerId && module.ownerId !== actor.userId) {
+      throw new NotFoundException(`Módulo ${idOrSlug} no encontrado`);
+    }
+    return module;
+  }
+
+  private async resolveTarget(moduleId: string, targetIndex: number) {
+    if (!Number.isInteger(targetIndex) || targetIndex < 1 || targetIndex > 9) {
+      throw new BadRequestException('El índice de diana debe estar entre 1 y 9.');
+    }
+    const target = await this.prisma.target.findFirst({
+      where: { moduleId, targetIndex },
+      select: { id: true, targetIndex: true, enabled: true },
+    });
+    if (!target) throw new NotFoundException(`El módulo no tiene la diana ${targetIndex}`);
+    return target;
+  }
+
+  /** Ordena identificarse (parpadeo) para localizar el módulo físicamente. */
+  async identify(idOrSlug: string, durationMs: number, actor: DiagnosticsActor) {
+    const module = await this.resolve(idOrSlug, actor);
+    if (!Number.isInteger(durationMs) || durationMs < 500 || durationMs > 60_000) {
+      throw new BadRequestException('La duración debe estar entre 500 y 60000 ms.');
+    }
+    return this.dispatch(module.slug, 'identify', { duration_ms: durationMs });
+  }
+
+  /** Prueba de LED de una diana concreta. */
+  async testLed(idOrSlug: string, targetIndex: number, pattern: string, actor: DiagnosticsActor) {
+    const module = await this.resolve(idOrSlug, actor);
+    await this.resolveTarget(module.id, targetIndex);
+    if (!LED_PATTERNS.includes(pattern as LedPattern)) {
+      throw new BadRequestException(
+        `Patrón '${pattern}' no admitido. Use: ${LED_PATTERNS.join(', ')}.`,
+      );
+    }
+    return this.dispatch(module.slug, 'led_test', { target_index: targetIndex, pattern });
+  }
+
+  /**
+   * Prueba de sensor. El contrato MQTT v1 **no tiene** una acción propia para
+   * esto: la más cercana es `self_test`, que el módulo ejecuta sobre todas sus
+   * dianas. No se inventa una acción que el firmware no entendería; se pide el
+   * autodiagnóstico y se dice, en la respuesta, qué se ha pedido de verdad.
+   */
+  async testSensor(idOrSlug: string, targetIndex: number, actor: DiagnosticsActor) {
+    const module = await this.resolve(idOrSlug, actor);
+    const target = await this.resolveTarget(module.id, targetIndex);
+    const sent = this.dispatch(module.slug, 'self_test');
+    return {
+      ...sent,
+      target_index: target.targetIndex,
+      scope: 'module' as const,
+      note:
+        'El contrato v1 no tiene una prueba de sensor por diana: se ha pedido el ' +
+        'autodiagnóstico del módulo completo. El resultado llega por `diagnostic`, no aquí.',
+    };
+  }
+
+  /** Arranca la calibración de una diana. */
+  async calibrate(idOrSlug: string, targetIndex: number, actor: DiagnosticsActor) {
+    const module = await this.resolve(idOrSlug, actor);
+    const target = await this.resolveTarget(module.id, targetIndex);
+    if (!target.enabled) {
+      throw new BadRequestException(`La diana ${targetIndex} está deshabilitada: no se calibra.`);
+    }
+    return this.dispatch(module.slug, 'start_calibration', { target_index: targetIndex });
+  }
+
+  async abortCalibration(idOrSlug: string, actor: DiagnosticsActor) {
+    const module = await this.resolve(idOrSlug, actor);
+    return this.dispatch(module.slug, 'abort_calibration');
+  }
+
+  /**
+   * Últimos resultados que el módulo ha devuelto de verdad. Es lo único que
+   * permite saber cómo fue una prueba: la llamada que la ordena no lo sabe.
+   */
+  async results(idOrSlug: string, actor: DiagnosticsActor, take = 20) {
+    const module = await this.resolve(idOrSlug, actor);
+    const items = await this.prisma.incident.findMany({
+      where: { moduleId: module.id, source: 'diagnostic' },
+      orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
+      take: Math.min(Math.max(take, 1), 100),
+    });
+    return {
+      module: module.slug,
+      items,
+      note:
+        items.length === 0
+          ? 'Sin resultados: el módulo no ha respondido a ninguna prueba todavía.'
+          : null,
+    };
+  }
+
+  /**
+   * Emite el comando e informa de si el broker lo aceptó. `delivered: false`
+   * significa que la orden se ha encolado y el módulo NO la ha recibido: sin
+   * esto, «he publicado» se confundía con «ha llegado».
+   */
+  private dispatch(slug: string, action: string, params?: Record<string, unknown>) {
+    const command = this.mqtt.sendModuleCommand(slug, action as never, params) as Record<
+      string,
+      unknown
+    >;
+    const delivered = command.delivered === true;
+    return {
+      module_id: slug,
+      action,
+      command_id: command.command_id as string,
+      delivered,
+      note: delivered
+        ? 'Orden entregada al broker. El resultado lo publica el módulo en `diagnostic`.'
+        : 'ATENCIÓN: la orden NO llegó al broker (sin conexión). Queda encolada.',
+    };
+  }
+}

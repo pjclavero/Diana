@@ -1,4 +1,11 @@
-import type { DianaApiClient, GamePreset, Incident, Topology } from "./client";
+import type {
+  CommandAck,
+  DiagnosticResults,
+  DianaApiClient,
+  GamePreset,
+  Incident,
+  Topology,
+} from "./client";
 import { ApiError } from "./client";
 import type {
   BackupInfo,
@@ -101,8 +108,23 @@ export const mockApiClient: DianaApiClient = {
     return delay({ command_id: `mock-cmd-${idCounter}` });
   },
 
-  async testSensor(): Promise<{ ok: boolean; amplitude: number }> {
-    return delay({ ok: true, amplitude: 1200 });
+  async testSensor(): Promise<CommandAck> {
+    idCounter += 1;
+    // El simulacro tampoco inventa una amplitud: se comporta como el real.
+    return delay({
+      command_id: `mock-cmd-${idCounter}`,
+      delivered: true,
+      scope: "module" as const,
+      note: "Orden simulada. El resultado llegaría por `diagnostic`.",
+    });
+  },
+
+  async getModuleDiagnostics(moduleId: string): Promise<DiagnosticResults> {
+    return delay({
+      module: moduleId,
+      items: [],
+      note: "Simulación: ningún módulo real ha respondido.",
+    });
   },
 
   async testLed(): Promise<{ command_id: string }> {

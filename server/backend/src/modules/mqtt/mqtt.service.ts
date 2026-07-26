@@ -127,8 +127,11 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
     expiresInMs?: number,
   ): Record<string, unknown> {
     const command = this.commands.moduleCommand(moduleId, action, params, { expiresInMs });
-    this.publish(topics.moduleCommand(moduleId), command);
-    return command;
+    // `delivered` importa: mqtt.js ENCOLA cuando no hay conexión en vez de
+    // fallar, así que sin este dato «he publicado» se confundía con «ha
+    // llegado». Mismo criterio que en `sendSystemCommand`.
+    const delivered = this.publish(topics.moduleCommand(moduleId), command);
+    return { ...command, delivered };
   }
 
   /** Comando al sistema (arm/start/pause/resume/abort/end). */

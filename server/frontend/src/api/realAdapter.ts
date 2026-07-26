@@ -1,4 +1,11 @@
-import type { DianaApiClient, GamePreset, Incident, Topology } from "./client";
+import type {
+  CommandAck,
+  DiagnosticResults,
+  DianaApiClient,
+  GamePreset,
+  Incident,
+  Topology,
+} from "./client";
 import { ApiError } from "./client";
 import { getToken } from "../auth/tokenStore";
 import type {
@@ -72,16 +79,17 @@ export function createRealApiClient(baseUrl: string): DianaApiClient {
     updateModuleConfig: (moduleId, patch) =>
       r<ModuleConfig>(`/modules/${moduleId}/config`, { method: "PATCH", body: JSON.stringify(patch) }),
     identifyModule: (moduleId, durationMs) =>
-      r<{ command_id: string }>(`/modules/${moduleId}/commands/identify`, {
+      r<CommandAck>(`/modules/${moduleId}/commands/identify`, {
         method: "POST",
         body: JSON.stringify({ duration_ms: durationMs ?? 4000 }),
       }),
     calibrateTarget: (moduleId, targetIndex) =>
-      r<{ command_id: string }>(`/modules/${moduleId}/targets/${targetIndex}/calibrate`, { method: "POST" }),
+      r<CommandAck>(`/modules/${moduleId}/targets/${targetIndex}/calibrate`, { method: "POST" }),
     testSensor: (moduleId, targetIndex) =>
-      r<{ ok: boolean; amplitude: number }>(`/modules/${moduleId}/targets/${targetIndex}/test-sensor`, { method: "POST" }),
+      r<CommandAck>(`/modules/${moduleId}/targets/${targetIndex}/test-sensor`, { method: "POST" }),
+    getModuleDiagnostics: (moduleId) => r<DiagnosticResults>(`/modules/${moduleId}/diagnostics`),
     testLed: (moduleId, targetIndex, pattern) =>
-      r<{ command_id: string }>(`/modules/${moduleId}/targets/${targetIndex}/test-led`, {
+      r<CommandAck>(`/modules/${moduleId}/targets/${targetIndex}/test-led`, {
         method: "POST",
         body: JSON.stringify({ pattern }),
       }),

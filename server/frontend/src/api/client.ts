@@ -53,6 +53,30 @@ export interface GamePreset {
   config: Partial<GameConfig>;
 }
 
+/** Acuse de una orden enviada al módulo. `delivered: false` = no llegó al broker. */
+export interface CommandAck {
+  command_id: string;
+  delivered?: boolean;
+  note?: string | null;
+  /** La prueba de sensor no existe por diana en el contrato v1: se pide al módulo entero. */
+  scope?: "module" | "target";
+}
+
+export interface DiagnosticResult {
+  id: string;
+  kind: string;
+  severity: "info" | "warning" | "error" | "critical";
+  message: string;
+  occurredAt: string;
+  detail?: unknown;
+}
+
+export interface DiagnosticResults {
+  module: string;
+  items: DiagnosticResult[];
+  note: string | null;
+}
+
 export interface DianaApiClient {
   // --- Sistema ---
   getSystemStatus(systemId: string): Promise<SystemStatus>;
@@ -64,10 +88,18 @@ export interface DianaApiClient {
   getModuleTelemetry(moduleId: string): Promise<ModuleTelemetry>;
   getModuleConfig(moduleId: string): Promise<ModuleConfig>;
   updateModuleConfig(moduleId: string, patch: Partial<ModuleConfig>): Promise<ModuleConfig>;
-  identifyModule(moduleId: string, durationMs?: number): Promise<{ command_id: string }>;
-  calibrateTarget(moduleId: string, targetIndex: number): Promise<{ command_id: string }>;
-  testSensor(moduleId: string, targetIndex: number): Promise<{ ok: boolean; amplitude: number }>;
-  testLed(moduleId: string, targetIndex: number, pattern: string): Promise<{ command_id: string }>;
+  identifyModule(moduleId: string, durationMs?: number): Promise<CommandAck>;
+  calibrateTarget(moduleId: string, targetIndex: number): Promise<CommandAck>;
+  /**
+   * Pide la prueba de sensor. NO devuelve el resultado: el módulo responde por
+   * MQTT cuando puede, y lo que llegue se lee con `getModuleDiagnostics`. Antes
+   * esta firma prometía `{ok, amplitude}` inmediatos; contra el backend real eso
+   * sólo se podía cumplir inventando una medida.
+   */
+  testSensor(moduleId: string, targetIndex: number): Promise<CommandAck>;
+  testLed(moduleId: string, targetIndex: number, pattern: string): Promise<CommandAck>;
+  /** Lo que el módulo ha contestado de verdad a las pruebas. */
+  getModuleDiagnostics(moduleId: string): Promise<DiagnosticResults>;
 
   // --- Topología ---
   getTopology(systemId: string): Promise<Topology>;

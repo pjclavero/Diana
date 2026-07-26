@@ -5,6 +5,8 @@ import { ModuleOwnershipController } from './module-ownership.controller';
 import { ModuleOwnershipService } from './module-ownership.service';
 import { ModulesOverviewService } from './modules-overview.service';
 import { ModuleConfigService } from './module-config.service';
+import { ModuleDiagnosticsController } from './module-diagnostics.controller';
+import { ModuleDiagnosticsService } from './module-diagnostics.service';
 
 export const ModulesController = createCrudController({
   path: 'modules',
@@ -17,8 +19,16 @@ export const ModulesController = createCrudController({
 @Module({
   // El controlador de propiedad va PRIMERO para que su ruta estática
   // `GET /modules/mine` se resuelva antes que el `GET /modules/:id` del CRUD.
-  controllers: [ModuleOwnershipController, ModulesController],
-  providers: [ModulesService, ModuleOwnershipService, ModulesOverviewService, ModuleConfigService],
+  // Los controladores con rutas estáticas van ANTES que el CRUD, cuyo
+  // `GET /modules/:id` se tragaría `/modules/mine` y `/modules/:x/diagnostics`.
+  controllers: [ModuleOwnershipController, ModuleDiagnosticsController, ModulesController],
+  providers: [
+    ModulesService,
+    ModuleOwnershipService,
+    ModulesOverviewService,
+    ModuleConfigService,
+    ModuleDiagnosticsService,
+  ],
   exports: [ModulesService],
 })
 export class ModulesModule {}

@@ -200,6 +200,33 @@ export class IngestService {
         .catch(() => undefined);
     }
 
+    // Diagnóstico del módulo: es la ÚNICA vía por la que se sabe cómo fue una
+    // prueba (self-test, calibración, LED…). Se validaba y se descartaba, así
+    // que ordenar un diagnóstico no dejaba rastro de su resultado: el panel
+    // sólo podía decir «orden enviada» y ahí se acababa la información.
+    if (parsed.kind === 'module-diagnostic' && this.incidents) {
+      const d = payload as unknown as {
+        module_id: string;
+        event_id: string;
+        kind: string;
+        severity: 'info' | 'warning' | 'error' | 'critical';
+        message: string;
+        detail?: unknown;
+        firmware_version?: string;
+      };
+      await this.incidents
+        .record({
+          kind: d.kind,
+          severity: d.severity,
+          source: 'diagnostic',
+          moduleSlug: d.module_id,
+          eventId: d.event_id,
+          message: d.message,
+          detail: { ...(d.detail as object), firmware_version: d.firmware_version },
+        })
+        .catch(() => undefined);
+    }
+
     if (parsed.kind === 'module-hit') {
       // Un impacto es la prueba de vida más fuerte que hay (D12) y nunca se
       // retiene, así que resucita a un módulo dado por caído por silencio.
