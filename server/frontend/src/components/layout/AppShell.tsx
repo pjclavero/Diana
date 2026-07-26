@@ -33,6 +33,7 @@ const NAV_SECTIONS: { title: string; links: NavLinkDef[] }[] = [
       { to: "/duelo", label: "Duelo (práctica)" },
       { to: "/presets", label: "Presets", perm: "presets:read" },
       { to: "/resultados", label: "Resultados" },
+      { to: "/marcador", label: "Marcador (dardos)" },
       { to: "/estadisticas", label: "Estadísticas" },
     ],
   },

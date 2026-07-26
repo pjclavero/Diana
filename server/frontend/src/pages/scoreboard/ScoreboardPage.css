@@ -1,0 +1,74 @@
+/* Marcador estilo máquina de dardos (G-G). */
+
+.scoreboard-leader td {
+  font-weight: 600;
+}
+
+.scoreboard-modules {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.scoreboard-module h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.scoreboard-targets {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.35rem;
+}
+
+.scoreboard-target {
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 0.4rem;
+  text-align: center;
+  display: grid;
+  gap: 0.15rem;
+  font-size: 0.75rem;
+}
+
+.scoreboard-target__index {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.scoreboard-target--hit {
+  background: #dcfce7;
+  border-color: #16a34a;
+}
+
+.scoreboard-target--invalid {
+  background: #fee2e2;
+  border-color: #dc2626;
+}
+
+.scoreboard-target--pending {
+  background: #f3f4f6;
+}
+
+@media (prefers-color-scheme: dark) {
+  .scoreboard-target {
+    border-color: #374151;
+    color: #e5e7eb;
+  }
+  .scoreboard-target--hit {
+    background: #14532d;
+  }
+  .scoreboard-target--invalid {
+    background: #7f1d1d;
+  }
+  .scoreboard-target--pending {
+    background: #1f2937;
+  }
+}
+
+.scoreboard-games {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}

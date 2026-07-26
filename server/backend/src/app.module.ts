@@ -30,6 +30,7 @@ import { PresetsModule } from './modules/presets/presets.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { RoundsModule } from './modules/rounds/rounds.module';
 import { StatisticsModule } from './modules/statistics/statistics.module';
+import { ScoreboardModule } from './modules/scoreboard/scoreboard.module';
 import { SystemsModule } from './modules/systems/systems.module';
 import { TargetsModule } from './modules/targets/targets.module';
 import { TeamsModule } from './modules/teams/teams.module';
@@ -74,6 +75,7 @@ import { WebsocketModule } from './modules/websocket/websocket.module';
     AmmoModule,
     AccuracyModule,
     StatisticsModule,
+    ScoreboardModule,
     FirmwareModule,
     MaintenanceModule,
     ExportsModule,

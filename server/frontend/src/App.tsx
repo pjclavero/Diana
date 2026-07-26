@@ -13,6 +13,7 @@ import { TeamsPage } from "./pages/teams/TeamsPage";
 import { NewGamePage } from "./pages/new-game/NewGamePage";
 import { CountdownPage } from "./pages/countdown/CountdownPage";
 import { LiveGamePage } from "./pages/live/LiveGamePage";
+import { ScoreboardPage } from "./pages/scoreboard/ScoreboardPage";
 import { ResultsPage } from "./pages/results/ResultsPage";
 import { StatisticsPage } from "./pages/stats/StatisticsPage";
 import { PresetsPage } from "./pages/presets/PresetsPage";
@@ -76,6 +77,8 @@ export function App() {
         <Route path="/partidas/:gameId/directo" element={<LiveGamePage />} />
         <Route path="/resultados" element={<ResultsPage />} />
         <Route path="/resultados/:gameId" element={<ResultsPage />} />
+        <Route path="/marcador" element={<ScoreboardPage />} />
+        <Route path="/marcador/:gameId" element={<ScoreboardPage />} />
         <Route path="/estadisticas" element={<StatisticsPage />} />
         <Route path="/presets" element={<PresetsPage />} />
         <Route path="/demo" element={<DemoPage />} />

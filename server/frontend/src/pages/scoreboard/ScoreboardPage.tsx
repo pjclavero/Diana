@@ -1,0 +1,287 @@
+import { useCallback, useEffect, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import {
+  getParticipantHistory,
+  getScoreboard,
+  listRecentGames,
+  type ParticipantHistory,
+  type Scoreboard,
+} from "../../api/scoreboardApi";
+import { useAsync } from "../../hooks/useAsync";
+import { BackButton } from "../../components/ui/BackButton";
+import { Card, EmptyState, ErrorState, LoadingState } from "../../components/ui/Feedback";
+import "./ScoreboardPage.css";
+
+/** Refresco del marcador mientras la partida está viva. */
+const LIVE_REFRESH_MS = 3000;
+const LIVE_STATUSES = ["armed", "running", "paused"];
+
+function formatTime(us: number | null): string {
+  if (us === null) return "—";
+  return `${(us / 1_000_000).toFixed(2)} s`;
+}
+
+function formatAccuracy(value: number | null): string {
+  // No calculable ≠ 0 %: se dice, no se rellena con un número falso.
+  return value === null ? "no calculable" : `${(value * 100).toFixed(1)} %`;
+}
+
+const STATE_LABEL: Record<string, string> = {
+  hit: "acertada",
+  invalid: "impacto no válido",
+  pending: "pendiente",
+};
+
+/** Sin partida en la URL: se elige entre las partidas recientes. */
+function ScoreboardPicker() {
+  const { data: games, loading, error, reload } = useAsync(() => listRecentGames(), []);
+  return (
+    <div>
+      <BackButton />
+      <h1>Marcador</h1>
+      {loading && <LoadingState />}
+      {error && <ErrorState message={error} onRetry={reload} />}
+      {games && games.length === 0 && <EmptyState>No hay partidas creadas todavía.</EmptyState>}
+      {games && games.length > 0 && (
+        <Card title="Elija una partida">
+          <ul className="scoreboard-games">
+            {games.map((game) => (
+              <li key={game.id}>
+                <Link to={`/marcador/${game.id}`}>
+                  {game.name ?? `Partida ${game.id.slice(0, 8)}`} · {game.status}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+export function ScoreboardPage() {
+  const { gameId } = useParams();
+  const [board, setBoard] = useState<Scoreboard | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [history, setHistory] = useState<ParticipantHistory | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!gameId) return;
+    try {
+      setBoard(await getScoreboard(gameId));
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo cargar el marcador.");
+    } finally {
+      setLoading(false);
+    }
+  }, [gameId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  // Mientras la partida está viva el marcador se refresca solo; al terminar, para.
+  const live = board ? LIVE_STATUSES.includes(board.game.status) : false;
+  useEffect(() => {
+    if (!live) return;
+    const timer = setInterval(() => void load(), LIVE_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [live, load]);
+
+  useEffect(() => {
+    if (!selected) {
+      setHistory(null);
+      return;
+    }
+    let cancelled = false;
+    setHistoryError(null);
+    getParticipantHistory(selected)
+      .then((data) => {
+        if (!cancelled) setHistory(data);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setHistoryError(e instanceof Error ? e.message : "No se pudo cargar el histórico.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected]);
+
+  if (!gameId) return <ScoreboardPicker />;
+
+  return (
+    <div>
+      <BackButton />
+      <h1>Marcador</h1>
+
+      {loading && <LoadingState />}
+      {error && <ErrorState message={error} onRetry={load} />}
+
+      {board && (
+        <>
+          <Card title={board.game.name ?? `Partida ${board.game.id.slice(0, 8)}`}>
+            <p>
+              Modo <strong>{board.game.mode.name}</strong> · Panel {board.game.panel.name} · Estado{" "}
+              <strong>{board.game.status}</strong>
+              {board.round ? ` · Ronda ${board.round.index} (${board.round.phase})` : " · sin rondas todavía"}
+            </p>
+            <p>
+              Impactos detectados: {board.totals.detected} · válidos: {board.totals.valid} · no válidos:{" "}
+              {board.totals.invalid}
+            </p>
+            {live && <p role="status">Marcador en directo: se actualiza solo cada 3 s.</p>}
+          </Card>
+
+          <Card title="Clasificación">
+            {board.ranking.length === 0 ? (
+              <EmptyState>Esta partida no tiene participantes todavía.</EmptyState>
+            ) : (
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">#</th>
+                      <th scope="col">Jugador</th>
+                      <th scope="col">Equipo</th>
+                      <th scope="col">Aciertos</th>
+                      <th scope="col">No válidos</th>
+                      <th scope="col">Tiempo</th>
+                      <th scope="col">Precisión</th>
+                      <th scope="col">Ficha</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {board.ranking.map((row) => (
+                      <tr key={row.participantId} className={row.position === 1 ? "scoreboard-leader" : ""}>
+                        <td>{row.position}</td>
+                        <td>
+                          {row.name}
+                          {row.temporary && <span className="badge">temporal</span>}
+                        </td>
+                        <td>{row.teamName ?? "—"}</td>
+                        <td>{row.validHits}</td>
+                        <td>{row.invalidHits}</td>
+                        <td>
+                          {formatTime(row.totalTimeUs)}
+                          {row.provisional && <span className="badge badge--warn">provisional</span>}
+                        </td>
+                        <td>{formatAccuracy(row.accuracyValid)}</td>
+                        <td>
+                          <button type="button" onClick={() => setSelected(row.participantId)}>
+                            Ver jugador
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+
+          <Card title="Estado de las dianas">
+            {board.board.length === 0 ? (
+              <EmptyState>El panel de esta partida no tiene módulos con dianas dadas de alta.</EmptyState>
+            ) : (
+              <div className="scoreboard-modules">
+                {board.board.map((module) => (
+                  <div key={module.moduleSlug} className="scoreboard-module">
+                    <h3>
+                      {module.moduleSlug}
+                      {module.x !== null && module.y !== null ? ` (${module.x}, ${module.y})` : " (sin posición)"}
+                    </h3>
+                    <div className="scoreboard-targets" role="grid" aria-label={`Dianas de ${module.moduleSlug}`}>
+                      {module.targets.map((target) => (
+                        <div
+                          key={target.targetIndex}
+                          role="gridcell"
+                          className={`scoreboard-target scoreboard-target--${target.state}`}
+                          title={
+                            target.lastClassification
+                              ? `Diana ${target.targetIndex}: ${STATE_LABEL[target.state]} (${target.lastClassification})`
+                              : `Diana ${target.targetIndex}: ${STATE_LABEL[target.state]}`
+                          }
+                        >
+                          <span className="scoreboard-target__index">{target.targetIndex}</span>
+                          <span className="scoreboard-target__state">{STATE_LABEL[target.state]}</span>
+                          {target.hits > 1 && <span className="scoreboard-target__hits">×{target.hits}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          {selected && (
+            <Card
+              title="Ficha del jugador"
+              actions={
+                <button type="button" onClick={() => setSelected(null)}>
+                  Cerrar
+                </button>
+              }
+            >
+              {historyError && <ErrorState message={historyError} />}
+              {!history && !historyError && <LoadingState />}
+              {history && (
+                <>
+                  <p>
+                    <strong>{history.name}</strong>
+                  </p>
+                  {history.history === null ? (
+                    <p role="note">{history.note}</p>
+                  ) : (
+                    <>
+                      <ul>
+                        <li>Rondas registradas: {history.history.rounds}</li>
+                        <li>Aciertos válidos acumulados: {history.history.totalValidHits}</li>
+                        <li>Precisión media: {formatAccuracy(history.history.averageAccuracyValid)}</li>
+                        <li>Mejor tiempo: {formatTime(history.history.bestTimeUs)}</li>
+                        {history.history.roundsWithoutAccuracy > 0 && (
+                          <li>
+                            Rondas sin precisión calculable: {history.history.roundsWithoutAccuracy} (no cuentan
+                            como cero)
+                          </li>
+                        )}
+                      </ul>
+                      {history.history.recent.length > 0 && (
+                        <div className="table-scroll">
+                          <table>
+                            <thead>
+                              <tr>
+                                <th scope="col">Ronda</th>
+                                <th scope="col">Aciertos</th>
+                                <th scope="col">Tiempo</th>
+                                <th scope="col">Precisión</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {history.history.recent.map((r) => (
+                                <tr key={r.roundId}>
+                                  <td>{r.roundId.slice(0, 8)}</td>
+                                  <td>{r.validHits}</td>
+                                  <td>{formatTime(r.totalTimeUs)}</td>
+                                  <td>{formatAccuracy(r.accuracyValid)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </>
+              )}
+            </Card>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
