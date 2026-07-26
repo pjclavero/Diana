@@ -17,8 +17,15 @@ function status(over: Partial<ResilienceStatus> = {}): ResilienceStatus {
     canResume: false,
     coordinatorDown: false,
     missingModules: [
-      { slug: "mod-b", lastSeenAt: "2026-07-26T10:00:00Z", offlineSince: "2026-07-26T10:00:00Z" },
+      {
+        slug: "mod-b",
+        lastSeenAt: "2026-07-26T10:00:00Z",
+        offlineSince: "2026-07-26T10:00:00Z",
+        silentForMs: 45_000,
+      },
     ],
+    staleModules: [],
+    sweep: { enabled: true, listening: true, blackout: false },
     involvedModules: 3,
     countdown: { elapsedMs: 20_000, remainingMs: 40_000, expired: false },
     operatorMustDecide: true,
@@ -46,11 +53,146 @@ describe("ResiliencePanel (G-I)", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("dice qué módulo falta y cuánto queda de la ventana de reconexión", async () => {
+  it("dice qué módulo falta, desde cuándo y cuánto queda de la ventana", async () => {
     vi.spyOn(api, "getResilienceStatus").mockResolvedValue(status());
     render(<ResiliencePanel gameId="g1" />);
-    expect(await screen.findByText("mod-b")).toBeInTheDocument();
+    expect(await screen.findByText(/mod-b \(callado desde hace 45 s\)/)).toBeInTheDocument();
     expect(screen.getByText(/quedan 40 s/)).toBeInTheDocument();
+  });
+
+  it("avisa del módulo callado ANTES de que el barrido lo dé por caído (D9)", async () => {
+    vi.spyOn(api, "getResilienceStatus").mockResolvedValue(
+      status({
+        paused: false,
+        pausedByResilience: false,
+        missingModules: [],
+        operatorMustDecide: false,
+        canResumeWithout: false,
+        countdown: null,
+        staleModules: [
+          { slug: "mod-c", silentForMs: 120_000, reason: "lleva 120 s sin dar señal de vida" },
+        ],
+      }),
+    );
+    render(<ResiliencePanel gameId="g1" />);
+    expect(await screen.findByText("Módulo sin señal")).toBeInTheDocument();
+    expect(screen.getByText(/callado desde hace 2 min/)).toBeInTheDocument();
+    // Todavía no hay caída declarada: no se ofrecen decisiones que no tocan.
+    expect(screen.queryByRole("button", { name: /Abortar/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /Abortar/, hidden: true })).not.toBeVisible();
+  });
+
+  it("sin escucha del broker NO promete una pausa que no va a ocurrir (N-D1)", async () => {
+    vi.spyOn(api, "getResilienceStatus").mockResolvedValue(
+      status({
+        sweep: { enabled: true, listening: false, blackout: false },
+        staleModules: [{ slug: "mod-c", silentForMs: 120_000, reason: "callado" }],
+      }),
+    );
+    render(<ResiliencePanel gameId="g1" />);
+    expect(await screen.findByText(/puede ser suyo y no de los módulos/)).toBeInTheDocument();
+    expect(screen.queryByText(/se pausará sola en unos segundos/)).toBeNull();
+  });
+
+  it("con apagón dice que no se declara ninguna caída de momento (N-D1)", async () => {
+    vi.spyOn(api, "getResilienceStatus").mockResolvedValue(
+      status({
+        sweep: { enabled: true, listening: true, blackout: true },
+        staleModules: [
+          { slug: "mod-c", silentForMs: 120_000, reason: "callado" },
+          { slug: "mod-d", silentForMs: 120_000, reason: "callado" },
+        ],
+      }),
+    );
+    render(<ResiliencePanel gameId="g1" />);
+    expect(
+      await screen.findByText(/Han callado a la vez TODOS los módulos en línea del sistema/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Revise el broker y la alimentación/)).toBeInTheDocument();
+    expect(screen.queryByText(/se pausará sola en unos segundos/)).toBeNull();
+  });
+
+  it("con la detección desactivada dice que nadie va a pausar la ronda (B2)", async () => {
+    vi.spyOn(api, "getResilienceStatus").mockResolvedValue(
+      status({
+        sweep: { enabled: false, listening: true, blackout: false },
+        staleModules: [{ slug: "mod-c", silentForMs: 120_000, reason: "callado" }],
+      }),
+    );
+    render(<ResiliencePanel gameId="g1" />);
+    expect(await screen.findByText(/DESACTIVADA por configuración/)).toBeInTheDocument();
+    expect(screen.queryByText(/se pausará sola en unos segundos/)).toBeNull();
+  });
+
+  it("con el apagón dice que la tolerancia caduca y la ronda acabará pausándose", async () => {
+    vi.spyOn(api, "getResilienceStatus").mockResolvedValue(
+      status({
+        sweep: { enabled: true, listening: true, blackout: true },
+        staleModules: [
+          { slug: "mod-c", silentForMs: 120_000, reason: "callado" },
+          { slug: "mod-d", silentForMs: 120_000, reason: "callado" },
+        ],
+      }),
+    );
+    render(<ResiliencePanel gameId="g1" />);
+    // Sin esta frase, el operador creería que el silencio se tolera para siempre.
+    expect(
+      await screen.findByText(/Si el silencio persiste unos minutos, se declararán igualmente/),
+    ).toBeInTheDocument();
+  });
+
+  it("con varios módulos callados se da la antigüedad de CADA uno", async () => {
+    vi.spyOn(api, "getResilienceStatus").mockResolvedValue(
+      status({
+        staleModules: [
+          { slug: "mod-c", silentForMs: 120_000, reason: "callado" },
+          { slug: "mod-d", silentForMs: 300_000, reason: "callado" },
+        ],
+      }),
+    );
+    render(<ResiliencePanel gameId="g1" />);
+    expect(await screen.findByText(/callado desde hace 2 min/)).toBeInTheDocument();
+    expect(screen.getByText(/callado desde hace 5 min/)).toBeInTheDocument();
+  });
+
+  it("un silencio de horas se dice en horas, no en minutos inflados", async () => {
+    vi.spyOn(api, "getResilienceStatus").mockResolvedValue(
+      status({
+        staleModules: [{ slug: "mod-c", silentForMs: 2 * 60 * 60_000, reason: "callado" }],
+      }),
+    );
+    render(<ResiliencePanel gameId="g1" />);
+    expect(await screen.findByText(/callado desde hace 2 h/)).toBeInTheDocument();
+  });
+
+  it("un módulo caído no oculta a otro que lleva minutos callado (N6)", async () => {
+    vi.spyOn(api, "getResilienceStatus").mockResolvedValue(
+      status({
+        staleModules: [
+          { slug: "mod-c", silentForMs: 180_000, reason: "lleva 180 s sin dar señal de vida" },
+        ],
+      }),
+    );
+    render(<ResiliencePanel gameId="g1" />);
+    // El caído se enumera…
+    expect(await screen.findByText(/mod-b \(callado desde hace 45 s\)/)).toBeInTheDocument();
+    // …y el callado NO desaparece por haber ya una caída declarada.
+    expect(screen.getByText("mod-c")).toBeInTheDocument();
+    expect(screen.getByText(/callado desde hace 3 min/)).toBeInTheDocument();
+  });
+
+  it("un módulo caído sin señal de vida previa no inventa una antigüedad", async () => {
+    vi.spyOn(api, "getResilienceStatus").mockResolvedValue(
+      status({
+        missingModules: [
+          { slug: "mod-d", lastSeenAt: null, offlineSince: null, silentForMs: null },
+        ],
+      }),
+    );
+    render(<ResiliencePanel gameId="g1" />);
+    expect(
+      await screen.findByText(/mod-d \(sin señal de vida registrada\)/),
+    ).toBeInTheDocument();
   });
 
   it("agotado el plazo, pide decidir", async () => {
@@ -66,7 +208,7 @@ describe("ResiliencePanel (G-I)", () => {
       status({
         coordinatorDown: true,
         canResumeWithout: false,
-        missingModules: [{ slug: "mod-a", lastSeenAt: null, offlineSince: null }],
+        missingModules: [{ slug: "mod-a", lastSeenAt: null, offlineSince: null, silentForMs: null }],
         note: "Pausa dura: sin coordinador no hay tiempos fiables. No se puede reanudar sin él.",
       }),
     );
@@ -83,7 +225,7 @@ describe("ResiliencePanel (G-I)", () => {
       .mockResolvedValue({ action: "resume_without", missing: ["mod-b"] });
 
     render(<ResiliencePanel gameId="g1" />);
-    await screen.findByText("mod-b");
+    await screen.findByText(/mod-b/);
     expect(screen.getByText(/cambia las condiciones de la prueba/)).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Reanudar sin él" }));
@@ -97,7 +239,7 @@ describe("ResiliencePanel (G-I)", () => {
       .mockResolvedValue({ action: "abort", missing: ["mod-b"] });
 
     render(<ResiliencePanel gameId="g1" />);
-    await screen.findByText("mod-b");
+    await screen.findByText(/mod-b/);
     await userEvent.click(screen.getByRole("button", { name: "Abortar la ronda" }));
     await waitFor(() => expect(decide).toHaveBeenCalledWith("g1", "abort"));
   });
@@ -109,7 +251,7 @@ describe("ResiliencePanel (G-I)", () => {
     );
 
     render(<ResiliencePanel gameId="g1" />);
-    await screen.findByText("mod-b");
+    await screen.findByText(/mod-b/);
     await userEvent.click(screen.getByRole("button", { name: "Reanudar sin él" }));
 
     expect(await screen.findByText("No se puede reanudar sin el coordinador")).toBeInTheDocument();
@@ -161,7 +303,7 @@ describe("ResiliencePanel (G-I)", () => {
         pausedByResilience: false,
         coordinatorDown: true,
         canResumeWithout: false,
-        missingModules: [{ slug: "mod-a", lastSeenAt: null, offlineSince: null }],
+        missingModules: [{ slug: "mod-a", lastSeenAt: null, offlineSince: null, silentForMs: null }],
       }),
     );
     render(<ResiliencePanel gameId="g1" />);

@@ -76,8 +76,13 @@ export interface PresenceUpdate {
 export interface PresenceSinkPort {
   /** Devuelve la decisión tomada sobre la ronda, o `null` si no hubo cambio. */
   record(update: PresenceUpdate): Promise<unknown>;
-  /** Señal de vida sin cambio de presencia (status/telemetría/impacto). */
-  touch(moduleSlug: string, at: Date): Promise<void>;
+  /**
+   * Señal de vida sin cambio de presencia (status/telemetría/impacto).
+   * `revives` = el mensaje NO es retenido, así que prueba que el módulo está
+   * vivo AHORA y puede deshacer una caída declarada por silencio. Un retenido
+   * (`status`) se reentrega al reconectar el backend y no prueba nada.
+   */
+  touch(moduleSlug: string, at: Date, revives?: boolean): Promise<void>;
 }
 
 /**

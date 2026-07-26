@@ -192,12 +192,18 @@ export class IngestService {
       }
     } else if (this.presence && (parsed.kind === 'module-status' || parsed.kind === 'module-telemetry')) {
       // Señal de vida: no cambia la presencia, pero sí la última vez que se vio.
-      await this.presence.touch(parsed.id, receivedAt).catch(() => undefined);
+      // `status` es RETENIDO (contrato §2): al reconectar el backend se
+      // reentrega el último, así que no sirve para dar por vivo a nadie. La
+      // telemetría no se retiene y sí sirve.
+      await this.presence
+        .touch(parsed.id, receivedAt, parsed.kind === 'module-telemetry')
+        .catch(() => undefined);
     }
 
     if (parsed.kind === 'module-hit') {
-      // Un impacto es la prueba de vida más fuerte que hay (D12).
-      await this.presence?.touch(parsed.id, receivedAt).catch(() => undefined);
+      // Un impacto es la prueba de vida más fuerte que hay (D12) y nunca se
+      // retiene, así que resucita a un módulo dado por caído por silencio.
+      await this.presence?.touch(parsed.id, receivedAt, true).catch(() => undefined);
       return this.ingestHit(payload as unknown as HitEventPayload, receivedAt);
     }
 

@@ -17,7 +17,7 @@ class NullSink implements IncidentSinkPort {
 
 class RecordingPresence implements PresenceSinkPort {
   readonly updates: PresenceUpdate[] = [];
-  readonly touches: { slug: string; at: Date }[] = [];
+  readonly touches: { slug: string; at: Date; revives: boolean }[] = [];
   failNext = false;
 
   async record(update: PresenceUpdate): Promise<unknown> {
@@ -26,8 +26,8 @@ class RecordingPresence implements PresenceSinkPort {
     return null;
   }
 
-  async touch(moduleSlug: string, at: Date): Promise<void> {
-    this.touches.push({ slug: moduleSlug, at });
+  async touch(moduleSlug: string, at: Date, revives = false): Promise<void> {
+    this.touches.push({ slug: moduleSlug, at, revives });
   }
 }
 
@@ -115,6 +115,34 @@ describe('Ingesta de presencia (G-I)', () => {
       RECEIVED_AT,
     );
     expect(presence.updates).toHaveLength(0);
-    expect(presence.touches[0]).toMatchObject({ slug: 'module-03', at: RECEIVED_AT });
+    // La telemetría NO se retiene: prueba que el módulo está vivo AHORA, así
+    // que puede deshacer una caída declarada por silencio (D2).
+    expect(presence.touches[0]).toMatchObject({
+      slug: 'module-03',
+      at: RECEIVED_AT,
+      revives: true,
+    });
+  });
+
+  it('el estado, que SÍ es retenido, no puede resucitar a un módulo muerto', async () => {
+    const status = loadExamples('valid').find((e) => e.name.includes('module-status'));
+    if (!status) throw new Error('Falta el ejemplo de module-status');
+    await ingest.handleMessage(
+      'targets/v1/module/module-03/status',
+      JSON.parse(JSON.stringify(status.payload)),
+      RECEIVED_AT,
+    );
+    // Un retenido se reentrega al reconectar el backend: daría por vivo a un
+    // módulo realmente muerto.
+    expect(presence.touches[0]).toMatchObject({ slug: 'module-03', revives: false });
+  });
+
+  it('un impacto sí resucita: es la prueba de vida más fuerte y no se retiene', async () => {
+    const hit = loadExamples('valid').find((e) => e.name.includes('hit-event'));
+    if (!hit) throw new Error('Falta el ejemplo de hit-event');
+    const payload = JSON.parse(JSON.stringify(hit.payload)) as Record<string, unknown>;
+    payload.module_id = 'module-03';
+    await ingest.handleMessage('targets/v1/module/module-03/hit', payload, RECEIVED_AT);
+    expect(presence.touches[0]).toMatchObject({ slug: 'module-03', revives: true });
   });
 });

@@ -13,6 +13,14 @@ function formatSeconds(ms: number): string {
   return `${Math.ceil(ms / 1000)} s`;
 }
 
+/** Cuánto lleva callado un módulo, en lenguaje llano. */
+function formatSilence(ms: number | null): string {
+  if (ms === null) return "sin señal de vida registrada";
+  if (ms < 60_000) return `callado desde hace ${Math.round(ms / 1000)} s`;
+  const min = Math.floor(ms / 60_000);
+  return min < 60 ? `callado desde hace ${min} min` : `callado desde hace ${Math.floor(min / 60)} h`;
+}
+
 /**
  * Aviso de caída de módulo durante una ronda (G-I, §6.3): qué falta, cuánto
  * queda de la ventana de reconexión y las dos únicas salidas que tiene el
@@ -62,7 +70,10 @@ export function ResiliencePanel({ gameId }: { gameId: string }) {
   // Sin nada que decidir no se ocupa sitio. OJO: una ronda pausada por una
   // caída sigue necesitando decisión aunque el módulo ya haya vuelto; si no, se
   // quedaba congelada y sin salida en el panel.
-  if (!status || !status.operatorMustDecide) return null;
+  // Un módulo callado todavía no declarado caído también obliga a mirar: el
+  // barrido puede tardar unos segundos y el operador no debe enterarse después.
+  const stale = status?.staleModules ?? [];
+  if (!status || (!status.operatorMustDecide && stale.length === 0)) return null;
 
   return (
     <Card
@@ -71,7 +82,9 @@ export function ResiliencePanel({ gameId }: { gameId: string }) {
           ? status.paused
             ? "Pausa dura: ha caído el coordinador"
             : "Ha caído el coordinador"
-          : "Módulo caído"
+          : !status.operatorMustDecide
+            ? "Módulo sin señal"
+            : "Módulo caído"
       }
     >
       <div className="resilience" role="alert">
@@ -85,13 +98,43 @@ export function ResiliencePanel({ gameId }: { gameId: string }) {
         ) : status.missingModules.length > 0 ? (
           <p>
             {status.paused ? "La ronda está en pausa." : "La ronda NO está en pausa."} Faltan:{" "}
-            <strong>{status.missingModules.map((m) => m.slug).join(", ")}</strong> de{" "}
-            {status.involvedModules} módulo(s) implicados.
+            <strong>
+              {status.missingModules
+                .map((m) => `${m.slug} (${formatSilence(m.silentForMs)})`)
+                .join(", ")}
+            </strong>{" "}
+            de {status.involvedModules} módulo(s) implicados.
           </p>
-        ) : (
+        ) : !status.operatorMustDecide ? null : (
           <p>
             Todos los módulos han vuelto. La ronda sigue <strong>en pausa</strong>: reanudarla es
             decisión suya.
+          </p>
+        )}
+
+        {/* Fuera del bloque anterior a propósito: con un módulo ya caído, otro
+            que lleve minutos callado quedaba oculto y el operador decidía sin
+            saberlo (N6). */}
+        {stale.length > 0 && (
+          <p>
+            <strong>{stale.map((m) => m.slug).join(", ")}</strong> figura(n) en línea pero lleva(n)
+            demasiado tiempo sin dar señal de vida (
+            {stale.map((m) => formatSilence(m.silentForMs)).join(", ")}).{" "}
+            {/* No prometer una pausa que el barrido no va a hacer (N-D1). */}
+            {!status.sweep.enabled
+              ? "La detección automática de caídas está DESACTIVADA por configuración: nadie va " +
+                "a pausar la ronda por este silencio. Decida usted."
+              : !status.sweep.listening
+                ? "El servidor no lleva suficiente tiempo oyendo al broker, así que este " +
+                  "silencio puede ser suyo y no de los módulos: no se pausará nada hasta " +
+                  "recuperar la escucha."
+                : status.sweep.blackout
+                  ? "Han callado a la vez TODOS los módulos en línea del sistema, no sólo los " +
+                    "de este panel: es más probable un fallo del broker, de la red o de la " +
+                    "corriente que la caída de cada uno, así que no se declara ninguna caída de " +
+                    "momento. Si el silencio persiste unos minutos, se declararán igualmente y " +
+                    "la ronda se pausará. Revise el broker y la alimentación."
+                  : "Si no vuelve(n), la ronda se pausará sola en unos segundos."}
           </p>
         )}
 
@@ -113,7 +156,8 @@ export function ResiliencePanel({ gameId }: { gameId: string }) {
 
         {error && <p role="status">{error}</p>}
 
-        <div className="resilience__actions">
+        {/* Sin caída declarada no hay nada que decidir todavía: sólo se avisa. */}
+        <div className="resilience__actions" hidden={!status.operatorMustDecide}>
           {status.canResume && (
             <button type="button" onClick={() => decide("resume")} disabled={busy}>
               Reanudar

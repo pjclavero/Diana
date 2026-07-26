@@ -43,7 +43,23 @@ export interface ResilienceStatus {
   pauseCommandDelivered: boolean | null;
   brokerConnected: boolean | null;
   coordinatorDown: boolean;
-  missingModules: { slug: string; lastSeenAt: string | null; offlineSince: string | null }[];
+  missingModules: {
+    slug: string;
+    lastSeenAt: string | null;
+    offlineSince: string | null;
+    /** Silencio acumulado; null = no consta ninguna señal de vida previa. */
+    silentForMs: number | null;
+  }[];
+  /** Constan en línea pero llevan callados más de la cuenta (D9). */
+  staleModules: { slug: string; silentForMs: number | null; reason: string }[];
+  /**
+   * Qué hará el barrido si el silencio sigue. `enabled: false` = la detección
+   * automática está desactivada por configuración; `listening: false` = el
+   * servidor no lleva oyendo al broker lo suficiente, así que el silencio puede
+   * ser suyo; `blackout: true` = callan todos a la vez y se está tratando como
+   * fallo del camino común. En los tres casos NO habrá pausa automática.
+   */
+  sweep: { enabled: boolean; listening: boolean; blackout: boolean };
   involvedModules: number;
   countdown: { elapsedMs: number; remainingMs: number; expired: boolean } | null;
   operatorMustDecide: boolean;

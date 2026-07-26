@@ -30,6 +30,21 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
     return this.client?.connected ?? false;
   }
 
+  /**
+   * Desde cuándo estamos oyendo al broker sin interrupción. `null` = no hay
+   * conexión. Lo necesita el barrido de presencia: mientras el backend estuvo
+   * desconectado no oyó a NADIE, y el silencio de ese rato es sordera nuestra,
+   * no una caída de los módulos.
+   */
+  get connectedSince(): Date | null {
+    // La ventana la corta `connected` —mientras el cliente está caído no oímos
+    // nada— y la rearma el evento `connect` de la reconexión. No hacen falta
+    // manejadores de `close`/`offline`: serían código sin efecto, y código sin
+    // efecto sobre un guardarraíl aparenta una protección que no aporta.
+    return this.client?.connected ? this.connectedAt : null;
+  }
+  private connectedAt: Date | null = null;
+
   async onModuleInit(): Promise<void> {
     if (!this.config.mqtt.enabled) {
       this.logger.warn('Cliente MQTT deshabilitado (MQTT_ENABLED=false)');
@@ -46,6 +61,7 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
 
     this.client.on('connect', () => {
       this.logger.log(`Conectado a ${this.config.mqtt.url}`);
+      this.connectedAt = new Date();
       for (const subscription of BACKEND_SUBSCRIPTIONS) {
         this.client?.subscribe(subscription.filter, { qos: subscription.qos }, (error) => {
           if (error) this.logger.error(`No se pudo suscribir a ${subscription.filter}: ${error.message}`);

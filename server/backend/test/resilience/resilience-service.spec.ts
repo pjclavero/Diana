@@ -60,7 +60,12 @@ function mqttRef(delivered = true, throws = false) {
     if (throws) throw new Error('sin cliente MQTT');
     return { command_id: 'c1', delivered };
   });
-  return { ref: { get: () => ({ sendSystemCommand, connected: delivered }) } as any, sendSystemCommand };
+  // `connectedSince` muy anterior: el barrido no está inhibido por sordera.
+  const connectedSince = new Date('2026-07-26T09:00:00Z');
+  return {
+    ref: { get: () => ({ sendSystemCommand, connected: delivered, connectedSince }) } as any,
+    sendSystemCommand,
+  };
 }
 
 const presence = (over: any = {}) => ({

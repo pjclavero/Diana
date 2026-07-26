@@ -304,4 +304,66 @@ Cierre de los bloques **G-H** y **G-G** del lote. Decisiones que quedan fijadas:
   muestra cuando `accuracy_status === 'computed'` (si no, «no calculable», nunca 0 %), y un
   **jugador temporal** aparece explícitamente **sin histórico** en lugar de con ceros.
 
-_Actualizado con el lote de mejoras · 2026-07-22; G-H y G-G · 2026-07-26_
+### 6.9 Detección de caída de módulo (2026-07-26) — implementado
+
+Cierre del bloque **G-I**. Lo que §6.3 daba por «hueco» era peor de lo descrito: la presencia
+MQTT **se validaba y se descartaba**, así que `Module.online` no lo escribía nadie y **ninguna
+caída se detectaba jamás**. Estado real ahora:
+
+- **La presencia se persiste** (`module/+/presence` y su Last Will): `online`, `lastSeenAt`,
+  `offlineSince`, `boot_id`, firmware, IP y MAC. Cuentan como señal de vida también el estado,
+  la telemetría y los impactos.
+- **La caída se decide con una regla pura** (`decidePresenceChange`): módulo implicado en la
+  ronda → auto-pausa; **coordinador de la partida** → pausa dura; módulo ajeno → sólo se
+  registra. **El backend nunca reanuda solo:** volver a estar en línea no reanuda la ronda,
+  porque reanudar sin un módulo cambia las condiciones de la prueba y eso lo decide una
+  persona.
+- **La orden de pausa se verifica.** El cliente MQTT **encola** en vez de fallar cuando no hay
+  conexión, así que «he publicado» no significa «ha llegado»: se informa de `delivered` y la
+  pantalla avisa de que el hardware puede seguir en marcha aunque aquí figure pausada.
+- **No todo se sabe por el Last Will.** Ese mensaje puede no llegar nunca (broker reiniciado
+  sin persistencia, sesión caída sucia), y entonces `online` se queda pegado a `true`. Un
+  **barrido** cada 15 s (`RESILIENCE_SWEEP_MS`; sólo un `0` explícito lo desactiva, una errata
+  no) da por caído a todo módulo que lleve más de **90 s** callado (`STALE_AFTER_MS`: uno vivo
+  habla cada segundo). Entra por el mismo camino que un LWT, así que auto-pausa, incidencias y
+  decisión del operador se comportan igual. La incidencia `module_stale` deja escrito que se
+  **dedujo del silencio**: es una afirmación más débil que un LWT y hay que poder distinguirla.
+- **Callar no es lo mismo que no ser oído.** El silencio sólo acusa al módulo si el backend
+  estaba escuchando: con el broker desconectado —o reconectado hace menos de lo que dura el
+  plazo— el barrido **no declara nada**, porque el silencio es sordera propia. Y si callan
+  **todos** los módulos a la vez, se trata como fallo del camino común (incidencia
+  `presence_blackout`, severidad crítica, **una por apagón y no una por barrido**) y no se
+  declara ninguna caída de inmediato: lo contrario pausaría una ronda real, y la orden de
+  pausa ni siquiera podría salir. Los módulos que **nunca** han dado señal no cuentan como
+  prueba de apagón; si no, uno mal dado de alta taparía la caída real de otro.
+  **El precio, dicho claro:** durante ese rato un fallo total y simultáneo de verdad —se va la
+  luz de la sala, con un panel de dos módulos— no se distingue de un fallo del broker. Por eso
+  el silencio general **sólo se tolera 4 minutos**: pasados, se declaran las caídas igualmente
+  y la ronda se pausa. El motivo es que una ronda que sigue con las dianas muertas produce
+  resultados basura sin que nadie se entere, y eso es peor que una pausa de más. **Matiz
+  honesto:** «se reanuda con un botón» sólo vale una vez que los módulos vuelven; si entre los
+  declarados está el coordinador, la pausa es dura y mientras dure el silencio la única salida
+  es **abortar**. Mientras el guardarraíl está activo, la pantalla **lo dice** en lugar de
+  prometer una pausa automática, igual que cuando el barrido está desactivado por
+  configuración o cuando no llevamos suficiente tiempo oyendo al broker: no se anuncia lo que
+  el barrido no va a hacer.
+  El plazo mide silencio **oyendo**: si el broker se cae, el plazo se reinicia, porque el rato
+  que estuvimos sordos no es silencio de los módulos. Un reinicio del backend también lo
+  reinicia (el estado del apagón vive en memoria).
+- **El aviso previo cubre también al coordinador**, aunque no aporte dianas al plan de la
+  ronda: su caída provoca *pausa dura*, que es el caso más grave, y era justo el único del que
+  no había aviso.
+- **La caída se declara AHORA, aunque el módulo callara antes.** `offlineSince` marca el
+  instante de la declaración, no el de la última señal: como el silencio tolerado (90 s) es
+  mayor que la ventana de reconexión (60 s), fecharla atrás la haría nacer agotada y dejaría al
+  operador sin margen justo en el caso peor sustentado. Cuánto llevaba callado no se pierde:
+  sigue en `lastSeenAt` y se muestra en pantalla módulo a módulo.
+- **Un módulo dado por muerto puede volver.** Si el barrido lo declaró caído pero sigue
+  enviando **telemetría o impactos**, esa es prueba de que está vivo y se deshace la
+  declaración; si no, no volvería nunca, porque la presencia sólo se publica al (re)conectar el
+  MQTT y en este caso el MQTT no se ha caído. Los mensajes **retenidos** (`status`) no
+  resucitan a nadie: se reentregan al reconectar el backend y revivirían a un módulo muerto.
+- **En pantalla se dice desde cuándo**, módulo a módulo, y se avisa de «Módulo sin señal»
+  antes incluso de que el barrido lo declare caído.
+
+_Actualizado con el lote de mejoras · 2026-07-22; G-H y G-G · 2026-07-26; G-I y D9 · 2026-07-26_
