@@ -77,6 +77,7 @@ export function ScoreboardPage() {
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const resettingRef = useRef(false);
   const [resetError, setResetError] = useState<string | null>(null);
   const [resetOutcome, setResetOutcome] = useState<StatsResetOutcome | null>(null);
   const { can } = useAuth();
@@ -141,7 +142,12 @@ export function ScoreboardPage() {
   }, [selected]);
 
   const doReset = useCallback(async () => {
-    if (!gameId || !selected) return;
+    // Guarda SÍNCRONA: `disabled={resetting}` no impide el segundo clic del
+    // mismo tick, porque sólo surte efecto tras el re-render. Se llegaban a
+    // emitir dos POST, y el operador veía el resultado del SEGUNDO —«borrados:
+    // 0»— creyendo que no se había borrado nada.
+    if (!gameId || !selected || resettingRef.current) return;
+    resettingRef.current = true;
     setResetting(true);
     setResetError(null);
     try {
@@ -156,6 +162,7 @@ export function ScoreboardPage() {
     } catch (e) {
       if (mounted.current) setResetError(e instanceof Error ? e.message : "No se pudo reiniciar la estadística.");
     } finally {
+      resettingRef.current = false;
       if (mounted.current) setResetting(false);
     }
   }, [gameId, selected, load]);
@@ -379,14 +386,15 @@ export function ScoreboardPage() {
                             partida.
                           </p>
                           <p>
-                            <strong>No se borra:</strong> los impactos registrados (se conservan, pero dejarán
-                            de estar atribuidos a este jugador y el marcador los contará como «sin atribuir»),
-                            su puesto en la partida, ni ninguna otra partida.
+                            <strong>No se borra:</strong> los impactos registrados (se conservan como
+                            telemetría, pero quedan <strong>fuera del recuento</strong>: no se atribuyen a
+                            nadie ni se vuelven a deducir para este jugador), su puesto en la partida, ni
+                            ninguna otra partida.
                           </p>
                           <p>
                             {history.temporary
                               ? "Es un jugador temporal: no tiene estadística acumulada, así que no hay nada global que descontar."
-                              : "Su estadística global se calcula sumando sus partidas: al quitar los resultados de ésta, el acumulado se ajusta solo; las demás partidas no se tocan."}
+                              : "Su estadística acumulada global se borra y se recalcula a partir de sus partidas restantes; las demás partidas no se tocan. Si ésta era la única, dejará de tener acumulado."}
                           </p>
                           <button type="button" onClick={() => void doReset()} disabled={resetting}>
                             {resetting ? "Reiniciando…" : "Sí, reiniciar"}

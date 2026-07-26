@@ -636,6 +636,11 @@ model HitEvent {
   gameId        String? @map("game_id") @db.Uuid
   roundId       String? @map("round_id") @db.Uuid
   participantId String? @map("participant_id") @db.Uuid
+  /// Instante en que un reinicio de estadística (F4) desatribuyó este impacto.
+  /// Distingue «nunca se pudo saber de quién era» de «se apartó a propósito»:
+  /// sin esta marca, el marcador de una partida de UN jugador se los volvía a
+  /// adjudicar y el reinicio no se veía.
+  statsResetAt  DateTime? @map("stats_reset_at") @db.Timestamptz(6)
 
   modulePositionX Int?   @map("module_position_x") @db.SmallInt
   modulePositionY Int?   @map("module_position_y") @db.SmallInt

@@ -248,3 +248,46 @@ describe('Marcador de partida (G-G) · estado de las dianas', () => {
     expect(board[0]).toMatchObject({ moduleSlug: 'mod-c', x: null, y: null });
   });
 });
+
+describe('Impactos apartados por un reinicio de estadística (F4 · B2)', () => {
+  const ana = { id: 'p1', playerId: 'pl1', displayName: 'Ana', guestName: null, slot: 1, teamName: null };
+  const hit = (over: any = {}) => ({
+    participantId: null,
+    moduleSlug: 'mod-a',
+    targetIndex: 1,
+    classification: 'valid',
+    countsForScore: true,
+    elapsedUs: 1000,
+    ...over,
+  });
+
+  it('con UN solo jugador, un impacto apartado NO se le vuelve a adjudicar', () => {
+    // Éste era el defecto: el marcador deducía la atribución cuando hay un
+    // único participante, así que al recargar devolvía los aciertos borrados y
+    // el operador creía haber reiniciado sin haberlo hecho.
+    const board = buildRanking([ana], [], [hit({ statsResetAt: new Date() })]);
+    expect(board.entries[0].validHits).toBe(0);
+    expect(board.resetHits).toBe(1);
+    expect(board.inferredHits).toBe(0);
+  });
+
+  it('un impacto apartado tampoco cuenta como «sin atribuir»', () => {
+    const board = buildRanking([ana, { ...ana, id: 'p2', playerId: 'pl2', displayName: 'Bea' }], [], [
+      hit({ statsResetAt: new Date() }),
+    ]);
+    expect(board.unattributedHits).toBe(0);
+    expect(board.resetHits).toBe(1);
+  });
+
+  it('se avisa de que hay impactos fuera del recuento, no se ocultan', () => {
+    const board = buildRanking([ana], [], [hit({ statsResetAt: new Date() })]);
+    expect(board.warnings.join(' ')).toMatch(/fuera del recuento por un reinicio/);
+  });
+
+  it('los impactos NO apartados se siguen deduciendo con un solo jugador', () => {
+    const board = buildRanking([ana], [], [hit(), hit({ statsResetAt: new Date() })]);
+    expect(board.entries[0].validHits).toBe(1);
+    expect(board.inferredHits).toBe(1);
+    expect(board.resetHits).toBe(1);
+  });
+});

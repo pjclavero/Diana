@@ -22,6 +22,13 @@ export interface ScoreboardParticipant {
 
 export interface ScoreboardHit {
   participantId: string | null;
+  /**
+   * Instante en que un reinicio de estadística (F4) apartó este impacto. Un
+   * impacto apartado NO se vuelve a adjudicar: sin esta distinción, en una
+   * partida de un solo jugador —el modo normal— la deducción se los devolvía y
+   * el reinicio no se veía al recargar la pantalla.
+   */
+  statsResetAt?: Date | string | null;
   moduleSlug: string;
   targetIndex: number;
   classification: string;
@@ -68,6 +75,8 @@ export interface ScoreboardRanking {
   entries: ScoreboardEntry[];
   /** Impactos que siguen SIN poder repartirse tras aplicar la deducción. */
   unattributedHits: number;
+  /** Impactos apartados por un reinicio de estadística: no cuentan para nadie. */
+  resetHits: number;
   /** Impactos sin dueño adjudicados por deducción (único jugador de la ronda). */
   inferredHits: number;
   /** Avisos que la pantalla DEBE mostrar; nunca se rellena un hueco en silencio. */
@@ -93,12 +102,23 @@ export function buildRanking(
   // El impacto MQTT no dice de quién es: hoy el sistema no ata impacto a jugador
   // (`HitEvent.participantId` queda a NULL). Con un solo participante la
   // atribución es inequívoca; con varios, NO se reparte a ojo.
-  const withoutOwner = hits.filter((h) => h.participantId === null).length;
+  // Los impactos apartados por un reinicio quedan FUERA del recuento: siguen en
+  // la base como telemetría, pero no cuentan para nadie ni se deducen.
+  const reset = hits.filter((h) => h.statsResetAt != null);
+  const counted = hits.filter((h) => h.statsResetAt == null);
+  if (reset.length > 0) {
+    warnings.push(
+      `${reset.length} impacto(s) quedaron fuera del recuento por un reinicio de estadística. ` +
+        'Siguen registrados como telemetría, pero no se atribuyen a nadie.',
+    );
+  }
+
+  const withoutOwner = counted.filter((h) => h.participantId === null).length;
   const soleParticipant = participants.length === 1 ? participants[0].id : null;
   const effectiveHits: ScoreboardHit[] =
     soleParticipant === null
-      ? hits
-      : hits.map((h) => (h.participantId === null ? { ...h, participantId: soleParticipant } : h));
+      ? counted
+      : counted.map((h) => (h.participantId === null ? { ...h, participantId: soleParticipant } : h));
 
   const inferredHits = soleParticipant === null ? 0 : withoutOwner;
   if (inferredHits > 0) {
@@ -178,7 +198,13 @@ export function buildRanking(
       return a.position - b.position || a.name.localeCompare(b.name);
     });
 
-  return { entries, unattributedHits: unattributedRemaining, inferredHits, warnings };
+  return {
+    entries,
+    unattributedHits: unattributedRemaining,
+    inferredHits,
+    resetHits: reset.length,
+    warnings,
+  };
 }
 
 export interface BoardTargetCell {

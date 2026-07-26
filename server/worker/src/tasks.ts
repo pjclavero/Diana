@@ -57,7 +57,19 @@ export async function recomputePlayerStatistics(
       where: { participant: { playerId: player.id } },
       select: { validHits: true, accuracyValid: true, accuracyStatus: true, totalTimeUs: true },
     });
-    if (results.length === 0) continue;
+    if (results.length === 0) {
+      // SIN RESULTADOS NO SE SALTA: se borra lo que hubiera. Saltar dejaba los
+      // totales anteriores congelados para siempre —el caso real es un jugador
+      // al que se le reinicia su única partida (F4): seguía figurando con sus
+      // aciertos de antes y nada volvía a tocarlos jamás—.
+      if (!config.dryRun) {
+        const stale = await prisma.statistic.deleteMany({
+          where: { scope: 'player', playerId: player.id, gameId: null, roundId: null },
+        });
+        written += stale.count;
+      }
+      continue;
+    }
 
     const rows: ResultRow[] = results;
     const computable = rows.filter((r) => r.accuracyStatus === 'computed' && r.accuracyValid !== null);

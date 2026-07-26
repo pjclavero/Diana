@@ -28,16 +28,10 @@ export interface StatsResetOutcome {
     penalties: number;
     shotCounts: number;
     statistics: number;
+    globalStatistics: number;
   };
   /** Impactos que dejan de estar atribuidos al jugador. NO se borran. */
   hitsDetached: number;
-  /**
-   * Filas de `Statistic` acumuladas del jugador que NO están atadas a esta
-   * partida y que, por tanto, este reinicio no puede recalcular por sí solo.
-   * Hoy nadie las escribe (la estadística global se deriva de `Result`), así
-   * que esto es 0; si algún día se cachea el acumulado, el operador se entera.
-   */
-  aggregatesPendingRecompute: number;
   notes: string[];
 }
 
@@ -156,6 +150,25 @@ export class StatsResetService {
 
     const notes: string[] = [];
     const outcome = await this.prisma.$transaction(async (tx) => {
+      // El estado se vuelve a comprobar DENTRO de la transacción: leerlo fuera
+      // dejaba una ventana para que la partida se reanudara entre la
+      // comprobación y el borrado.
+      const fresh = await tx.game.findUnique({ where: { id: gameId }, select: { status: true } });
+      if (fresh && IN_PROGRESS_STATUSES.includes(fresh.status)) {
+        throw new ConflictException(
+          'La partida está en curso: el motor recalcularía lo borrado. Termínela o abórtela antes.',
+        );
+      }
+
+      // ORDEN IMPORTANTE: primero se apartan los impactos y después se borran
+      // los resultados. Al revés quedaba una ventana en la que un recálculo
+      // concurrente (`POST /accuracy/rounds/:id/compute`) recreaba el `Result`
+      // con los aciertos ORIGINALES intactos, deshaciendo el reinicio entero.
+      // Con este orden, lo peor que puede recrear es un resultado a cero.
+      const hits = await tx.hitEvent.updateMany({
+        where: { participantId: { in: participantIds } },
+        data: { participantId: null, statsResetAt: new Date() },
+      });
       const results = await tx.result.deleteMany({ where: { participantId: { in: participantIds } } });
       const penalties = await tx.penalty.deleteMany({
         where: { participantId: { in: participantIds } },
@@ -163,13 +176,9 @@ export class StatsResetService {
       const shotCounts = await tx.shotCount.deleteMany({
         where: { participantId: { in: participantIds } },
       });
-      const hits = await tx.hitEvent.updateMany({
-        where: { participantId: { in: participantIds } },
-        data: { participantId: null },
-      });
 
       let statistics = 0;
-      let pending = 0;
+      let globals = 0;
       if (participant.playerId) {
         const scoped = await tx.statistic.deleteMany({
           where: {
@@ -178,9 +187,15 @@ export class StatsResetService {
           },
         });
         statistics = scoped.count;
-        pending = await tx.statistic.count({
+        // EL ACUMULADO GLOBAL SÍ SE ESCRIBE: lo recalcula el `worker`
+        // (`recomputePlayerStatistics`). Dejarlo intacto conservaba los totales
+        // anteriores del jugador —y si ésta era su única partida, el worker se
+        // saltaba el recálculo y quedaban congelados PARA SIEMPRE—. Se borran:
+        // ausencia = no hay dato, que es la verdad hasta el próximo recálculo.
+        const global = await tx.statistic.deleteMany({
           where: { playerId: participant.playerId, gameId: null, roundId: null },
         });
+        globals = global.count;
       }
 
       return {
@@ -189,7 +204,7 @@ export class StatsResetService {
         shotCounts: shotCounts.count,
         hitsDetached: hits.count,
         statistics,
-        pending,
+        globalsCleared: globals,
       };
     });
 
@@ -204,11 +219,15 @@ export class StatsResetService {
       );
     }
     notes.push(
-      `Los impactos registrados NO se borran: ${outcome.hitsDetached} han dejado de estar atribuidos a este jugador y el marcador los mostrará como «sin atribuir».`,
+      `Los impactos registrados NO se borran: ${outcome.hitsDetached} quedan apartados del ` +
+        'recuento. Siguen en la base como telemetría, pero no se atribuyen a nadie ni se ' +
+        'vuelven a deducir para ningún jugador.',
     );
-    if (outcome.pending > 0) {
+    if (outcome.globalsCleared > 0) {
       notes.push(
-        `Atención: quedan ${outcome.pending} fila(s) de estadística acumulada de este jugador que no dependen de esta partida y que este reinicio no puede recalcular. Revíselas.`,
+        `Se han borrado ${outcome.globalsCleared} fila(s) de estadística acumulada global de este ` +
+          'jugador: contenían totales que ya no se sostienen. El worker las recalculará a partir ' +
+          'de sus resultados restantes; si no le queda ninguno, no volverán a aparecer.',
       );
     }
 
@@ -225,9 +244,9 @@ export class StatsResetService {
         penalties: outcome.penalties,
         shotCounts: outcome.shotCounts,
         statistics: outcome.statistics,
+        globalStatistics: outcome.globalsCleared,
       },
       hitsDetached: outcome.hitsDetached,
-      aggregatesPendingRecompute: outcome.pending,
       notes,
     };
   }

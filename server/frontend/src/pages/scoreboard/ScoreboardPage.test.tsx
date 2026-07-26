@@ -388,7 +388,7 @@ describe("ScoreboardPage · reinicio de estadística por partida (F4 · §3.4)",
     // La confirmación tiene que decir la verdad sobre el alcance.
     const dialog = await screen.findByRole("alertdialog");
     expect(dialog).toHaveTextContent(/resultados, penalizaciones y munición de esta partida/);
-    expect(dialog).toHaveTextContent(/dejarán de estar atribuidos/);
+    expect(dialog).toHaveTextContent(/fuera del recuento/);
     expect(dialog).toHaveTextContent(/ninguna otra partida/);
     expect(reset).not.toHaveBeenCalled();
 
@@ -412,6 +412,31 @@ describe("ScoreboardPage · reinicio de estadística por partida (F4 · §3.4)",
     expect(screen.getByText(/Impactos conservados pero sin atribuir: 3/)).toBeInTheDocument();
     // El marcador se recarga: lo que se ve ya no es lo de antes del borrado.
     await waitFor(() => expect(vi.mocked(api.getScoreboard).mock.calls.length).toBeGreaterThan(board1));
+  });
+
+  it("dos clics seguidos NO emiten dos reinicios", async () => {
+    // `disabled` sólo surte efecto tras el re-render: sin guarda síncrona se
+    // emitían dos POST y el operador veía el resultado del SEGUNDO
+    // («borrados: 0»), creyendo que no se había borrado nada.
+    const reset = vi
+      .spyOn(api, "resetParticipantStats")
+      .mockImplementation(() => new Promise((r) => setTimeout(() => r(outcome), 20)));
+    await openFicha(GESTOR);
+    await userEvent.click(await screen.findByRole("button", { name: /Reiniciar estadística de Ana/ }));
+    const confirmar = await screen.findByRole("button", { name: "Sí, reiniciar" });
+    confirmar.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    confirmar.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await waitFor(() => expect(reset).toHaveBeenCalled());
+    expect(reset).toHaveBeenCalledTimes(1);
+  });
+
+  it("la confirmación dice que el acumulado global se borra y se recalcula", async () => {
+    // Antes decía que «se ajusta solo». No era cierto: lo escribe el worker, y
+    // si ésta era la única partida del jugador se quedaba congelado.
+    await openFicha(GESTOR);
+    await userEvent.click(await screen.findByRole("button", { name: /Reiniciar estadística de Ana/ }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent(/acumulada global se borra y se recalcula/);
   });
 
   it("con un temporal, la confirmación no promete descontar un acumulado que no existe", async () => {

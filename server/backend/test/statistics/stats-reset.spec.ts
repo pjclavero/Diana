@@ -6,6 +6,9 @@ import {
   type StatsResetActor,
 } from '../../src/modules/statistics/stats-reset.service';
 import { FakePrisma } from '../helpers/fake-prisma';
+import { StatsResetController } from '../../src/modules/statistics/stats-reset.controller';
+import { PERMISSIONS_KEY } from '../../src/modules/auth/roles.decorator';
+import { ROLE, roleAllows } from '../../src/domain/rbac/permissions';
 
 const G1 = 'game-1';
 const G2 = 'game-2';
@@ -185,7 +188,13 @@ describe('StatsResetService · reinicio de estadística por partida (§3.4)', ()
     await svc.resetParticipant(G1, 'pa1', GESTOR);
     const second = await svc.resetParticipant(G1, 'pa1', GESTOR);
 
-    expect(second.deleted).toEqual({ results: 0, penalties: 0, shotCounts: 0, statistics: 0 });
+    expect(second.deleted).toEqual({
+      results: 0,
+      penalties: 0,
+      shotCounts: 0,
+      statistics: 0,
+      globalStatistics: 0,
+    });
     expect(second.hitsDetached).toBe(0);
     expect(prisma.db.results.map((r) => r.id).sort()).toEqual(['res3', 'res4', 'res5', 'res6']);
   });
@@ -215,16 +224,24 @@ describe('StatsResetService · reinicio de estadística por partida (§3.4)', ()
     const outcome = await service(prisma).resetParticipant(G1, 'pa1', GESTOR);
 
     expect(outcome.deleted.statistics).toBe(2);
-    expect(outcome.aggregatesPendingRecompute).toBe(1);
-    expect(outcome.notes.join(' ')).toContain('no dependen de esta partida');
-    expect(prisma.db.statistics.map((s) => s.id).sort()).toEqual(['st3', 'st4']);
+    // El acumulado GLOBAL del jugador también se borra: lo escribe el worker
+    // (`recomputePlayerStatistics`) y, si no se toca, conserva los totales
+    // anteriores. Peor aún: si ésta era su única partida, el worker se salta el
+    // recálculo y quedan congelados para siempre.
+    expect(outcome.deleted.globalStatistics).toBe(1);
+    expect(outcome.notes.join(' ')).toContain('acumulada global');
+    // Sobrevive sólo lo de OTRO jugador.
+    expect(prisma.db.statistics.map((s) => s.id).sort()).toEqual(['st4']);
   });
 
-  it('sin filas acumuladas sueltas no avisa de nada pendiente', async () => {
+  it('no toca el acumulado global de OTROS jugadores', async () => {
     const prisma = seed();
-    const outcome = await service(prisma).resetParticipant(G1, 'pa1', GESTOR);
-    expect(outcome.aggregatesPendingRecompute).toBe(0);
-    expect(outcome.notes.join(' ')).not.toContain('no dependen de esta partida');
+    prisma.db.statistics.push(
+      { id: 'g-ana', scope: 'player', metric: 'aciertos', playerId: ANA, gameId: null, roundId: null },
+      { id: 'g-bea', scope: 'player', metric: 'aciertos', playerId: BEA, gameId: null, roundId: null },
+    );
+    await service(prisma).resetParticipant(G1, 'pa1', GESTOR);
+    expect(prisma.db.statistics.map((s) => s.id)).toEqual(['g-bea']);
   });
 
   it('marca el reinicio de la propia estadística del actor (queda auditado)', async () => {
@@ -303,5 +320,25 @@ describe('StatsResetService · reinicio de estadística por partida (§3.4)', ()
         NotFoundException,
       );
     });
+  });
+});
+
+describe('El permiso del endpoint destructivo está FIJADO', () => {
+  // Sin esta prueba, cambiar el decorador a un permiso de lectura abría el
+  // borrado a cuatro roles más y toda la suite seguía en verde.
+  it('reiniciar exige `stats:reset`, no un permiso de lectura', () => {
+    const guardado = Reflect.getMetadata(
+      PERMISSIONS_KEY,
+      StatsResetController.prototype.reset,
+    ) as string[];
+    expect(guardado).toEqual(['stats:reset']);
+  });
+
+  it('`stats:reset` NO lo tiene ningún rol de sólo lectura', () => {
+    for (const rol of [ROLE.CONSULTA, ROLE.JUGADOR, ROLE.ARBITRO, ROLE.MANTENIMIENTO]) {
+      expect(roleAllows(rol, ['stats:reset'])).toBe(false);
+    }
+    expect(roleAllows(ROLE.GESTOR, ['stats:reset'])).toBe(true);
+    expect(roleAllows(ROLE.ADMINISTRADOR, ['stats:reset'])).toBe(true);
   });
 });

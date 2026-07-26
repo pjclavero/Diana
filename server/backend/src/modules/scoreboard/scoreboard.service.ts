@@ -68,6 +68,7 @@ export class ScoreboardService {
             targetIndex: true,
             classification: true,
             countsForScore: true,
+            statsResetAt: true,
             coordinatorElapsedUs: true,
           },
         })
@@ -78,6 +79,7 @@ export class ScoreboardService {
       targetIndex: h.targetIndex,
       classification: h.classification,
       countsForScore: h.countsForScore,
+      statsResetAt: h.statsResetAt,
       elapsedUs: h.coordinatorElapsedUs === null ? null : Number(h.coordinatorElapsedUs),
     }));
 
