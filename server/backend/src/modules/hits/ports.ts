@@ -4,6 +4,7 @@ export const HIT_REPOSITORY = Symbol('HIT_REPOSITORY');
 export const INCIDENT_SINK = Symbol('INCIDENT_SINK');
 export const EVENT_PUBLISHER = Symbol('EVENT_PUBLISHER');
 export const PRESENCE_SINK = Symbol('PRESENCE_SINK');
+export const HIT_ATTRIBUTOR = Symbol('HIT_ATTRIBUTOR');
 
 export interface InsertResult {
   /** `false` cuando el evento ya existía: duplicado normal de QoS 1. */
@@ -77,4 +78,18 @@ export interface PresenceSinkPort {
   record(update: PresenceUpdate): Promise<unknown>;
   /** Señal de vida sin cambio de presencia (status/telemetría/impacto). */
   touch(moduleSlug: string, at: Date): Promise<void>;
+}
+
+/**
+ * Atribución de impacto a participante. Se resuelve en la ingesta, con el
+ * estado de la ronda; el impacto MQTT no trae jugador (ver
+ * `src/domain/hits/attribution.ts`).
+ */
+export interface HitAttributorPort {
+  /** Devuelve el participante al que corresponde el impacto, o `null` si no se puede saber. */
+  resolve(input: {
+    gameId: string | null;
+    roundId: string | null;
+    moduleSlug: string;
+  }): Promise<{ participantId: string | null; basis: string; reason: string }>;
 }

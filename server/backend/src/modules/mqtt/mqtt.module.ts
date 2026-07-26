@@ -2,8 +2,9 @@ import { Controller, Get, Global, Module, Post, Body, Param } from '@nestjs/comm
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ContractValidator, getContractValidator } from '../../contracts/contract-validator';
 import { AppConfig, CONFIG } from '../../config/configuration';
-import { HIT_REPOSITORY, INCIDENT_SINK, PRESENCE_SINK } from '../hits/ports';
+import { HIT_ATTRIBUTOR, HIT_REPOSITORY, INCIDENT_SINK, PRESENCE_SINK } from '../hits/ports';
 import { PrismaHitRepository } from '../hits/prisma-hit.repository';
+import { PrismaHitAttributor } from '../hits/prisma-hit-attributor';
 import { PrismaIncidentSink } from '../maintenance/incident.sink';
 import { ResilienceService } from '../resilience/resilience.service';
 import { RequirePermissions } from '../auth/roles.decorator';
@@ -47,6 +48,7 @@ export class MqttController {
     { provide: ContractValidator, useFactory: () => getContractValidator() },
     { provide: HIT_REPOSITORY, useClass: PrismaHitRepository },
     { provide: INCIDENT_SINK, useClass: PrismaIncidentSink },
+    { provide: HIT_ATTRIBUTOR, useClass: PrismaHitAttributor },
     // G-I: la presencia se persiste y decide sobre la ronda. Vive aquí para no
     // crear un ciclo con MqttService (la pausa se ordena por MQTT).
     ResilienceService,

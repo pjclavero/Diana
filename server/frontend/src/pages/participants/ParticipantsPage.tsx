@@ -3,6 +3,7 @@ import QRCode from "react-qr-code";
 import { Card, ErrorState, LoadingState } from "../../components/ui/Feedback";
 import { ApiError } from "../../api/client";
 import { listTeams, searchPlayers, type PlayerRow, type Team } from "../../api/playersApi";
+import { listPanels, type Panel } from "../../api/viewsApi";
 import {
   addRegisteredParticipant,
   addTemporaryParticipant,
@@ -11,6 +12,7 @@ import {
   listParticipants,
   removeParticipant,
   setParticipantTeam,
+  setParticipantPanel,
   type GameLite,
   type Participant,
 } from "../../api/participantsApi";
@@ -30,9 +32,13 @@ export function ParticipantsPage() {
   const [q, setQ] = useState("");
   const [found, setFound] = useState<PlayerRow[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
+  const [panels, setPanels] = useState<Panel[]>([]);
 
   useEffect(() => {
     listTeams().then(setTeams).catch(() => setTeams([]));
+    // Los paneles permiten asignar dónde juega cada uno: sin eso, con varios
+    // jugadores los impactos no se pueden atribuir a nadie.
+    listPanels().then(setPanels).catch(() => setPanels([]));
     listGames()
       .then((g) => {
         setGames(g);
@@ -162,6 +168,7 @@ export function ParticipantsPage() {
                       <th scope="col">Jugador</th>
                       <th scope="col">Tipo</th>
                       <th scope="col">Equipo</th>
+                      <th scope="col">Panel</th>
                       <th scope="col"></th>
                     </tr>
                   </thead>
@@ -190,6 +197,21 @@ export function ParticipantsPage() {
                             {teams.map((t) => (
                               <option key={t.id} value={t.id}>
                                 {t.name}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <select
+                            aria-label={`Panel de ${p.temporary ? p.guestName : p.player?.displayName}`}
+                            value={p.targetSystem?.id ?? ""}
+                            disabled={busy === p.id}
+                            onChange={(e) => act(() => setParticipantPanel(p.id, e.target.value || null), p.id)}
+                          >
+                            <option value="">sin panel</option>
+                            {panels.map((panel) => (
+                              <option key={panel.id} value={panel.id}>
+                                {panel.name}
                               </option>
                             ))}
                           </select>

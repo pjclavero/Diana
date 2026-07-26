@@ -24,6 +24,13 @@ class AddParticipantDto {
   team_id?: string;
 }
 
+class SetParticipantPanelDto {
+  // Acepta un UUID de panel o null (quitar la asignación).
+  @ValidateIf((o) => o.target_system_id !== null && o.target_system_id !== undefined)
+  @IsUUID()
+  target_system_id?: string | null;
+}
+
 class SetParticipantTeamDto {
   // Acepta un UUID de equipo o null (quitar equipo).
   @ValidateIf((o) => o.team_id !== null && o.team_id !== undefined)
@@ -63,6 +70,25 @@ export class ParticipantsController {
     });
     await this.audit.record({ user: req.user, action: 'create', entity: 'participant', entityId: created.id, after: created });
     return created;
+  }
+
+  @Patch(':id/panel')
+  @RequirePermissions('participants:write')
+  @ApiOperation({ summary: 'Asigna el panel en el que juega (permite atribuir sus impactos)' })
+  async setPanel(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetParticipantPanelDto,
+    @Req() req: { user: AuthenticatedUser },
+  ) {
+    const updated = await this.participants.setPanel(id, dto.target_system_id ?? null);
+    await this.audit.record({
+      user: req.user,
+      action: 'participant.set-panel',
+      entity: 'participant',
+      entityId: id,
+      after: updated,
+    });
+    return updated;
   }
 
   @Patch(':id/team')

@@ -1,5 +1,17 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { ROLE } from '../../domain/rbac/permissions';
+
+export interface PanelActor {
+  userId: string;
+  username: string;
+  role: string;
+}
 
 export interface PanelSlotInput {
   module_id: string | null;
@@ -20,9 +32,24 @@ const COORD_MAX = 1;
 export class TopologyPanelsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private isAdmin(actor: PanelActor) {
+    return actor.role === ROLE.ADMINISTRADOR;
+  }
+
+  /**
+   * Acotado por propiedad (deuda D9 del supervisor de G-H). Un panel no tiene
+   * dueño propio en el modelo, pero los MÓDULOS sí (`Module.ownerId`, que se
+   * asigna al vincular): un gestor gestiona los paneles donde hay módulos suyos.
+   * El admin, todos. Mismo criterio que el dashboard de módulos (G-C).
+   */
+  private scopeFor(actor: PanelActor) {
+    return this.isAdmin(actor) ? {} : { modules: { some: { ownerId: actor.userId } } };
+  }
+
   /** Paneles disponibles para el selector del editor. */
-  async listPanels() {
+  async listPanels(actor: PanelActor) {
     const systems = await this.prisma.targetSystem.findMany({
+      where: this.scopeFor(actor),
       orderBy: { name: 'asc' },
       select: {
         id: true,
@@ -52,9 +79,19 @@ export class TopologyPanelsService {
     return system;
   }
 
+  /** Un panel ajeno no existe para ti: no se filtra ni su nombre. */
+  private async assertVisible(systemId: string, actor: PanelActor, idOrSlug: string) {
+    if (this.isAdmin(actor)) return;
+    const mine = await this.prisma.module.count({
+      where: { targetSystemId: systemId, ownerId: actor.userId },
+    });
+    if (mine === 0) throw new NotFoundException(`Panel ${idOrSlug} no encontrado`);
+  }
+
   /** Matriz del panel + módulos del panel aún sin colocar. */
-  async getPanel(idOrSlug: string) {
+  async getPanel(idOrSlug: string, actor: PanelActor) {
     const system = await this.loadSystem(idOrSlug);
+    await this.assertVisible(system.id, actor, idOrSlug);
     const [positions, modules] = await Promise.all([
       this.prisma.modulePosition.findMany({
         where: { targetSystemId: system.id },
@@ -87,8 +124,9 @@ export class TopologyPanelsService {
    * Sustituye la matriz del panel por la recibida. Es un reemplazo completo:
    * lo que no venga en `slots` queda sin colocar (el módulo NO se borra).
    */
-  async savePanel(idOrSlug: string, slots: PanelSlotInput[], assignedBy?: string) {
+  async savePanel(idOrSlug: string, slots: PanelSlotInput[], actor: PanelActor) {
     const system = await this.loadSystem(idOrSlug);
+    await this.assertVisible(system.id, actor, idOrSlug);
     const filled = slots.filter((s) => s.module_id);
 
     const seenCell = new Set<string>();
@@ -117,7 +155,7 @@ export class TopologyPanelsService {
 
     const owned = await this.prisma.module.findMany({
       where: { id: { in: [...seenModule] } },
-      select: { id: true, targetSystemId: true },
+      select: { id: true, targetSystemId: true, ownerId: true },
     });
     const byId = new Map(owned.map((m) => [m.id, m]));
     for (const id of seenModule) {
@@ -125,6 +163,10 @@ export class TopologyPanelsService {
       if (!module) throw new BadRequestException(`El módulo ${id} no existe`);
       if (module.targetSystemId !== system.id) {
         throw new BadRequestException(`El módulo ${id} no pertenece a este panel`);
+      }
+      // Un gestor no recoloca módulos ajenos, aunque compartan panel.
+      if (!this.isAdmin(actor) && module.ownerId !== actor.userId) {
+        throw new ForbiddenException(`El módulo ${id} no es suyo`);
       }
     }
 
@@ -138,12 +180,12 @@ export class TopologyPanelsService {
             x: slot.x,
             y: slot.y,
             rotation: slot.rotation ?? 0,
-            assignedBy: assignedBy ?? null,
+            assignedBy: actor.username ?? null,
           },
         }),
       ),
     ]);
 
-    return this.getPanel(system.id);
+    return this.getPanel(system.id, actor);
   }
 }

@@ -178,12 +178,13 @@ model TargetSystem {
   createdAt           DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  modules    Module[]
-  positions  ModulePosition[]
-  games      Game[]
-  hitEvents  HitEvent[]
-  incidents  Incident[]
-  viewPanels ViewPanel[]
+  modules      Module[]
+  positions    ModulePosition[]
+  games        Game[]
+  hitEvents    HitEvent[]
+  incidents    Incident[]
+  viewPanels   ViewPanel[]
+  participants Participant[]
 
   @@map("target_systems")
 }
@@ -523,33 +524,40 @@ model Round {
 }
 
 model Participant {
-  id        String  @id @default(uuid()) @db.Uuid
-  gameId    String  @map("game_id") @db.Uuid
-  roundId   String? @map("round_id") @db.Uuid
-  playerId  String? @map("player_id") @db.Uuid
+  id             String  @id @default(uuid()) @db.Uuid
+  gameId         String  @map("game_id") @db.Uuid
+  roundId        String? @map("round_id") @db.Uuid
+  playerId       String? @map("player_id") @db.Uuid
   /// Nombre de un jugador TEMPORAL (§3.4): identidad por partida, sin `User` ni
   /// `Player`, sin estadística acumulada. Excluyente con `playerId`. Dos temporales
   /// con el mismo nombre en partidas distintas NO tienen relación.
-  guestName String? @map("guest_name") @db.VarChar(128)
-  teamId    String? @map("team_id") @db.Uuid
-  slot      Int     @default(1)
-  lane      String? @db.VarChar(32)
+  guestName      String? @map("guest_name") @db.VarChar(128)
+  teamId         String? @map("team_id") @db.Uuid
+  /// Panel en el que juega este participante. Es lo que permite ATRIBUIR un
+  /// impacto a un jugador cuando hay varios (duelo sobre una vista): el impacto
+  /// es de quien juega en el panel del módulo que lo detectó. NULL = sin panel
+  /// asignado (partida de un solo jugador o atribución imposible).
+  targetSystemId String? @map("target_system_id") @db.Uuid
+  slot           Int     @default(1)
+  lane           String? @db.VarChar(32)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  game       Game        @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  round      Round?      @relation(fields: [roundId], references: [id], onDelete: Cascade)
-  player     Player?     @relation(fields: [playerId], references: [id], onDelete: SetNull)
-  team       Team?       @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  shotCounts ShotCount[]
-  penalties  Penalty[]
-  results    Result[]
-  hitEvents  HitEvent[]
+  game         Game          @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  round        Round?        @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  player       Player?       @relation(fields: [playerId], references: [id], onDelete: SetNull)
+  team         Team?         @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  targetSystem TargetSystem? @relation(fields: [targetSystemId], references: [id], onDelete: SetNull)
+  shotCounts   ShotCount[]
+  penalties    Penalty[]
+  results      Result[]
+  hitEvents    HitEvent[]
 
   @@unique([gameId, slot, roundId])
   @@index([playerId])
   @@index([gameId])
+  @@index([targetSystemId])
   @@map("participants")
 }
 

@@ -50,15 +50,15 @@ export class TopologyPanelsController {
   @Get('panels')
   @RequirePermissions('topology:read')
   @ApiOperation({ summary: 'Paneles disponibles para el editor de matrices' })
-  list() {
-    return this.panels.listPanels();
+  list(@Req() req: { user: AuthenticatedUser }) {
+    return this.panels.listPanels(req.user);
   }
 
   @Get('panels/:idOrSlug')
   @RequirePermissions('topology:read')
   @ApiOperation({ summary: 'Matriz 3×3 real de un panel + módulos sin colocar' })
-  get(@Param('idOrSlug') idOrSlug: string) {
-    return this.panels.getPanel(idOrSlug);
+  get(@Param('idOrSlug') idOrSlug: string, @Req() req: { user: AuthenticatedUser }) {
+    return this.panels.getPanel(idOrSlug, req.user);
   }
 
   @Put('panels/:idOrSlug')
@@ -69,7 +69,7 @@ export class TopologyPanelsController {
     @Body() dto: SavePanelDto,
     @Req() req: { user: AuthenticatedUser },
   ) {
-    const result = await this.panels.savePanel(idOrSlug, dto.slots, req.user?.username);
+    const result = await this.panels.savePanel(idOrSlug, dto.slots, req.user);
     await this.audit.record({
       user: req.user,
       action: 'topology.save',

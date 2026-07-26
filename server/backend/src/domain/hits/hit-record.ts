@@ -87,6 +87,12 @@ export interface HitRecord {
   targetIndex: number;
   gameId: string | null;
   roundId: string | null;
+  /**
+   * Participante al que se atribuye el impacto, o `null` si el sistema no
+   * puede saberlo (varios jugadores compartiendo panel). Lo resuelve el
+   * backend en la ingesta: el payload MQTT NO trae jugador.
+   */
+  participantId: string | null;
   modulePositionX: number | null;
   modulePositionY: number | null;
   moduleRotation: number | null;
@@ -139,6 +145,8 @@ export function toHitRecord(payload: HitEventPayload, receivedAt: Date): HitReco
     targetIndex: payload.target_index,
     gameId: payload.game_id ?? null,
     roundId: payload.round_id ?? null,
+    // Se resuelve en la ingesta con el estado de la ronda; el payload no lo trae.
+    participantId: null,
     modulePositionX: payload.module_position ? payload.module_position.x : null,
     modulePositionY: payload.module_position ? payload.module_position.y : null,
     moduleRotation: payload.module_rotation ?? null,

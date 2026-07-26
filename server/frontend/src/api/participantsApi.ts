@@ -48,6 +48,10 @@ export interface Participant {
   temporary: boolean;
   player: { id: string; displayName: string; userId: string | null } | null;
   team: { id: string; name: string } | null;
+  /** Panel en el que juega; es lo que permite atribuir sus impactos. */
+  targetSystem?: { id: string; slug: string; name: string } | null;
+  attributable?: boolean;
+  note?: string | null;
 }
 
 export async function listGames(): Promise<GameLite[]> {
@@ -69,6 +73,13 @@ export function addTemporaryParticipant(gameId: string, guestName: string): Prom
 
 export function setParticipantTeam(id: string, teamId: string | null): Promise<Participant> {
   return req<Participant>(`/participants/${id}/team`, { method: "PATCH", body: JSON.stringify({ team_id: teamId }) });
+}
+
+export function setParticipantPanel(id: string, targetSystemId: string | null): Promise<Participant> {
+  return req<Participant>(`/participants/${id}/panel`, {
+    method: "PATCH",
+    body: JSON.stringify({ target_system_id: targetSystemId }),
+  });
 }
 
 export function removeParticipant(id: string): Promise<void> {

@@ -68,4 +68,25 @@ describe("ParticipantsPage (G-D.2 temporales)", () => {
     await waitFor(() => expect(ensure).toHaveBeenCalledWith("g1", false));
     expect(await screen.findByText("ABC234")).toBeInTheDocument();
   });
+
+  it("asigna el panel de cada jugador: sin panel, sus impactos no se atribuyen", async () => {
+    vi.spyOn(participantsApi, "listGames").mockResolvedValue(GAMES);
+    vi.spyOn(participantsApi, "listParticipants").mockResolvedValue([
+      participant({ id: "p1", slot: 1 }),
+    ]);
+    const viewsApi = await import("../../api/viewsApi");
+    vi.spyOn(viewsApi, "listPanels").mockResolvedValue([
+      { id: "s1", slug: "panel-a", name: "Panel A" },
+      { id: "s2", slug: "panel-b", name: "Panel B" },
+    ]);
+    const setPanel = vi
+      .spyOn(participantsApi, "setParticipantPanel")
+      .mockResolvedValue(participant({ id: "p1" }));
+
+    render(<ParticipantsPage />);
+    const selector = await screen.findByLabelText(/^Panel de/);
+    await userEvent.selectOptions(selector, "s2");
+
+    await waitFor(() => expect(setPanel).toHaveBeenCalledWith("p1", "s2"));
+  });
 });

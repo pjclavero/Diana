@@ -25,6 +25,7 @@ export class ParticipantsService {
   private readonly include = {
     player: { select: { id: true, displayName: true, userId: true } },
     team: { select: { id: true, name: true } },
+    targetSystem: { select: { id: true, slug: true, name: true } },
   };
 
   /** Participantes de una partida (los de la partida, roundId nulo). */
@@ -80,6 +81,44 @@ export class ParticipantsService {
       }
     }
     throw new ConflictException('No se pudo asignar un puesto libre; inténtelo de nuevo.');
+  }
+
+  /**
+   * Asigna el PANEL en el que juega el participante. Es lo que permite atribuir
+   * los impactos a un jugador cuando hay varios (duelo sobre una vista): el
+   * impacto es de quien juega en el panel del módulo que lo detectó. Dos
+   * participantes en el mismo panel dejan de ser atribuibles, y se avisa.
+   */
+  async setPanel(id: string, targetSystemId: string | null) {
+    const found = await this.prisma.participant.findUnique({ where: { id } });
+    if (!found) throw new NotFoundException(`Participante ${id} no encontrado`);
+
+    if (targetSystemId) {
+      const system = await this.prisma.targetSystem.findUnique({ where: { id: targetSystemId } });
+      if (!system) throw new NotFoundException(`Panel ${targetSystemId} no encontrado`);
+    }
+
+    const updated = await this.prisma.participant.update({
+      where: { id },
+      data: { targetSystemId },
+      include: this.include,
+    });
+
+    // Aviso honesto: compartir panel no es un error, pero impide atribuir.
+    const sharing = targetSystemId
+      ? await this.prisma.participant.count({
+          where: { gameId: found.gameId, roundId: null, targetSystemId },
+        })
+      : 0;
+
+    return {
+      ...updated,
+      attributable: targetSystemId !== null && sharing === 1,
+      note:
+        sharing > 1
+          ? 'Hay más de un participante en este panel: sus impactos no se podrán atribuir a un jugador concreto.'
+          : null,
+    };
   }
 
   /** Reasigna (o quita, con null) el equipo de un participante dentro de la partida. */

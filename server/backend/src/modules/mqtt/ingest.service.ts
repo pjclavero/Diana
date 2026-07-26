@@ -11,6 +11,8 @@ import {
   IncidentSinkPort,
   PRESENCE_SINK,
   PresenceSinkPort,
+  HIT_ATTRIBUTOR,
+  HitAttributorPort,
 } from '../hits/ports';
 
 export type IngestStatus = 'accepted' | 'duplicate' | 'rejected' | 'ignored';
@@ -83,6 +85,7 @@ export class IngestService {
     @Inject(HIT_REPOSITORY) private readonly hits: HitRepositoryPort,
     @Inject(INCIDENT_SINK) private readonly incidents: IncidentSinkPort,
     @Optional() @Inject(PRESENCE_SINK) private readonly presence?: PresenceSinkPort,
+    @Optional() @Inject(HIT_ATTRIBUTOR) private readonly attributor?: HitAttributorPort,
     @Optional() @Inject(EVENT_PUBLISHER) private readonly publisher?: EventPublisherPort,
     @Optional() @Inject(INGEST_OPTIONS) options?: Partial<IngestOptions>,
   ) {
@@ -202,6 +205,17 @@ export class IngestService {
 
   private async ingestHit(payload: HitEventPayload, receivedAt: Date): Promise<IngestResult> {
     let record = toHitRecord(payload, receivedAt);
+
+    // ¿De quién es el impacto? El payload no lo dice; se deduce del estado de la
+    // ronda y SÓLO cuando la respuesta es forzosa. Si no, queda sin atribuir.
+    if (this.attributor) {
+      const attribution = await this.attributor.resolve({
+        gameId: record.gameId,
+        roundId: record.roundId,
+        moduleSlug: record.moduleSlug,
+      });
+      record = { ...record, participantId: attribution.participantId };
+    }
 
     if (record.replay) this.metrics.replayed += 1;
 
