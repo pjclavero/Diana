@@ -1,4 +1,10 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { ROLE } from '../../domain/rbac/permissions';
@@ -100,9 +106,28 @@ export class ViewsService {
     }
   }
 
+  /**
+   * Una vista con una partida viva encima no se toca: `games.view_id` es
+   * ON DELETE SET NULL, así que borrarla (o quitarle un panel) convertiría la
+   * partida en mono-panel y el guardarraíl de concurrencia dejaría de proteger
+   * el resto de paneles mientras siguen jugando.
+   */
+  private async assertNoActiveGame(viewId: string, what: string) {
+    const active = await this.prisma.game.findFirst({
+      where: { viewId, status: { in: ['armed', 'running', 'paused'] } },
+      select: { id: true, name: true, status: true },
+    });
+    if (active) {
+      throw new ConflictException(
+        `No se puede ${what}: la partida ${active.name ?? active.id} está ${active.status} sobre esta vista.`,
+      );
+    }
+  }
+
   async remove(id: string, actor: ViewActor) {
     const view = await this.load(id);
     this.assertOwner(view, actor);
+    await this.assertNoActiveGame(id, 'borrar la vista');
     await this.prisma.view.delete({ where: { id } });
     return { id, deleted: true as const };
   }
@@ -129,6 +154,7 @@ export class ViewsService {
   async removePanel(id: string, targetSystemId: string, actor: ViewActor) {
     const view = await this.load(id);
     this.assertOwner(view, actor);
+    await this.assertNoActiveGame(id, 'quitar un panel de la vista');
     await this.prisma.viewPanel.deleteMany({ where: { viewId: id, targetSystemId } });
     return this.get(id, actor);
   }

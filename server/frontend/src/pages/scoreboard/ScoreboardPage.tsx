@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   getParticipantHistory,
@@ -24,6 +24,11 @@ function formatTime(us: number | null): string {
 function formatAccuracy(value: number | null): string {
   // No calculable ≠ 0 %: se dice, no se rellena con un número falso.
   return value === null ? "no calculable" : `${(value * 100).toFixed(1)} %`;
+}
+
+/** Un recuento desconocido se dice; jamás se pinta como 0. */
+function formatCount(value: number | null): string {
+  return value === null ? "sin atribuir" : String(value);
 }
 
 const STATE_LABEL: Record<string, string> = {
@@ -68,15 +73,26 @@ export function ScoreboardPage() {
   const [history, setHistory] = useState<ParticipantHistory | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
 
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
   const load = useCallback(async () => {
     if (!gameId) return;
     try {
-      setBoard(await getScoreboard(gameId));
+      const data = await getScoreboard(gameId);
+      if (!mounted.current) return;
+      setBoard(data);
       setError(null);
     } catch (e) {
+      if (!mounted.current) return;
       setError(e instanceof Error ? e.message : "No se pudo cargar el marcador.");
     } finally {
-      setLoading(false);
+      if (mounted.current) setLoading(false);
     }
   }, [gameId]);
 
@@ -133,7 +149,24 @@ export function ScoreboardPage() {
               Impactos detectados: {board.totals.detected} · válidos: {board.totals.valid} · no válidos:{" "}
               {board.totals.invalid}
             </p>
-            {live && <p role="status">Marcador en directo: se actualiza solo cada 3 s.</p>}
+            {board.totals.unattributed > 0 && (
+              <p role="alert">
+                {board.totals.unattributed} impacto(s) sin atribuir a ningún jugador.
+              </p>
+            )}
+            {board.warnings.map((warning) => (
+              <p role="alert" key={warning}>
+                {warning}
+              </p>
+            ))}
+            <p>
+              {live
+                ? "Marcador en directo: se actualiza solo cada 3 s."
+                : "La partida no está en curso: el marcador no se actualiza solo."}{" "}
+              <button type="button" onClick={() => void load()}>
+                Actualizar ahora
+              </button>
+            </p>
           </Card>
 
           <Card title="Clasificación">
@@ -157,17 +190,20 @@ export function ScoreboardPage() {
                   <tbody>
                     {board.ranking.map((row) => (
                       <tr key={row.participantId} className={row.position === 1 ? "scoreboard-leader" : ""}>
-                        <td>{row.position}</td>
+                        <td>{row.position ?? "—"}</td>
                         <td>
                           {row.name}
                           {row.temporary && <span className="badge">temporal</span>}
                         </td>
                         <td>{row.teamName ?? "—"}</td>
-                        <td>{row.validHits}</td>
-                        <td>{row.invalidHits}</td>
+                        <td>{formatCount(row.validHits)}</td>
+                        <td>{formatCount(row.invalidHits)}</td>
                         <td>
                           {formatTime(row.totalTimeUs)}
-                          {row.provisional && <span className="badge badge--warn">provisional</span>}
+                          {row.provisional && row.attributed && (
+                            <span className="badge badge--warn">provisional</span>
+                          )}
+                          {!row.attributed && <span className="badge badge--warn">sin datos</span>}
                         </td>
                         <td>{formatAccuracy(row.accuracyValid)}</td>
                         <td>

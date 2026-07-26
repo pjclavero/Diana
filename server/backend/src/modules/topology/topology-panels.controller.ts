@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Put, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { IsArray, IsInt, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { IsArray, IsInt, IsOptional, IsString, Max, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/permissions.guard';
@@ -13,9 +13,13 @@ class SlotDto {
   module_id!: string | null;
 
   @IsInt()
+  @Min(-1)
+  @Max(1)
   x!: number;
 
   @IsInt()
+  @Min(-1)
+  @Max(1)
   y!: number;
 
   @IsOptional()

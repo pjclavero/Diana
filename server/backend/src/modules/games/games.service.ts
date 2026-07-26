@@ -34,6 +34,22 @@ export interface CreateRoundInput {
   reaction_delay_ms?: [number, number] | null;
 }
 
+/**
+ * Subconjunto de Prisma que usa el guardarraíl: sirve tanto el cliente normal
+ * como el cliente de una transacción interactiva.
+ */
+type TransactionClient = {
+  $executeRaw: PrismaService['$executeRaw'];
+  game: { findFirst: PrismaService['game']['findFirst']; update: PrismaService['game']['update'] };
+  round: { update: PrismaService['round']['update'] };
+  viewPanel: { findMany: PrismaService['viewPanel']['findMany'] };
+};
+
+type PrismaLike = {
+  game: { findFirst: PrismaService['game']['findFirst'] };
+  viewPanel: { findMany: PrismaService['viewPanel']['findMany'] };
+};
+
 /** Estados que ocupan hardware: mientras la partida esté en uno de ellos, el panel no está libre. */
 export const ACTIVE_GAME_STATUSES: Array<'armed' | 'running' | 'paused'> = [
   'armed',
@@ -74,9 +90,12 @@ export class GamesService {
    * Paneles que ocupa una partida: los de su vista si juega sobre una vista
    * (G-H, Opción B), o el panel único en caso contrario.
    */
-  private async panelsOf(game: { id: string; targetSystemId: string; viewId: string | null }) {
+  private async panelsOf(
+    game: { id: string; targetSystemId: string; viewId: string | null },
+    tx: PrismaLike = this.prisma,
+  ) {
     if (!game.viewId) return [game.targetSystemId];
-    const panels = await this.prisma.viewPanel.findMany({
+    const panels = await tx.viewPanel.findMany({
       where: { viewId: game.viewId },
       select: { targetSystemId: true },
     });
@@ -93,13 +112,17 @@ export class GamesService {
    * Partidas activas = armed | running | paused. `draft`, `finished` y `aborted`
    * no ocupan panel.
    */
-  async assertPanelsFree(game: {
-    id: string;
-    targetSystemId: string;
-    viewId: string | null;
-  }): Promise<void> {
-    const panelIds = await this.panelsOf(game);
-    const conflict = await this.prisma.game.findFirst({
+  async assertPanelsFree(
+    game: {
+      id: string;
+      targetSystemId: string;
+      viewId: string | null;
+    },
+    /** Cliente de la transacción en curso, cuando se comprueba dentro de una. */
+    tx: PrismaLike = this.prisma,
+  ): Promise<void> {
+    const panelIds = await this.panelsOf(game, tx);
+    const conflict = await tx.game.findFirst({
       where: {
         id: { not: game.id },
         status: { in: ACTIVE_GAME_STATUSES },
@@ -115,6 +138,21 @@ export class GamesService {
         `El panel ya está ocupado por la partida ${conflict.name ?? conflict.id} (${conflict.status}). ` +
           'Finalízala o abórtala antes de empezar otra.',
       );
+    }
+  }
+
+  /**
+   * Cerrojo consultivo de PostgreSQL por panel, dentro de la transacción. Se
+   * ordenan los identificadores para que dos transacciones que compitan por los
+   * mismos paneles no se abracen (interbloqueo).
+   */
+  private async lockPanels(
+    tx: TransactionClient,
+    game: { id: string; targetSystemId: string; viewId: string | null },
+  ): Promise<void> {
+    const panelIds = (await this.panelsOf(game, tx as unknown as PrismaLike)).sort();
+    for (const id of panelIds) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${id}))`;
     }
   }
 
@@ -236,8 +274,22 @@ export class GamesService {
     const plan = round.plan as unknown as { activations: Array<{ targets: TargetRef[] }> } | null;
     if (!plan) throw new BadRequestException('La ronda no tiene plan calculado');
 
-    // Guardarraíl G-H: nadie más puede estar usando este panel (o los de su vista).
-    await this.assertPanelsFree(game);
+    // Guardarraíl G-H, atómico: se toma un cerrojo por panel, se comprueba la
+    // ocupación y se marca la partida como en curso DENTRO de la misma
+    // transacción. Sin el cerrojo, dos `start` simultáneos sobre el mismo panel
+    // pasaban los dos la comprobación (lectura sin bloqueo).
+    await this.prisma.$transaction(async (tx) => {
+      await this.lockPanels(tx as unknown as TransactionClient, game);
+      await this.assertPanelsFree(game, tx as unknown as PrismaLike);
+      await tx.game.update({
+        where: { id: gameId },
+        data: { status: 'running', startedAt: new Date() },
+      });
+      await tx.round.update({
+        where: { id: roundId },
+        data: { phase: 'countdown', startedAt: new Date() },
+      });
+    });
 
     const targets = Array.from(
       new Map(
@@ -271,23 +323,32 @@ export class GamesService {
       10000,
     );
 
-    await this.prisma.$transaction([
-      this.prisma.game.update({
-        where: { id: gameId },
-        data: { status: 'running', startedAt: new Date() },
-      }),
-      this.prisma.round.update({
-        where: { id: roundId },
-        data: { phase: 'countdown', startedAt: new Date() },
-      }),
-    ]);
-
     return { command };
   }
 
   /** Órdenes de control: pausar, reanudar, abortar, finalizar. */
   async control(gameId: string, action: 'pause_game' | 'resume_game' | 'abort_game' | 'end_game') {
     const game = await this.get(gameId);
+
+    // Transiciones válidas: una orden sobre una partida que no está en el estado
+    // adecuado no se envía al coordinador (antes se enviaba siempre).
+    const allowedFrom: Record<typeof action, string[]> = {
+      pause_game: ['running'],
+      resume_game: ['paused'],
+      abort_game: ['armed', 'running', 'paused'],
+      end_game: ['armed', 'running', 'paused'],
+    };
+    if (!allowedFrom[action].includes(game.status)) {
+      throw new ConflictException(
+        `No se puede ejecutar '${action}' sobre una partida en estado '${game.status}'.`,
+      );
+    }
+    // Reanudar vuelve a ocupar el panel: si mientras estaba pausada/abortada
+    // arrancó otra partida ahí, no se puede reanudar sobre el mismo hardware.
+    if (action === 'resume_game') {
+      await this.assertPanelsFree(game);
+    }
+
     const command = this.mqtt.sendSystemCommand(game.targetSystem.slug, action, {}, 10000);
 
     const status =

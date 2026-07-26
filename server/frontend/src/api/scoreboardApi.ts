@@ -33,13 +33,15 @@ export interface ScoreboardEntry {
   name: string;
   temporary: boolean;
   teamName: string | null;
-  validHits: number;
-  invalidHits: number;
+  /** null = no se sabe (impactos sin atribuir); NO es un cero. */
+  validHits: number | null;
+  invalidHits: number | null;
   totalTimeUs: number | null;
-  penaltiesMs: number;
+  penaltiesMs: number | null;
   accuracyValid: number | null;
   provisional: boolean;
-  position: number;
+  attributed: boolean;
+  position: number | null;
 }
 
 export interface BoardTarget {
@@ -65,9 +67,12 @@ export interface Scoreboard {
     panel: { id: string; slug: string; name: string };
   };
   round: { id: string; index: number; phase: string; mode: string } | null;
+  panels: string[];
   ranking: ScoreboardEntry[];
+  /** Avisos del backend que hay que enseñar tal cual (huecos declarados). */
+  warnings: string[];
   board: BoardModule[];
-  totals: { detected: number; valid: number; invalid: number };
+  totals: { detected: number; valid: number; invalid: number; unattributed: number };
 }
 
 export interface ParticipantHistory {

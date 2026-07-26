@@ -31,7 +31,7 @@ function hit(over: Partial<Parameters<typeof buildBoard>[1][number]> = {}) {
 
 describe('Marcador de partida (G-G) · ranking', () => {
   it('sin resultado consolidado cuenta impactos y lo marca provisional', () => {
-    const ranking = buildRanking(
+    const { entries: ranking } = buildRanking(
       [ana, invitado],
       [],
       [
@@ -48,7 +48,7 @@ describe('Marcador de partida (G-G) · ranking', () => {
   });
 
   it('con resultado consolidado manda el resultado, no los impactos', () => {
-    const ranking = buildRanking(
+    const { entries: ranking } = buildRanking(
       [ana],
       [
         {
@@ -74,7 +74,7 @@ describe('Marcador de partida (G-G) · ranking', () => {
   });
 
   it('la precisión no calculable NO se muestra como cero', () => {
-    const ranking = buildRanking(
+    const { entries: ranking } = buildRanking(
       [ana],
       [
         {
@@ -92,8 +92,58 @@ describe('Marcador de partida (G-G) · ranking', () => {
     expect(ranking[0].accuracyValid).toBeNull();
   });
 
+  /**
+   * Defecto D1 del supervisor: hoy NADIE escribe `HitEvent.participantId`, así que
+   * en producción todos los impactos llegan sin dueño. Antes se mostraba «0
+   * aciertos» para todos junto al recuento real de impactos: un número falso.
+   */
+  it('con varios jugadores e impactos SIN atribuir no inventa ceros: dice que no se sabe', () => {
+    const { entries: ranking, unattributedHits, warnings } = buildRanking(
+      [ana, invitado],
+      [],
+      [hit({ participantId: null }), hit({ participantId: null, targetIndex: 2 })],
+    );
+    expect(unattributedHits).toBe(2);
+    for (const row of ranking) {
+      expect(row.validHits).toBeNull();
+      expect(row.invalidHits).toBeNull();
+      expect(row.totalTimeUs).toBeNull();
+      expect(row.attributed).toBe(false);
+      // Y nadie sale «líder» por defecto.
+      expect(row.position).toBeNull();
+    }
+    expect(warnings.join(' ')).toMatch(/no están atribuidos/);
+  });
+
+  it('con UN solo jugador la atribución es inequívoca: los impactos son suyos', () => {
+    const { entries: ranking, warnings } = buildRanking(
+      [ana],
+      [],
+      [hit({ participantId: null }), hit({ participantId: null, targetIndex: 2 })],
+    );
+    expect(ranking[0]).toMatchObject({ validHits: 2, attributed: true, position: 1 });
+    expect(warnings).toEqual([]);
+  });
+
+  it('las penalizaciones en vivo son desconocidas, no cero', () => {
+    const { entries: ranking } = buildRanking([ana], [], [hit()]);
+    expect(ranking[0].penaltiesMs).toBeNull();
+    expect(ranking[0].provisional).toBe(true);
+  });
+
+  it('avisa cuando mezcla filas consolidadas con filas todavía en juego', () => {
+    const { warnings } = buildRanking(
+      [ana, invitado],
+      [
+        { participantId: 'p1', validHits: 5, invalidHits: 0, totalTimeUs: 10_000, penaltiesMs: 0, accuracyValid: null, accuracyStatus: 'not_computable' },
+      ],
+      [hit({ participantId: 'p2' })],
+    );
+    expect(warnings.join(' ')).toMatch(/Clasificación mixta/);
+  });
+
   it('a igualdad de aciertos gana el menor tiempo; el empate exacto comparte posición', () => {
-    const ranking = buildRanking(
+    const { entries: ranking } = buildRanking(
       [ana, invitado],
       [
         { participantId: 'p1', validHits: 3, invalidHits: 0, totalTimeUs: 9000, penaltiesMs: 0, accuracyValid: null, accuracyStatus: 'not_computable' },
@@ -104,7 +154,7 @@ describe('Marcador de partida (G-G) · ranking', () => {
     expect(ranking.map((r) => r.participantId)).toEqual(['p2', 'p1']);
     expect(ranking.map((r) => r.position)).toEqual([1, 2]);
 
-    const empate = buildRanking(
+    const { entries: empate } = buildRanking(
       [ana, invitado],
       [
         { participantId: 'p1', validHits: 2, invalidHits: 0, totalTimeUs: 4000, penaltiesMs: 0, accuracyValid: null, accuracyStatus: 'not_computable' },
@@ -116,18 +166,18 @@ describe('Marcador de partida (G-G) · ranking', () => {
   });
 
   it('quien no tiene ningún acierto queda el último aunque no tenga tiempo', () => {
-    const ranking = buildRanking([ana, invitado], [], [hit({ participantId: 'p1' })]);
+    const { entries: ranking } = buildRanking([ana, invitado], [], [hit({ participantId: 'p1' })]);
     expect(ranking[0].participantId).toBe('p1');
     expect(ranking[1]).toMatchObject({ participantId: 'p2', validHits: 0, totalTimeUs: null });
   });
 
   it('identifica al temporal por su nombre de invitado y lo marca como tal', () => {
-    const ranking = buildRanking([invitado], [], []);
+    const { entries: ranking } = buildRanking([invitado], [], []);
     expect(ranking[0]).toMatchObject({ name: 'Invitado', temporary: true });
   });
 
   it('un participante sin nombre cae en el nombre del puesto, no en vacío', () => {
-    const ranking = buildRanking(
+    const { entries: ranking } = buildRanking(
       [{ id: 'p3', slot: 4, playerId: null, displayName: null, guestName: null, teamName: null }],
       [],
       [],

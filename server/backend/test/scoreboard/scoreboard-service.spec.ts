@@ -31,6 +31,7 @@ function buildPrisma(over: any = {}) {
       ...over.participant,
     },
     hitEvent: { findMany: jest.fn().mockResolvedValue([]), ...over.hitEvent },
+    viewPanel: { findMany: jest.fn().mockResolvedValue([]), ...over.viewPanel },
     result: { findMany: jest.fn().mockResolvedValue([]), ...over.result },
     module: {
       findMany: jest.fn().mockResolvedValue([
@@ -61,6 +62,46 @@ describe('ScoreboardService (G-G)', () => {
     await expect(new ScoreboardService(prisma).forGame('g1', 'r9')).rejects.toBeInstanceOf(
       NotFoundException,
     );
+    // El acotado tiene que ser POR PARTIDA, no sólo por id de ronda: sin `gameId`
+    // se podría leer el marcador de una ronda ajena.
+    expect(prisma.round.findFirst).toHaveBeenCalledWith({ where: { id: 'r9', gameId: 'g1' } });
+  });
+
+  it('partida sobre una VISTA: la rejilla incluye las dianas de todos sus paneles', async () => {
+    const prisma = buildPrisma({
+      game: {
+        findUnique: jest.fn().mockResolvedValue({ ...GAME, viewId: 'v1' }),
+      },
+      viewPanel: {
+        findMany: jest.fn().mockResolvedValue([{ targetSystemId: 's1' }, { targetSystemId: 's2' }]),
+      },
+    });
+    const board = await new ScoreboardService(prisma).forGame('g1');
+    expect(board.panels.sort()).toEqual(['s1', 's2']);
+    expect(prisma.module.findMany.mock.calls[0][0].where.targetSystemId.in.sort()).toEqual([
+      's1',
+      's2',
+    ]);
+  });
+
+  it('impactos sin atribuir con varios jugadores: se declaran, no se reparten', async () => {
+    const prisma = buildPrisma({
+      participant: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'p1', slot: 1, playerId: 'pl1', guestName: null, player: { id: 'pl1', displayName: 'Ana' }, team: null },
+          { id: 'p2', slot: 2, playerId: null, guestName: 'Invitado', player: null, team: null },
+        ]),
+      },
+      hitEvent: {
+        findMany: jest.fn().mockResolvedValue([
+          { participantId: null, moduleSlug: 'mod-a', targetIndex: 1, classification: 'valid_hit', countsForScore: true, coordinatorElapsedUs: BigInt(1000) },
+        ]),
+      },
+    });
+    const board = await new ScoreboardService(prisma).forGame('g1');
+    expect(board.totals).toMatchObject({ detected: 1, valid: 1, unattributed: 1 });
+    expect(board.ranking.every((r) => r.validHits === null)).toBe(true);
+    expect(board.warnings.join(' ')).toMatch(/no están atribuidos/);
   });
 
   it('partida sin ninguna ronda: marcador vacío, sin impactos inventados', async () => {
@@ -68,7 +109,7 @@ describe('ScoreboardService (G-G)', () => {
     const board = await new ScoreboardService(prisma).forGame('g1');
     expect(board.round).toBeNull();
     expect(prisma.hitEvent.findMany).not.toHaveBeenCalled();
-    expect(board.totals).toEqual({ detected: 0, valid: 0, invalid: 0 });
+    expect(board.totals).toEqual({ detected: 0, valid: 0, invalid: 0, unattributed: 0 });
     expect(board.ranking[0]).toMatchObject({ name: 'Ana', validHits: 0 });
   });
 
@@ -82,7 +123,7 @@ describe('ScoreboardService (G-G)', () => {
       },
     });
     const board = await new ScoreboardService(prisma).forGame('g1');
-    expect(board.totals).toEqual({ detected: 2, valid: 1, invalid: 1 });
+    expect(board.totals).toEqual({ detected: 2, valid: 1, invalid: 1, unattributed: 0 });
     expect(board.ranking[0]).toMatchObject({ validHits: 1, invalidHits: 1, totalTimeUs: 1500 });
     expect(board.board[0].targets[0].state).toBe('hit');
     expect(board.board[0].targets[1].state).toBe('invalid');

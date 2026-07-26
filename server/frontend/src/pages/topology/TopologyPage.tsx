@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiClient, type TopologySlot } from "../../api";
 import {
   applyLayout,
-  captureLayout,
   deleteLayout,
   getPanelMatrix,
   listLayouts,
   listTopologyPanels,
   savePanelMatrix,
+  saveLayoutFromEditor,
   toggleFavoriteLayout,
   type MatrixLayout,
   type PanelMatrix,
@@ -121,6 +121,13 @@ export function TopologyPage() {
     void reloadLayouts();
   }, [reloadLayouts]);
 
+  // ¿Lo que se ve difiere de lo guardado en el panel?
+  const dirty = useMemo(() => {
+    if (!matrix) return false;
+    const saved = JSON.stringify(toEditorSlots(matrix));
+    return JSON.stringify(slots) !== saved;
+  }, [matrix, slots]);
+
   const duplicates = useMemo(() => findDuplicates(slots), [slots]);
   const hasDuplicates = duplicates.size > 0;
 
@@ -200,10 +207,28 @@ export function TopologyPage() {
     event.preventDefault();
     if (!panelId || !layoutName.trim()) return;
     setLayoutMsg(null);
+    // Se guarda LO QUE HAY EN PANTALLA, incluidos los cambios sin guardar en el
+    // panel; si guardáramos lo de la base de datos, el nombre mentiría.
+    const cells = slots
+      .filter((s) => s.module_id)
+      .map((s) => ({
+        slug: labelOf(s.module_id!),
+        x: s.position.x,
+        y: s.position.y,
+        rotation: s.rotation,
+      }));
+    if (cells.length === 0) {
+      setLayoutMsg("La matriz está vacía: coloque algún módulo antes de guardarla.");
+      return;
+    }
     try {
-      await captureLayout(layoutName.trim(), panelId, true);
+      await saveLayoutFromEditor(layoutName.trim(), panelId, cells);
       setLayoutName("");
-      setLayoutMsg("Matriz guardada en favoritas.");
+      setLayoutMsg(
+        dirty
+          ? "Matriz guardada en favoritas con la colocación que ve en pantalla (el panel sigue sin guardar)."
+          : "Matriz guardada en favoritas.",
+      );
       await reloadLayouts();
     } catch (e) {
       setLayoutMsg(e instanceof Error ? e.message : "No se pudo guardar la matriz.");
@@ -216,11 +241,12 @@ export function TopologyPage() {
     try {
       const result = await applyLayout(layout.id, panelId);
       await loadMatrix(panelId);
-      setLayoutMsg(
-        result.missing.length > 0
-          ? `Aplicada «${layout.name}»: ${result.applied.length} módulo(s) colocado(s). No están en este panel: ${result.missing.join(", ")}.`
-          : `Aplicada «${layout.name}»: ${result.applied.length} módulo(s) colocado(s).`,
-      );
+      const partes = [`Aplicada «${layout.name}»: ${result.applied.length} módulo(s) colocado(s).`];
+      if (result.missing.length > 0) partes.push(`No están en este panel: ${result.missing.join(", ")}.`);
+      if (result.displaced.length > 0) {
+        partes.push(`Han quedado sin colocar (ocupaban una casilla de destino): ${result.displaced.join(", ")}.`);
+      }
+      setLayoutMsg(partes.join(" "));
     } catch (e) {
       setLayoutMsg(e instanceof Error ? e.message : "No se pudo aplicar la matriz.");
     }
@@ -310,6 +336,12 @@ export function TopologyPage() {
               <p role="alert" className="topology-warning">
                 Posiciones duplicadas para: {[...duplicates].map(labelOf).join(", ")}. Corríjalo antes de
                 guardar.
+              </p>
+            )}
+            {dirty && (
+              <p role="status">
+                Hay cambios sin guardar en el panel. «Guardar disposición» los aplica al panel;
+                «Guardar matriz actual» los guarda como matriz favorita.
               </p>
             )}
             {saveMsg && <p role="status">{saveMsg}</p>}
@@ -437,8 +469,9 @@ export function TopologyPage() {
 
           <Card title="Matrices favoritas">
             <p>
-              Guarde la colocación actual con un nombre para recuperarla luego. Se guarda por{" "}
-              <strong>slug de módulo</strong>, así sigue sirviendo si sustituye hardware.
+              Guarda con un nombre <strong>la colocación que ve ahora en pantalla</strong> (aunque no
+              la haya guardado en el panel). Se guarda por <strong>slug de módulo</strong>, así sigue
+              sirviendo si sustituye hardware.
             </p>
             <form onSubmit={handleCaptureLayout} className="topology-layout-form">
               <label>

@@ -17,7 +17,7 @@ export class ScoreboardController {
   @ApiOperation({ summary: 'Marcador: resultados + estado de las dianas de la partida' })
   game(
     @Param('gameId', ParseUUIDPipe) gameId: string,
-    @Query('round_id') roundId?: string,
+    @Query('round_id', new ParseUUIDPipe({ optional: true })) roundId?: string,
   ) {
     return this.scoreboard.forGame(gameId, roundId);
   }

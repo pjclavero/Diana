@@ -97,27 +97,60 @@ describe("TopologyPage (X-21 · datos reales + G-H)", () => {
     stubPanels();
     vi.spyOn(api, "getPanelMatrix").mockResolvedValue(matrix());
     vi.spyOn(api, "listLayouts").mockResolvedValue({ items: [], ownCount: 0, maxOwn: 20 });
-    const capture = vi.spyOn(api, "captureLayout").mockResolvedValue(layout());
+    const save = vi.spyOn(api, "saveLayoutFromEditor").mockResolvedValue(layout());
 
     renderPage();
     await screen.findByText("Matriz 3×3 · Panel A");
     await userEvent.type(screen.getByLabelText(/Nombre de la matriz/), "Fila baja");
     await userEvent.click(screen.getByRole("button", { name: "Guardar matriz actual" }));
 
-    await waitFor(() => expect(capture).toHaveBeenCalledWith("Fila baja", "s1", true));
+    // Se guarda LA COLOCACIÓN EN PANTALLA, no lo que hay en la base de datos.
+    await waitFor(() =>
+      expect(save).toHaveBeenCalledWith("Fila baja", "s1", [
+        { slug: "mod-a", x: 0, y: 0, rotation: 0 },
+      ]),
+    );
   });
 
   it("aplicar una favorita avisa de los módulos que no están en el panel", async () => {
     stubPanels();
     vi.spyOn(api, "getPanelMatrix").mockResolvedValue(matrix());
     vi.spyOn(api, "listLayouts").mockResolvedValue({ items: [layout()], ownCount: 1, maxOwn: 20 });
-    vi.spyOn(api, "applyLayout").mockResolvedValue({ applied: [{ slug: "mod-a" }], missing: ["mod-z"] });
+    vi.spyOn(api, "applyLayout").mockResolvedValue({
+      applied: [{ slug: "mod-a" }],
+      missing: ["mod-z"],
+      displaced: ["mod-c"],
+    });
 
     renderPage();
     await screen.findByText("Fila baja");
     await userEvent.click(screen.getByRole("button", { name: "Aplicar a este panel" }));
 
     expect(await screen.findByText(/No están en este panel: mod-z/)).toBeInTheDocument();
+    // Y también dice a quién ha desplazado: nada se mueve en silencio.
+    expect(screen.getByText(/Han quedado sin colocar .*mod-c/)).toBeInTheDocument();
+  });
+
+  it("guarda como matriz los cambios AÚN NO guardados en el panel, y lo avisa", async () => {
+    stubPanels();
+    vi.spyOn(api, "getPanelMatrix").mockResolvedValue(matrix());
+    vi.spyOn(api, "listLayouts").mockResolvedValue({ items: [], ownCount: 0, maxOwn: 20 });
+    const save = vi.spyOn(api, "saveLayoutFromEditor").mockResolvedValue(layout());
+
+    renderPage();
+    await screen.findByText("Matriz 3×3 · Panel A");
+    await userEvent.click(screen.getByRole("button", { name: /Rotar mod-a/ }));
+    expect(screen.getByText(/Hay cambios sin guardar en el panel/)).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText(/Nombre de la matriz/), "Fila baja");
+    await userEvent.click(screen.getByRole("button", { name: "Guardar matriz actual" }));
+
+    await waitFor(() =>
+      expect(save).toHaveBeenCalledWith("Fila baja", "s1", [
+        { slug: "mod-a", x: 0, y: 0, rotation: 90 },
+      ]),
+    );
+    expect(await screen.findByText(/el panel sigue sin guardar/)).toBeInTheDocument();
   });
 
   it("si no hay ningún panel lo dice, sin inventar una matriz", async () => {

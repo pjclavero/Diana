@@ -44,14 +44,27 @@ export interface ScoreboardEntry {
   name: string;
   temporary: boolean;
   teamName: string | null;
-  validHits: number;
-  invalidHits: number;
+  /** `null` = no se puede saber: los impactos no están atribuidos a jugadores. */
+  validHits: number | null;
+  invalidHits: number | null;
   totalTimeUs: number | null;
-  penaltiesMs: number;
+  /** `null` mientras no haya resultado consolidado: las penalizaciones no se cuentan en vivo. */
+  penaltiesMs: number | null;
   accuracyValid: number | null;
   /** Sin resultado consolidado: el dato sale de los impactos y puede cambiar. */
   provisional: boolean;
-  position: number;
+  /** false = fila sin datos atribuibles; NO es un cero. */
+  attributed: boolean;
+  /** `null` cuando la fila no es clasificable (sin datos atribuidos). */
+  position: number | null;
+}
+
+export interface ScoreboardRanking {
+  entries: ScoreboardEntry[];
+  /** Impactos de la ronda que no se pueden asignar a ningún jugador. */
+  unattributedHits: number;
+  /** Avisos que la pantalla DEBE mostrar; nunca se rellena un hueco en silencio. */
+  warnings: string[];
 }
 
 export function participantName(p: ScoreboardParticipant): string {
@@ -66,46 +79,90 @@ export function buildRanking(
   participants: ScoreboardParticipant[],
   results: ScoreboardResult[],
   hits: ScoreboardHit[],
-): ScoreboardEntry[] {
+): ScoreboardRanking {
   const byParticipant = new Map(results.map((r) => [r.participantId, r]));
+  const warnings: string[] = [];
 
-  const rows = participants.map((p) => {
+  // El impacto MQTT no dice de quién es: hoy el sistema no ata impacto a jugador
+  // (`HitEvent.participantId` queda a NULL). Con un solo participante la
+  // atribución es inequívoca; con varios, NO se reparte a ojo.
+  const unattributed = hits.filter((h) => h.participantId === null);
+  const soleParticipant = participants.length === 1 ? participants[0].id : null;
+  const effectiveHits: ScoreboardHit[] =
+    soleParticipant === null
+      ? hits
+      : hits.map((h) => (h.participantId === null ? { ...h, participantId: soleParticipant } : h));
+
+  const unattributedRemaining = effectiveHits.filter((h) => h.participantId === null).length;
+  if (unattributedRemaining > 0) {
+    warnings.push(
+      `${unattributedRemaining} impacto(s) de esta ronda no están atribuidos a ningún jugador: ` +
+        'el marcador en vivo no puede repartirlos. Los aciertos por jugador se sabrán al ' +
+        'consolidarse el resultado de la ronda.',
+    );
+  }
+
+  const rows: ScoreboardEntry[] = participants.map((p) => {
     const result = byParticipant.get(p.id);
-    const own = hits.filter((h) => h.participantId === p.id);
+    const own = effectiveHits.filter((h) => h.participantId === p.id);
     const valid = own.filter((h) => h.countsForScore);
     // Tiempo vivo: el último impacto válido conocido (T2 del coordinador).
     const liveTime = valid.reduce<number | null>(
       (max, h) => (h.elapsedUs === null ? max : max === null ? h.elapsedUs : Math.max(max, h.elapsedUs)),
       null,
     );
+    // Sin resultado y sin ningún impacto suyo mientras hay impactos sin atribuir:
+    // no se sabe cuánto lleva. Cero sería mentira.
+    const unknown = !result && own.length === 0 && unattributedRemaining > 0;
+
     return {
       participantId: p.id,
       name: participantName(p),
       temporary: p.playerId === null,
       teamName: p.teamName,
-      validHits: result ? result.validHits : valid.length,
-      invalidHits: result ? result.invalidHits : own.length - valid.length,
-      totalTimeUs: result ? result.totalTimeUs : liveTime,
-      penaltiesMs: result ? result.penaltiesMs : 0,
+      validHits: result ? result.validHits : unknown ? null : valid.length,
+      invalidHits: result ? result.invalidHits : unknown ? null : own.length - valid.length,
+      totalTimeUs: result ? result.totalTimeUs : unknown ? null : liveTime,
+      // Las penalizaciones sólo se conocen al consolidar el resultado.
+      penaltiesMs: result ? result.penaltiesMs : null,
       // La precisión sólo es real si el backend la ha podido calcular.
       accuracyValid: result && result.accuracyStatus === 'computed' ? result.accuracyValid : null,
       provisional: !result,
-      position: 0,
+      attributed: !unknown,
+      position: null,
     };
   });
 
-  // Mismo criterio que el duelo: más aciertos válidos y, a igualdad, menor tiempo.
+  // Mezclar filas consolidadas con filas vivas compararía magnitudes distintas
+  // (el tiempo vivo es el del último impacto, no el tiempo consolidado).
+  const consolidated = rows.filter((r) => !r.provisional).length;
+  if (consolidated > 0 && consolidated < rows.length) {
+    warnings.push(
+      'Clasificación mixta: hay jugadores con resultado consolidado y otros todavía en juego. ' +
+        'Las posiciones no son comparables hasta que termine la ronda.',
+    );
+  }
+
+  // Sólo se clasifica lo que tiene datos; el resto queda sin posición, al final.
+  const rankable = rows.filter((r) => r.attributed);
   const { ranking } = rankDuelo(
-    rows.map((r) => ({
+    rankable.map((r) => ({
       playerId: r.participantId,
-      summary: { validHits: r.validHits, totalTimeUs: r.totalTimeUs },
+      summary: { validHits: r.validHits ?? 0, totalTimeUs: r.totalTimeUs },
     })),
   );
   const positionOf = new Map(ranking.map((r) => [r.playerId, r.position]));
 
-  return rows
-    .map((r) => ({ ...r, position: positionOf.get(r.participantId) ?? 0 }))
-    .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
+  const entries = rows
+    .map((r) => ({ ...r, position: r.attributed ? (positionOf.get(r.participantId) ?? null) : null }))
+    .sort((a, b) => {
+      if (a.position === null && b.position === null) return a.name.localeCompare(b.name);
+      if (a.position === null) return 1;
+      if (b.position === null) return -1;
+      return a.position - b.position || a.name.localeCompare(b.name);
+    });
+
+  return { entries, unattributedHits: unattributed.length, warnings };
 }
 
 export interface BoardTargetCell {

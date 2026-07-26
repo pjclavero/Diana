@@ -24,10 +24,17 @@ export interface LayoutCell {
 /** Aplicar una matriz devuelve qué se colocó y qué módulos guardados no están en el panel. */
 export interface ApplyResult {
   applied: LayoutCell[];
+  /** Módulos de la matriz que no están en este panel: no se colocan. */
   missing: string[];
+  /** Módulos del panel que ocupaban una casilla de destino y quedan SIN colocar. */
+  displaced: string[];
 }
 
 const MAX_LAYOUTS_PER_OWNER = 20;
+
+/** Misma rejilla 3×3 que el editor de paneles: no hay casillas fuera de -1..1. */
+const COORD_MIN = -1;
+const COORD_MAX = 1;
 
 /**
  * Matrices favoritas (G-H): instantáneas con nombre de la colocación de módulos de
@@ -162,6 +169,11 @@ export class MatrixLayoutsService {
       if (!Number.isInteger(cell.x) || !Number.isInteger(cell.y)) {
         throw new BadRequestException('Las coordenadas x/y deben ser enteras');
       }
+      if (cell.x < COORD_MIN || cell.x > COORD_MAX || cell.y < COORD_MIN || cell.y > COORD_MAX) {
+        throw new BadRequestException(
+          `Coordenada fuera de la rejilla 3×3: (${cell.x}, ${cell.y})`,
+        );
+      }
     }
     const seen = new Set<string>();
     for (const cell of input.cells) {
@@ -182,7 +194,7 @@ export class MatrixLayoutsService {
         data: {
           name,
           description: input.description ?? null,
-          ownerId: actor.userId,
+          ownerId: this.isAdmin(actor) ? null : actor.userId,
           originSystemId: input.origin_system_id ?? null,
           cells: input.cells.map((c) => ({
             slug: c.slug,
@@ -232,8 +244,9 @@ export class MatrixLayoutsService {
 
   /**
    * Aplica una matriz a un panel: recoloca los módulos cuyo slug esté en la matriz.
-   * Los módulos guardados que no estén en ese panel se devuelven en `missing`; no
-   * se inventa nada ni se borra ningún módulo no mencionado.
+   * Los módulos guardados que no estén en ese panel se devuelven en `missing`. El
+   * módulo que ocupase una casilla de destino queda sin colocar y se devuelve en
+   * `displaced`: ningún módulo se borra, pero tampoco se desplaza en silencio.
    */
   async apply(id: string, targetSystemId: string, actor: LayoutActor): Promise<ApplyResult> {
     const layout = await this.get(id, actor);
@@ -253,6 +266,20 @@ export class MatrixLayoutsService {
         'Ninguno de los módulos de esa matriz está en este panel; no hay nada que aplicar.',
       );
     }
+
+    // Quien ocupaba una casilla de destino queda sin colocar: se informa, no se
+    // hace en silencio (el módulo NO se borra, sólo pierde su posición).
+    const targetModuleIds = new Set(applicable.map((c) => bySlug.get(c.slug)!));
+    const occupants = await this.prisma.modulePosition.findMany({
+      where: {
+        targetSystemId: system.id,
+        OR: applicable.map((c) => ({ x: c.x, y: c.y })),
+      },
+      include: { module: { select: { slug: true } } },
+    });
+    const displaced = occupants
+      .filter((p) => !targetModuleIds.has(p.moduleId))
+      .map((p) => p.module.slug);
 
     // Se borran primero las posiciones implicadas para no chocar con @@unique(system,x,y).
     await this.prisma.$transaction([
@@ -279,7 +306,7 @@ export class MatrixLayoutsService {
       ),
     ]);
 
-    return { applied: applicable, missing };
+    return { applied: applicable, missing, displaced };
   }
 
   private mapWriteError(error: unknown) {

@@ -106,3 +106,113 @@ describe('GamesService · guardarraíl un juego por panel (G-H)', () => {
     expect(result.items.filter((i) => i.gameId === 'g1')).toHaveLength(2);
   });
 });
+
+/**
+ * Cableado real del guardarraíl (defecto D10 del supervisor: antes se probaba
+ * `assertPanelsFree` en aislamiento y nadie ejercitaba `start()`/`control()`).
+ */
+describe('GamesService · el guardarraíl está cableado de verdad', () => {
+  const round = {
+    id: 'r1',
+    plan: { activations: [{ targets: [{ module_id: 'mod-a', target_index: 1 }] }] },
+    mode: 'sequence',
+    countdownMs: 3000,
+    timeLimitMs: null,
+    penaltyMs: 0,
+    strictOrder: false,
+    reactionDelayMinMs: null,
+    reactionDelayMaxMs: null,
+    seed: BigInt(1),
+  };
+
+  function gamePrisma(over: any = {}) {
+    const tx = {
+      $executeRaw: jest.fn().mockResolvedValue(1),
+      game: { findFirst: jest.fn().mockResolvedValue(null), update: jest.fn().mockResolvedValue({}) },
+      round: { update: jest.fn().mockResolvedValue({}) },
+      viewPanel: { findMany: jest.fn().mockResolvedValue([]) },
+      ...over.tx,
+    };
+    const prisma = {
+      game: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'g1',
+          status: 'armed',
+          targetSystemId: 's1',
+          viewId: null,
+          rounds: [round],
+          gameMode: { key: 'sequence' },
+          targetSystem: { slug: 'panel-a' },
+          ...over.game,
+        }),
+        findFirst: jest.fn().mockResolvedValue(null),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      viewPanel: { findMany: jest.fn().mockResolvedValue([]) },
+      $transaction: jest.fn((fn: any) => fn(tx)),
+      __tx: tx,
+    } as any;
+    return prisma;
+  }
+
+  const mqttStub = { sendSystemCommand: jest.fn().mockReturnValue({ command_id: 'c1' }) } as any;
+
+  it('start() rechaza empezar sobre un panel ocupado y NO manda nada al coordinador', async () => {
+    const prisma = gamePrisma({
+      tx: {
+        game: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'g2', name: 'Otra', status: 'running', targetSystem: { slug: 'panel-a' } }),
+          update: jest.fn(),
+        },
+      },
+    });
+    const mqtt = { sendSystemCommand: jest.fn() } as any;
+    await expect(new GamesService(prisma, mqtt).start('g1', 'r1')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(mqtt.sendSystemCommand).not.toHaveBeenCalled();
+    expect(prisma.__tx.game.update).not.toHaveBeenCalled();
+  });
+
+  it('start() toma cerrojo por panel y marca la partida dentro de la MISMA transacción', async () => {
+    const prisma = gamePrisma();
+    mqttStub.sendSystemCommand.mockClear();
+    await new GamesService(prisma, mqttStub).start('g1', 'r1');
+    expect(prisma.__tx.$executeRaw).toHaveBeenCalled();
+    expect(prisma.__tx.game.update.mock.calls[0][0].data).toMatchObject({ status: 'running' });
+    expect(prisma.__tx.round.update.mock.calls[0][0].data).toMatchObject({ phase: 'countdown' });
+    expect(mqttStub.sendSystemCommand).toHaveBeenCalled();
+  });
+
+  it('control() no ejecuta una orden imposible para el estado actual', async () => {
+    const prisma = gamePrisma({ game: { status: 'finished' } });
+    const mqtt = { sendSystemCommand: jest.fn() } as any;
+    const service = new GamesService(prisma, mqtt);
+    await expect(service.control('g1', 'pause_game')).rejects.toBeInstanceOf(ConflictException);
+    await expect(service.control('g1', 'resume_game')).rejects.toBeInstanceOf(ConflictException);
+    expect(mqtt.sendSystemCommand).not.toHaveBeenCalled();
+  });
+
+  it('resume_game no puede devolver una partida a un panel ya ocupado por otra', async () => {
+    const prisma = gamePrisma({ game: { status: 'paused' } });
+    prisma.game.findFirst.mockResolvedValue({
+      id: 'g2',
+      name: 'Otra',
+      status: 'running',
+      targetSystem: { slug: 'panel-a' },
+    });
+    const mqtt = { sendSystemCommand: jest.fn() } as any;
+    await expect(new GamesService(prisma, mqtt).control('g1', 'resume_game')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(mqtt.sendSystemCommand).not.toHaveBeenCalled();
+  });
+
+  it('pause_game sobre una partida en curso sí se ejecuta', async () => {
+    const prisma = gamePrisma({ game: { status: 'running' } });
+    const mqtt = { sendSystemCommand: jest.fn().mockReturnValue({ command_id: 'c1' }) } as any;
+    const result = await new GamesService(prisma, mqtt).control('g1', 'pause_game');
+    expect(result.status).toBe('paused');
+    expect(mqtt.sendSystemCommand).toHaveBeenCalledWith('panel-a', 'pause_game', {}, 10000);
+  });
+});

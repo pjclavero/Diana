@@ -14,6 +14,8 @@ import {
   IsArray,
   IsBoolean,
   IsInt,
+  Max,
+  Min,
   IsOptional,
   IsString,
   IsUUID,
@@ -34,9 +36,13 @@ class CellDto {
   slug!: string;
 
   @IsInt()
+  @Min(-1)
+  @Max(1)
   x!: number;
 
   @IsInt()
+  @Min(-1)
+  @Max(1)
   y!: number;
 
   @IsOptional()

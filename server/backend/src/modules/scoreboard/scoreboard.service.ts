@@ -27,6 +27,16 @@ export class ScoreboardService {
     return round;
   }
 
+  /** Paneles implicados: los de la vista, o el panel único de la partida. */
+  private async panelsOfGame(game: { targetSystemId: string; viewId: string | null }) {
+    if (!game.viewId) return [game.targetSystemId];
+    const panels = await this.prisma.viewPanel.findMany({
+      where: { viewId: game.viewId },
+      select: { targetSystemId: true },
+    });
+    return [...new Set([game.targetSystemId, ...panels.map((p) => p.targetSystemId)])];
+  }
+
   async forGame(gameId: string, roundId?: string) {
     const game = await this.prisma.game.findUnique({
       where: { id: gameId },
@@ -75,7 +85,7 @@ export class ScoreboardService {
       ? await this.prisma.result.findMany({ where: { roundId: round.id } })
       : [];
 
-    const ranking = buildRanking(
+    const rankingResult = buildRanking(
       participants.map((p) => ({
         id: p.id,
         slot: p.slot,
@@ -96,11 +106,15 @@ export class ScoreboardService {
       hits,
     );
 
-    // Dianas del panel de la partida, con su posición en la matriz.
+    // Dianas de TODOS los paneles de la partida: si se juega sobre una vista
+    // (G-H), la rejilla debe incluir los demás paneles o faltarían aciertos
+    // reales sin decirlo.
+    const panelIds = await this.panelsOfGame(game);
     const modules = await this.prisma.module.findMany({
-      where: { targetSystemId: game.targetSystemId },
+      where: { targetSystemId: { in: panelIds } },
       select: {
         slug: true,
+        targetSystemId: true,
         position: { select: { x: true, y: true } },
         targets: { select: { targetIndex: true } },
       },
@@ -124,12 +138,15 @@ export class ScoreboardService {
       round: round
         ? { id: round.id, index: round.roundIndex, phase: round.phase, mode: round.mode }
         : null,
-      ranking,
+      panels: panelIds,
+      ranking: rankingResult.entries,
+      warnings: rankingResult.warnings,
       board: buildBoard(boardInput, hits),
       totals: {
         detected: hits.length,
         valid: hits.filter((h) => h.countsForScore).length,
         invalid: hits.filter((h) => !h.countsForScore).length,
+        unattributed: rankingResult.unattributedHits,
       },
     };
   }

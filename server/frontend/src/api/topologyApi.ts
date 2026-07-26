@@ -93,16 +93,26 @@ export interface MatrixLayout {
 export function listLayouts(): Promise<{ items: MatrixLayout[]; ownCount: number; maxOwn: number }> {
   return req("/matrix-layouts");
 }
-export function captureLayout(name: string, targetSystemId: string, favorite = false): Promise<MatrixLayout> {
-  return req("/matrix-layouts/capture", {
+/**
+ * Guarda como matriz lo que el usuario tiene EN PANTALLA (aunque no lo haya
+ * guardado en el panel). `/matrix-layouts/capture` guardaría lo que hay en la
+ * base de datos, que puede no ser lo mismo.
+ */
+export function saveLayoutFromEditor(
+  name: string,
+  targetSystemId: string,
+  cells: { slug: string; x: number; y: number; rotation: number }[],
+  favorite = true,
+): Promise<MatrixLayout> {
+  return req("/matrix-layouts", {
     method: "POST",
-    body: JSON.stringify({ name, target_system_id: targetSystemId, favorite }),
+    body: JSON.stringify({ name, cells, origin_system_id: targetSystemId, favorite }),
   });
 }
 export function applyLayout(
   id: string,
   targetSystemId: string,
-): Promise<{ applied: { slug: string }[]; missing: string[] }> {
+): Promise<{ applied: { slug: string }[]; missing: string[]; displaced: string[] }> {
   return req(`/matrix-layouts/${id}/apply`, {
     method: "POST",
     body: JSON.stringify({ target_system_id: targetSystemId }),

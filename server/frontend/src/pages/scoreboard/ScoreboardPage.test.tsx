@@ -16,6 +16,8 @@ function board(over: Partial<Scoreboard> = {}): Scoreboard {
       panel: { id: "s1", slug: "panel-a", name: "Panel A" },
     },
     round: { id: "r1", index: 1, phase: "finished", mode: "sequence" },
+    panels: ["s1"],
+    warnings: [],
     ranking: [
       {
         participantId: "p1",
@@ -28,6 +30,7 @@ function board(over: Partial<Scoreboard> = {}): Scoreboard {
         penaltiesMs: 0,
         accuracyValid: 0.83,
         provisional: false,
+        attributed: true,
         position: 1,
       },
       {
@@ -41,6 +44,7 @@ function board(over: Partial<Scoreboard> = {}): Scoreboard {
         penaltiesMs: 0,
         accuracyValid: null,
         provisional: true,
+        attributed: true,
         position: 2,
       },
     ],
@@ -56,7 +60,7 @@ function board(over: Partial<Scoreboard> = {}): Scoreboard {
         ],
       },
     ],
-    totals: { detected: 2, valid: 1, invalid: 1 },
+    totals: { detected: 2, valid: 1, invalid: 1, unattributed: 0 },
     ...over,
   };
 }
@@ -169,10 +173,46 @@ describe("ScoreboardPage (G-G · marcador tipo dardos)", () => {
     // La partida pasa a finished: el refresco automático debe pararse.
     get.mockResolvedValue(board());
     await vi.advanceTimersByTimeAsync(3100);
-    await waitFor(() => expect(screen.queryByText(/se actualiza solo/)).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText(/no está en curso: el marcador no se actualiza solo/)).toBeInTheDocument(),
+    );
     const afterFinish = get.mock.calls.length;
     await vi.advanceTimersByTimeAsync(9100);
     expect(get.mock.calls.length).toBe(afterFinish);
+  });
+
+  it("con impactos sin atribuir no muestra ceros: lo declara en la fila y en un aviso", async () => {
+    vi.spyOn(api, "getScoreboard").mockResolvedValue(
+      board({
+        warnings: ["2 impacto(s) de esta ronda no están atribuidos a ningún jugador."],
+        totals: { detected: 2, valid: 2, invalid: 0, unattributed: 2 },
+        ranking: [
+          {
+            participantId: "p1",
+            name: "Ana",
+            temporary: false,
+            teamName: null,
+            validHits: null,
+            invalidHits: null,
+            totalTimeUs: null,
+            penaltiesMs: null,
+            accuracyValid: null,
+            provisional: true,
+            attributed: false,
+            position: null,
+          },
+        ],
+      }),
+    );
+
+    renderAt();
+
+    expect(await screen.findByText(/no están atribuidos a ningún jugador/)).toBeInTheDocument();
+    expect(screen.getAllByText("sin atribuir").length).toBeGreaterThan(0);
+    expect(screen.getByText("sin datos")).toBeInTheDocument();
+    // Y la fila no reclama posición: se muestra un guion, no un «1».
+    const fila = screen.getByText("Ana").closest("tr")!;
+    expect(fila.querySelectorAll("td")[0].textContent).toBe("—");
   });
 
   it("si el marcador falla lo dice, sin pintar un marcador vacío", async () => {
