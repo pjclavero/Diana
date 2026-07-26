@@ -277,4 +277,31 @@ Decisiones:
 > nunca compilado con ESP-IDF; AUTO, aplicación de config, descarga OTA `esp_https_ota` y
 > sincronización de reloj están sin terminar). El **contrato** sí se puede ampliar ya (DECISIÓN 1).
 
-_Actualizado con el lote de mejoras · 2026-07-22_
+### 6.8 Concurrencia, matrices favoritas y marcador (2026-07-26) — implementado
+
+Cierre de los bloques **G-H** y **G-G** del lote. Decisiones que quedan fijadas:
+
+- **Un panel, una partida activa.** Un panel (`TargetSystem`) sólo puede estar en UNA partida
+  en estado `armed | running | paused`; `draft`, `finished` y `aborted` no ocupan hardware. Se
+  comprueba al autorizar el comienzo (`GamesService.start`) y cubre las partidas que se juegan
+  sobre una **vista** de varios paneles, incluidas las de otra vista que compartan panel. Dos
+  partidas sobre el mismo hardware darían órdenes contradictorias al coordinador y tiempos no
+  fiables, así que se rechaza con 409 nombrando la partida que ocupa el panel.
+  `GET /api/games/panel-occupancy` expone qué paneles están ocupados y por qué partida.
+- **Matrices favoritas guardadas por SLUG, no por id de módulo.** Una matriz favorita es una
+  instantánea con nombre de la colocación de un panel. Guardarla por slug permite aplicarla a
+  **otro panel** o después de **sustituir hardware**. Al aplicarla se colocan sólo los módulos
+  que están en ese panel y se **informa de los que faltan** (nunca se inventa una colocación).
+  Máximo 20 matrices por dueño; el gestor ve las suyas y las públicas, el admin todas.
+- **El editor de matrices trabaja con datos reales** (`GET/PUT /api/topology/panels/:idOrSlug`),
+  con **selector de panel** — la "paginación" de §6.1: con más de 9 módulos se edita un panel
+  cada vez y los paneles se agrupan en **Vistas** para jugar sobre varios a la vez. El bloqueo
+  de celda es una ayuda local del editor y **no se guarda** (se dice en pantalla).
+- **Marcador estilo máquina de dardos** (`/marcador/:gameId`): resultado de la partida +
+  estadística del jugador + estado visual de cada diana (acertada / impacto no válido /
+  pendiente). Mientras la ronda está viva no hay `Result`, así que las filas se derivan de los
+  impactos y se marcan **`provisional`**. Invariantes de honestidad: la precisión sólo se
+  muestra cuando `accuracy_status === 'computed'` (si no, «no calculable», nunca 0 %), y un
+  **jugador temporal** aparece explícitamente **sin histórico** en lugar de con ceros.
+
+_Actualizado con el lote de mejoras · 2026-07-22; G-H y G-G · 2026-07-26_
