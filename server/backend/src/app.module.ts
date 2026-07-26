@@ -31,6 +31,7 @@ import { RolesModule } from './modules/roles/roles.module';
 import { RoundsModule } from './modules/rounds/rounds.module';
 import { StatisticsModule } from './modules/statistics/statistics.module';
 import { ScoreboardModule } from './modules/scoreboard/scoreboard.module';
+import { ResilienceModule } from './modules/resilience/resilience.module';
 import { SystemsModule } from './modules/systems/systems.module';
 import { TargetsModule } from './modules/targets/targets.module';
 import { TeamsModule } from './modules/teams/teams.module';
@@ -76,6 +77,7 @@ import { WebsocketModule } from './modules/websocket/websocket.module';
     AccuracyModule,
     StatisticsModule,
     ScoreboardModule,
+    ResilienceModule,
     FirmwareModule,
     MaintenanceModule,
     ExportsModule,

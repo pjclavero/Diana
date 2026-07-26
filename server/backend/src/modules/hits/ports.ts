@@ -3,6 +3,7 @@ import { HitRecord } from '../../domain/hits/hit-record';
 export const HIT_REPOSITORY = Symbol('HIT_REPOSITORY');
 export const INCIDENT_SINK = Symbol('INCIDENT_SINK');
 export const EVENT_PUBLISHER = Symbol('EVENT_PUBLISHER');
+export const PRESENCE_SINK = Symbol('PRESENCE_SINK');
 
 export interface InsertResult {
   /** `false` cuando el evento ya existía: duplicado normal de QoS 1. */
@@ -49,4 +50,31 @@ export interface LiveEvent {
 
 export interface EventPublisherPort {
   publish(event: LiveEvent): void;
+}
+
+/**
+ * Presencia de módulo (G-I). El backend estaba suscrito a `module/+/presence`
+ * (que es también el Last Will) y validaba el mensaje, pero NO lo persistía:
+ * `Module.online` no lo escribía nadie, así que nada detectaba una caída.
+ */
+export interface PresenceUpdate {
+  moduleSlug: string;
+  online: boolean;
+  /** connect · shutdown · lwt (contrato module-presence). */
+  reason: string;
+  bootId?: string | null;
+  firmwareVersion?: string | null;
+  hardwareRevision?: string | null;
+  mac?: string | null;
+  ip?: string | null;
+  serial?: string | null;
+  /** T3: instante de recepción en el backend. */
+  at: Date;
+}
+
+export interface PresenceSinkPort {
+  /** Devuelve la decisión tomada sobre la ronda, o `null` si no hubo cambio. */
+  record(update: PresenceUpdate): Promise<unknown>;
+  /** Señal de vida sin cambio de presencia (status/telemetría/impacto). */
+  touch(moduleSlug: string, at: Date): Promise<void>;
 }

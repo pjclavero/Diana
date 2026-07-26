@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { apiClient, createGameSocket, type ConnectionStatus } from "../../api";
 import { Card } from "../../components/ui/Feedback";
 import { ConnectionBadge } from "../../components/ui/ConnectionBadge";
+import { ResiliencePanel } from "../../components/game/ResiliencePanel";
 import { TargetLight } from "../../components/target/TargetLight";
 import { ACCURACY_NOT_COMPUTABLE_TEXT } from "../../utils/accuracy";
 import type { GameEvent, GameState, GameSummary, TargetState } from "../../types/domain";
@@ -68,6 +69,8 @@ export function LiveGamePage() {
   return (
     <div>
       <h1>Partida en directo</h1>
+      {/* G-I: si cae un módulo implicado, el aviso aparece aquí con la decisión. */}
+      {gameId && <ResiliencePanel gameId={gameId} />}
       <div className="live-header">
         <ConnectionBadge status={connStatus} />
         <span>

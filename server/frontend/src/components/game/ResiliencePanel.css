@@ -1,0 +1,17 @@
+/* Aviso de caída de módulo durante la ronda (G-I). */
+.resilience {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.resilience__actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.resilience__note {
+  font-size: 0.85rem;
+  opacity: 0.8;
+  margin: 0;
+}

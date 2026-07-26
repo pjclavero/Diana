@@ -9,6 +9,8 @@ import {
   HitRepositoryPort,
   INCIDENT_SINK,
   IncidentSinkPort,
+  PRESENCE_SINK,
+  PresenceSinkPort,
 } from '../hits/ports';
 
 export type IngestStatus = 'accepted' | 'duplicate' | 'rejected' | 'ignored';
@@ -80,6 +82,7 @@ export class IngestService {
     private readonly validator: ContractValidator,
     @Inject(HIT_REPOSITORY) private readonly hits: HitRepositoryPort,
     @Inject(INCIDENT_SINK) private readonly incidents: IncidentSinkPort,
+    @Optional() @Inject(PRESENCE_SINK) private readonly presence?: PresenceSinkPort,
     @Optional() @Inject(EVENT_PUBLISHER) private readonly publisher?: EventPublisherPort,
     @Optional() @Inject(INGEST_OPTIONS) options?: Partial<IngestOptions>,
   ) {
@@ -152,6 +155,42 @@ export class IngestService {
     }
 
     this.publisher?.publish({ type: parsed.kind, topic, payload, at: receivedAt });
+
+    // Presencia (G-I): es también el Last Will del módulo. Hasta ahora se
+    // validaba y se tiraba; sin persistirla nada detectaba una caída.
+    if (parsed.kind === 'module-presence' && this.presence) {
+      const presence = payload as unknown as {
+        module_id: string;
+        online: boolean;
+        reason: string;
+        boot_id?: string | null;
+        firmware_version?: string | null;
+        hardware_revision?: string | null;
+        mac?: string | null;
+        ip?: string | null;
+        serial?: string | null;
+      };
+      try {
+        await this.presence.record({
+          moduleSlug: presence.module_id,
+          online: presence.online,
+          reason: presence.reason,
+          bootId: presence.boot_id ?? null,
+          firmwareVersion: presence.firmware_version ?? null,
+          hardwareRevision: presence.hardware_revision ?? null,
+          mac: presence.mac ?? null,
+          ip: presence.ip ?? null,
+          serial: presence.serial ?? null,
+          at: receivedAt,
+        });
+      } catch (error) {
+        // Un fallo al persistir presencia no puede tumbar la ingesta.
+        this.logger.error(`No se pudo registrar la presencia: ${(error as Error).message}`);
+      }
+    } else if (this.presence && (parsed.kind === 'module-status' || parsed.kind === 'module-telemetry')) {
+      // Señal de vida: no cambia la presencia, pero sí la última vez que se vio.
+      await this.presence.touch(parsed.id, receivedAt).catch(() => undefined);
+    }
 
     if (parsed.kind === 'module-hit') {
       return this.ingestHit(payload as unknown as HitEventPayload, receivedAt);
