@@ -259,7 +259,7 @@ base aislada, y `reboot` de la VM verificando que el stack vuelve solo (`onboot`
 
 ## 10. Despliegue del lote G-A…G-I (2026-07-26)
 
-`develop` @ **`045fdd1`** en `/opt/diana`. Registrado en el commit `8220a45`.
+`develop` @ **`133d760`** en `/opt/diana` (segundo despliegue del día, con D9). Registrado en los commits `8220a45` y `133d760`.
 
 | Comprobación | Resultado | Evidencia |
 |---|---|---|

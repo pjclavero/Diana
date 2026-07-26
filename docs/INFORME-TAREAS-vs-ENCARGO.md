@@ -1,7 +1,7 @@
 # Diana · Informe de tareas frente al encargo
 
 **Fecha:** 2026-07-26 (revisión completa de estados) · **Rama:** `develop` @ `133d760` ·
-**Desplegado en la VM:** `develop` @ `045fdd1` · **VM:** `diana-server` (109, 192.168.1.209)
+**Desplegado en la VM:** `develop` @ `133d760` (incluye D9; verificado por SSH el 2026-07-26) · **VM:** `diana-server` (109, 192.168.1.209)
 
 > **Aviso de alcance de esta revisión.** Los estados se han contrastado el 2026-07-26 contra el
 > código de `develop` y el historial de git. **No se ha tocado la VM 109** para hacerla, ni por

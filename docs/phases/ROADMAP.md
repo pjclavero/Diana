@@ -8,7 +8,7 @@ que dependa del hardware físico está marcado como superado, porque no hay hard
 
 Leyenda: ✅ completada · 🟡 parcial · ⬜ no iniciada · 🔬 bloqueada por hardware
 
-**Última revisión: 2026-07-26** (`develop` @ `133d760`; desplegado en la VM 109 @ `045fdd1`).
+**Última revisión: 2026-07-26** (`develop` @ `70b2590`; desplegado en la VM 109 @ `133d760`).
 
 ---
 
