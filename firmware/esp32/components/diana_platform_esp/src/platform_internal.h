@@ -1,7 +1,6 @@
 /**
  * @file platform_internal.h
  * @brief Estado compartido entre los ficheros de la plataforma ESP.
- *        NO COMPILADO: ver diana/platform_esp.h.
  */
 #ifndef DIANA_PLATFORM_INTERNAL_H
 #define DIANA_PLATFORM_INTERNAL_H
@@ -9,7 +8,6 @@
 #include "diana/platform_esp.h"
 
 #include "esp_adc/adc_oneshot.h"
-#include "esp_eth.h"
 #include "esp_netif.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -17,13 +15,21 @@
 #include "led_strip.h"
 #include "mqtt_client.h"
 
-#include "esp32s3_w5500_protoA.h"
+#if CONFIG_DIANA_NET_ETH_W5500
+#include "esp_eth.h"
+#endif
+
+/* Selecciona el pinout segun la placa configurada. Ningun fichero incluye un
+ * header de placa concreto. */
+#include "diana_board.h"
 
 struct diana_platform {
     /* red */
+#if CONFIG_DIANA_NET_ETH_W5500
     esp_eth_handle_t   eth;
-    esp_netif_t       *netif;
     esp_eth_netif_glue_handle_t glue;
+#endif
+    esp_netif_t       *netif;
     volatile bool      link_up;
     volatile bool      has_ip;
     char               ip[16];

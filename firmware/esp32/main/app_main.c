@@ -154,7 +154,11 @@ void app_main(void)
     snprintf(uri, sizeof(uri), "mqtt://%s:1883", CONFIG_DIANA_BROKER_HOST);
     /* Usuario 'module-{id}', client_id '{id}' a secas: son cosas distintas y el
      * contrato §8 fija ambas. La ACL depende de la segunda. */
-    snprintf(user, sizeof(user), "module-%s", a->id.module_id);
+    /* Precision acotada al tamano del campo: sin ella el compilador no puede
+     * demostrar que module_id esta terminado y asume que podria extenderse
+     * hasta el final de la estructura. */
+    snprintf(user, sizeof(user), "module-%.*s",
+             (int)(sizeof(a->id.module_id) - 1), a->id.module_id);
     diana_platform_mqtt_start(a->pf, a->id.module_id, uri, user, a->id.mqtt_pass,
                               a->topic_presence, lwt);
     diana_platform_mqtt_subscribe(a->pf, a->id.module_id);

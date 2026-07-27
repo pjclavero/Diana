@@ -1,0 +1,21 @@
+# Endurecimiento de PRODUCCION. Se aplica ENCIMA de sdkconfig.defaults:
+#
+#   idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.prod" build
+#
+# NO se aplica por defecto porque exige una clave de firma que no esta en el
+# repositorio (ni debe estarlo): con estas opciones y sin clave, el build falla.
+#
+# ANTES de usar esto hay que generar la clave y guardarla FUERA del repositorio:
+#   espsecure.py generate_signing_key --version 2 secure_boot_signing_key.pem
+#
+# El dosier 13.6 y 23.3 exigen que una imagen OTA no se active sin firma valida.
+# La verificacion la hace diana_core llamando al HAL; estas opciones son las que
+# hacen que ESP-IDF respalde esa comprobacion en el gestor de arranque.
+
+CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT=y
+CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT=y
+CONFIG_SECURE_BOOT_SIGNING_KEY="secure_boot_signing_key.pem"
+
+# Cifrado de NVS: las credenciales MQTT no deben quedar en claro en la flash.
+# Requiere la particion 'nvs_key', que ya esta reservada en partitions.csv.
+CONFIG_NVS_ENCRYPTION=y

@@ -1,0 +1,17 @@
+# Configuracion del MODULO 3x3 definitivo (PCB topologia B + Ethernet W5500).
+# Se aplica encima de sdkconfig.defaults:
+#
+#   idf.py -B build_modulo \
+#          -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.modulo" \
+#          -DSDKCONFIG=build_modulo/sdkconfig build
+#
+# LA PCB NO EXISTE TODAVIA. Esta configuracion se mantiene compilable a
+# proposito: asi un cambio en el driver de la fase 1 no rompe en silencio el
+# camino del modulo definitivo, que es donde acabara todo.
+
+CONFIG_DIANA_BOARD_W5500_TOPOB=y
+CONFIG_DIANA_NET_ETH_W5500=y
+
+# La PCB usa LM339 en colector abierto: activo a nivel BAJO, al contrario que
+# los modulos comerciales de la fase 1.
+CONFIG_DIANA_PIEZO_ACTIVE_LOW=y

@@ -1,0 +1,7 @@
+## Dependencias externas de la plataforma.
+##
+## led_strip dejo de venir dentro de ESP-IDF y se distribuye por el gestor de
+## componentes. Se exige 3.x porque el driver usa `color_component_format`,
+## que no existe en 2.x.
+dependencies:
+  espressif/led_strip: "^3.0.0"

@@ -1,9 +1,14 @@
 /**
  * @file app.h
- * @brief Estado de la aplicacion del modulo. NO COMPILADO (falta ESP-IDF).
+ * @brief Estado de la aplicacion del modulo.
  */
 #ifndef DIANA_APP_H
 #define DIANA_APP_H
+
+#include <stdio.h>
+
+/* Pinout y constantes de la placa seleccionada en menuconfig. */
+#include "diana_board.h"
 
 #include "diana/command.h"
 #include "diana/config.h"

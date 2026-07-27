@@ -1,8 +1,14 @@
-# Valores por defecto de ESP-IDF para Diana (ESP32-S3 + W5500).
-# Se aplican con `idf.py set-target esp32s3 && idf.py build`.
+# Valores por defecto de ESP-IDF para Diana (ESP32-S3).
 #
-# NOTA: este fichero NO se ha podido validar con un build real de ESP-IDF en el
-# entorno donde se escribio (no hay toolchain instalado). Ver README.md.
+#   idf.py set-target esp32s3
+#   idf.py build flash monitor
+#
+# Este fichero es la base COMUN y esta pensada para poder construir y grabar hoy
+# mismo sobre un devkit. Los ajustes de seguridad de produccion (firma de imagen
+# y cifrado de NVS) NO estan aqui: viven en sdkconfig.defaults.prod porque
+# requieren claves que no estan —ni deben estar— en el repositorio, y sin ellas
+# el build falla. Para produccion:
+#   idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.prod" build
 
 CONFIG_IDF_TARGET="esp32s3"
 
@@ -10,8 +16,20 @@ CONFIG_IDF_TARGET="esp32s3"
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 CONFIG_PARTITION_TABLE_OFFSET=0x8000
+# 8 MB sirve para las dos variantes de devkit disponibles (N8R2 y N16R8): la
+# tabla cabe entera en los primeros 8 MB, asi que el mismo binario vale para
+# ambas. En el N16R8 los 8 MB restantes quedan sin usar.
 CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
 CONFIG_ESPTOOLPY_FLASHSIZE="8MB"
+
+# --- PSRAM: DESACTIVADA a proposito -----------------------------------------
+# El N16R8 lleva PSRAM octal y el N8R2 la lleva quad: son configuraciones
+# incompatibles, y arrancar con la equivocada cuelga el modulo. Como el firmware
+# cabe de sobra en la RAM interna, desactivarla hace que un mismo binario
+# arranque en ambas placas.
+# Esto NO libera los GPIO 35-37: siguen cableados a la PSRAM dentro del modulo
+# y no deben usarse.
+CONFIG_SPIRAM=n
 
 # --- Ethernet W5500 por SPI (dosier 8.3) ------------------------------------
 CONFIG_ETH_USE_SPI_ETHERNET=y
@@ -40,23 +58,9 @@ CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 CONFIG_BOOTLOADER_WDT_ENABLE=y
 CONFIG_BOOTLOADER_WDT_TIME_MS=9000
 
-# --- Firma de aplicacion (dosier 13.6, 23.3) --------------------------------
-# Se deja el modo "solo verificacion de firma" activable sin secure boot para el
-# prototipo. La clave NO esta en el repositorio.
-CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT=y
-CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT=y
-CONFIG_SECURE_BOOT_SIGNING_KEY="secure_boot_signing_key.pem"
-
-# --- Cifrado de NVS: las credenciales MQTT no van en claro ------------------
-CONFIG_NVS_ENCRYPTION=y
-
-# --- PSRAM (placa de desarrollo con octal SPI RAM) --------------------------
-CONFIG_SPIRAM=y
-CONFIG_SPIRAM_MODE_OCT=y
-CONFIG_SPIRAM_SPEED_80M=y
-
-# --- Reloj y temporizacion: la resolucion de 1 ms del dosier 14.2 exige que
-#     esp_timer sea la fuente monotonica, no los ticks de FreeRTOS -----------
+# --- Reloj y temporizacion ---------------------------------------------------
+# La resolucion de 1 ms del dosier 14.2 exige que la fuente monotonica sea
+# esp_timer (1 us), no los ticks de FreeRTOS.
 CONFIG_FREERTOS_HZ=1000
 
 CONFIG_COMPILER_OPTIMIZATION_SIZE=y

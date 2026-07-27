@@ -94,13 +94,21 @@ static int pf_health(void *ctx, diana_hal_health *out)
      * queda pendiente de correlacion en banco. */
     out->has_temperature = false;
 
-    int mv5 = 0, mv12 = 0;
-    if (diana_pf_adc_read_mv(p, DIANA_ADC_CH_V5, &mv5) == DIANA_HAL_OK &&
-        diana_pf_adc_read_mv(p, DIANA_ADC_CH_V12, &mv12) == DIANA_HAL_OK) {
+#if DIANA_HAS_VSENSE
+    /* La topologia B deja una sola medida directa (12 V); el riel de 5 V lo
+     * vigila el ADC externo. Mientras ese ADC no este elegido (decision P-04),
+     * solo se publica la que existe. */
+    int mv12 = 0;
+    if (diana_pf_adc_read_mv(p, DIANA_ADC_CH_V12, &mv12) == DIANA_HAL_OK) {
         out->has_voltage = true;
-        out->voltage_5v_mv = (uint32_t)mv5 * DIANA_VDIV_5V_NUM / DIANA_VDIV_5V_DEN;
         out->voltage_12v_mv = (uint32_t)mv12 * DIANA_VDIV_12V_NUM / DIANA_VDIV_12V_DEN;
     }
+#else
+    /* Banco de fase 1: el devkit se alimenta por USB y no hay divisores. Se
+     * declara "sin medida" en vez de publicar una cifra inventada. */
+    (void)p;
+    out->has_voltage = false;
+#endif
     return DIANA_HAL_OK;
 }
 

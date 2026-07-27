@@ -1,9 +1,14 @@
 /**
  * @file net_w5500.c
  * @brief Driver Ethernet W5500 por SPI: DHCP, IP estatica, deteccion de enlace
- *        y reconexion (dosier 8.3, 12.2). NO COMPILADO.
+ *        y reconexion (dosier 8.3, 12.2).
+ *
+ * Transporte de PRODUCCION. Se compila solo si se selecciona en menuconfig;
+ * la alternativa de desarrollo, mientras no hay W5500 fisico, es net_wifi.c.
  */
 #include "platform_internal.h"
+
+#if CONFIG_DIANA_NET_ETH_W5500
 
 #include <string.h>
 
@@ -185,3 +190,5 @@ int diana_pf_net_reconnect(void *ctx)
     esp_eth_stop(p->eth);
     return esp_eth_start(p->eth) == ESP_OK ? DIANA_HAL_OK : DIANA_HAL_ERR_GENERIC;
 }
+
+#endif /* CONFIG_DIANA_NET_ETH_W5500 */

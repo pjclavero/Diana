@@ -1,5 +1,70 @@
 menu "Diana · configuracion del modulo"
 
+choice DIANA_BOARD
+    prompt "Placa"
+    default DIANA_BOARD_TOPOB_FASE1
+    help
+      Selecciona el pinout. Ver docs/firmware/pinout-definitivo.md.
+
+config DIANA_BOARD_TOPOB_FASE1
+    bool "Fase 1 · devkit ESP32-S3 + modulos piezo comerciales"
+    help
+      Banco de pruebas: 2 canales con modulos "shock/tap sensor" comerciales,
+      amplitud por el ADC1 interno y red por WiFi. Sirve para desarrollar todo
+      el firmware sin la PCB ni el W5500.
+
+config DIANA_BOARD_W5500_TOPOB
+    bool "Modulo 3x3 · PCB topologia B con W5500"
+    help
+      Modulo definitivo: 9 canales con IRQ agregada, ADC SPI externo, W5500 y
+      umbral por PWM filtrado. LA PCB NO EXISTE TODAVIA.
+
+endchoice
+
+choice DIANA_NET_TRANSPORT
+    prompt "Transporte de red"
+    default DIANA_NET_WIFI
+    help
+      WiFi y W5500 desembocan en la misma pila esp_netif: MQTT, OTA y SNTP no
+      cambian. El dosier §8.3 exige Ethernet en produccion; el WiFi es un
+      transporte de DESARROLLO mientras no hay W5500.
+
+config DIANA_NET_WIFI
+    bool "WiFi (desarrollo)"
+
+config DIANA_NET_ETH_W5500
+    bool "Ethernet W5500 (produccion)"
+
+endchoice
+
+config DIANA_WIFI_SSID
+    string "SSID de la red WiFi"
+    depends on DIANA_NET_WIFI
+    default "diana-taller"
+
+config DIANA_WIFI_PASS
+    string "Contrasena de la red WiFi"
+    depends on DIANA_NET_WIFI
+    default ""
+    help
+      Se compila dentro del binario. Para el taller es aceptable; en produccion
+      el transporte es Ethernet y esto no se usa.
+
+config DIANA_PIEZO_ACTIVE_LOW
+    bool "La salida del comparador es activa a nivel BAJO"
+    default y if DIANA_BOARD_W5500_TOPOB
+    default n if DIANA_BOARD_TOPOB_FASE1
+    help
+      Activado  : LM339 en colector abierto de la PCB definitiva. El OR de
+                  diodos lleva pull-UP y la interrupcion es por flanco de
+                  bajada; en el 74HC165, 0 = canal disparado.
+      Desactivado: modulos comerciales de la fase 1, cuya salida DO es activa
+                  en ALTO (hallazgo M-02). Pull-DOWN, flanco de subida y en el
+                  74HC165, 1 = canal disparado.
+
+      Si esto no coincide con el cableado real, o no se detecta ningun impacto
+      o se detectan continuamente.
+
 config DIANA_BROKER_HOST
     string "Host del broker MQTT"
     default "192.168.1.209"

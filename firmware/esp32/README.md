@@ -8,14 +8,14 @@ Firmware de los módulos de dianas 3×3. Implementa WP-04.
 |---|---|
 | Lógica de negocio (`components/diana_core`) | **compilada y probada en host**, 389 comprobaciones en verde |
 | Mensajes MQTT generados | **validados contra los JSON Schema congelados** de `contracts/mqtt/` (18 mensajes) |
-| Capa de plataforma ESP-IDF (`components/diana_platform_esp`) | **escrita, NUNCA compilada**: no hay ESP-IDF en el entorno de desarrollo |
-| Aplicación (`main/`) | **escrita, NUNCA compilada** |
-| Pinout (`boards/`) | **propuesta preliminar**, ningún pin verificado sobre hardware |
+| Capa de plataforma ESP-IDF (`components/diana_platform_esp`) | **COMPILA** con ESP-IDF v5.5.2 para esp32s3, en las dos configuraciones |
+| Aplicación (`main/`) | **COMPILA** |
+| Pinout (`boards/`) | **propuesta**, ningún pin verificado sobre hardware |
 | Umbrales piezoeléctricos | **provisionales, SIN calibrar**: no hay hardware |
+| Ejecución sobre placa | **NUNCA se ha grabado ni arrancado** |
 
-Nada de lo que toca hardware se ha ejecutado. Ver
-`docs/firmware/validacion-fisica-pendiente.md` para el listado completo de lo
-que falta comprobar y cómo.
+Que compile no significa que funcione: **nada se ha ejecutado sobre hardware**.
+Ver `docs/firmware/validacion-fisica-pendiente.md` para lo que falta comprobar.
 
 ## Por qué la lógica se prueba en PC
 
@@ -54,35 +54,103 @@ valida contra los esquemas congelados:
 
 Otros objetivos: `make -C firmware build`, `contracts`, `clean`.
 
-## Compilar para el ESP32-S3 (no verificado)
+## Compilar y grabar en el ESP32-S3
 
-```bash
+Requiere ESP-IDF **v5.5.2**. En Windows, `export.ps1` solo afecta a la consola
+donde se ejecuta, así que hay un lanzador que lo hace por ti:
+
+```powershell
 cd firmware/esp32
-idf.py set-target esp32s3
-idf.py build flash monitor
+.\idf.ps1 set-target esp32s3
+.\idf.ps1 build
+.\idf.ps1 flash monitor
 ```
 
-Requiere ESP-IDF v5.x. **Este build nunca se ha ejecutado.** Es previsible que
-la primera compilación real requiera ajustes en nombres de API y en la lista de
-`REQUIRES` de los componentes.
+La grabación es por el **USB nativo del ESP32-S3** (no hace falta sonda ni
+adaptador). Para salir del monitor: `Ctrl+]`.
+
+### Las dos configuraciones
+
+| Configuración | Para qué | Cómo |
+|---|---|---|
+| **Fase 1** (por defecto) | Devkit + 2 módulos piezo comerciales + WiFi. Es con lo que se desarrolla hoy. | `.\idf.ps1 build` |
+| **Módulo 3×3** | PCB topología B + Ethernet W5500. **La PCB no existe todavía**; se mantiene compilable para que un cambio no la rompa en silencio. | `.\idf.ps1 -B build_modulo -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.modulo" -DSDKCONFIG="build_modulo/sdkconfig" build` |
+
+Placa, transporte de red, credenciales WiFi y polaridad del comparador se
+eligen en `.\idf.ps1 menuconfig` → *Diana · configuracion del modulo*.
+
+### Antes de grabar por primera vez
+
+Pon el SSID y la contraseña de tu red en `menuconfig`, o el módulo arrancará y
+se quedará reintentando la conexión (seguirá funcionando y encolando eventos en
+local, que es lo que exige el dosier §14.3, pero no publicará nada).
+
+### Endurecimiento de producción
+
+`sdkconfig.defaults` **no** activa la firma de imagen ni el cifrado de NVS: sin
+la clave de firma —que no está ni debe estar en el repositorio— el build
+fallaría. Esos ajustes viven aparte:
+
+```powershell
+.\idf.ps1 -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.prod" build
+```
+
+### PSRAM desactivada a propósito
+
+El N16R8 lleva PSRAM octal y el N8R2 la lleva quad: arrancar con la
+configuración equivocada cuelga el módulo. Como el firmware cabe de sobra en la
+RAM interna, se desactiva y **el mismo binario vale para las dos placas**. Esto
+no libera los GPIO 35–37, que siguen cableados a la PSRAM dentro del módulo.
 
 ## Estructura
 
 ```
 firmware/esp32/
 ├── CMakeLists.txt              proyecto ESP-IDF
-├── sdkconfig.defaults          watchdog, OTA, coredump, firma, NVS cifrada
+├── idf.ps1                     lanzador que prepara el entorno de ESP-IDF
+├── sdkconfig.defaults          base común: watchdog, OTA, coredump, particiones
+├── sdkconfig.defaults.modulo   añade PCB topología B + Ethernet W5500
+├── sdkconfig.defaults.prod     añade firma de imagen y NVS cifrada (necesita clave)
 ├── partitions.csv              OTA A/B + NVS + partición de cola de eventos
-├── boards/                     pinout preliminar por placa
+├── boards/
+│   ├── diana_board.h           selector: incluye el pinout según menuconfig
+│   ├── esp32s3_topoB_fase1.h   banco de pruebas (devkit + módulos comerciales)
+│   └── esp32s3_w5500_topoB.h   módulo 3×3 definitivo
 ├── components/
-│   ├── diana_core/             lógica pura (probada)
+│   ├── diana_core/             lógica pura (probada en host)
 │   ├── diana_hal/              interfaz del HAL
-│   └── diana_platform_esp/     W5500, MQTT, NVS, piezo, LED, OTA (sin compilar)
-├── main/                       aplicación y tareas (sin compilar)
+│   └── diana_platform_esp/     red, MQTT, NVS, piezo, LED, OTA
+├── main/                       aplicación y tareas
 ├── test_host/                  HAL de simulación + suite de pruebas
 ├── tools/                      validador de mensajes contra el contrato
 └── build-host/                 salida de la compilación en PC (ignorada por git)
 ```
+
+## Cómo se captura un impacto
+
+No hay nueve interrupciones: **no caben** en el presupuesto de GPIO
+(`hardware/electronics/calculations/03-presupuesto-gpio.md`). Las salidas de los
+comparadores se combinan por diodos en un único `IRQ_ANY` y la identidad del
+canal se lee después de un registro de desplazamiento 74HC165.
+
+El reparto de responsabilidades es lo delicado:
+
+1. **La ISR** (en IRAM, para sobrevivir a una escritura OTA) hace lo mínimo:
+   anota el reloj monotónico y avisa. Ese instante es el `event_us` del evento y
+   no puede depender de cuándo se llegue a atender el aviso.
+2. **La tarea de piezo** lee el 74HC165, traduce bits a canales y encola un
+   disparo por canal activo, todos con el instante de la ISR.
+3. **`diana_core`** agrupa en la ventana de 1–3 ms y decide por amplitud
+   (dosier §9.6). No sabe nada de todo lo anterior.
+
+Se pierde el orden temporal entre canales dentro de una misma lectura (decenas
+de µs). El algoritmo especificado decide por amplitud, no por orden, así que no
+se pierde funcionalidad exigida — **pero hay que confirmarlo en banco**.
+
+En la PCB definitiva hay además un peligro de arranque (decisión D-15): el
+umbral lo genera un PWM filtrado, y con el PWM a cero **todos los comparadores
+quedan disparados**. Por eso el driver fija el umbral y espera a que el filtro
+RC se asiente *antes* de habilitar la interrupción.
 
 ## Divergencia abierta con el contrato
 

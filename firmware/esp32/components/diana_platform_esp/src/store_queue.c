@@ -23,6 +23,7 @@
 #include "esp_crc.h"
 #include "esp_log.h"
 #include "esp_partition.h"
+#include "spi_flash_mmap.h"   /* SPI_FLASH_SEC_SIZE */
 
 static const char *TAG = "diana.evtq";
 

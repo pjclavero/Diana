@@ -1,2 +1,18 @@
 # Salida de la compilacion de pruebas en host (make -C firmware test).
 build-host/
+
+# Salida de ESP-IDF.
+build/
+build_*/
+sdkconfig
+sdkconfig.old
+
+# Componentes descargados por el gestor de dependencias (idf_component.yml).
+# El .gitignore raiz excluye tambien dependencies.lock, de modo que las
+# versiones exactas se resuelven en cada maquina: quien necesite builds
+# reproducibles bit a bit tendra que versionar ese fichero.
+managed_components/
+
+# Clave de firma de imagen OTA: NUNCA debe entrar en el repositorio.
+secure_boot_signing_key.pem
+*.pem
