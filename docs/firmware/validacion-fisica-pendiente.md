@@ -1,8 +1,8 @@
 # Validación física pendiente
 
-**Este documento existe porque el firmware de WP-04 se ha escrito sin ESP-IDF,
-sin hardware y sin posibilidad de medir nada.** Todo lo que aparece aquí está
-sin comprobar. Ningún valor de este documento debe tratarse como calibrado.
+**Este documento existe porque el firmware de WP-04 se escribió sin hardware y
+sin posibilidad de medir nada.** Todo lo que aparece aquí está sin comprobar.
+Ningún valor de este documento debe tratarse como calibrado.
 
 ## 0. Resumen para quien vaya a montar el banco
 
@@ -10,9 +10,30 @@ sin comprobar. Ningún valor de este documento debe tratarse como calibrado.
 |---|---|
 | Lógica de negocio | probada en PC, 389 comprobaciones |
 | Conformidad con el contrato MQTT | validada contra los esquemas reales |
-| Compilación con ESP-IDF | **nunca ejecutada** |
+| Compilación con ESP-IDF | **hecha** (v5.5.2, `esp32s3`, ambas configuraciones) desde 2026-07-27 |
+| Grabación y arranque en placa | **nunca ejecutados** |
 | Cualquier cosa con hardware | **nunca ejecutada** |
 | Umbrales piezoeléctricos | **inventados**, punto de partida |
+
+## 0.1 Lo que la nueva arquitectura de captura añade a esta lista
+
+El firmware ya no lee nueve interrupciones directas, sino una agregada más un
+registro de desplazamiento (ver [`pinout-definitivo.md`](pinout-definitivo.md)).
+Eso incorpora cuatro medidas nuevas, todas del banco de la fase 1
+([`fase1-protoboard.md`](fase1-protoboard.md) §5):
+
+| # | Qué medir | Por qué importa |
+|---|---|---|
+| V-P1 | Tiempo desde el flanco de `IRQ_ANY` hasta tener los bits leídos | Debe ser muy inferior a la ventana de agrupación de 1–3 ms del dosier §9.6. Estimado en decenas de µs, **sin medir** |
+| V-P2 | Nivel real del nodo `IRQ_ANY` con 1 canal activo y con todos | El cálculo da 0,50 V frente a un V_IL máximo de 0,825 V. Margen 0,325 V, **sin medir** |
+| V-P3 | Polaridad real de la salida `DO` de los módulos comerciales | Si no coincide con `DIANA_PIEZO_ACTIVE_LOW`, o no se detecta ningún impacto o se detectan continuamente |
+| V-P4 | Duración del pulso de `DO` | Estos módulos comparan sobre la señal cruda, no sobre la envolvente: el pulso puede durar menos de 1 ms y acotar el margen de V-P1 |
+
+Y una que sólo aplica a la PCB definitiva:
+
+| # | Qué verificar | Por qué |
+|---|---|---|
+| V-P5 | Que el umbral por PWM queda fijado y el filtro RC asentado **antes** de habilitar la interrupción | Con el PWM a cero, `VREF_TH` = 0 V y **los nueve comparadores quedan disparados** (decisión D-15). El código lo hace; falta comprobarlo con señales reales |
 
 ## 1. Umbrales piezoeléctricos: NO están calibrados
 

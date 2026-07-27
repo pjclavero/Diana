@@ -1,5 +1,23 @@
 # Pinout preliminar y presupuesto de GPIO
 
+> # ⛔ DOCUMENTO OBSOLETO — NO USAR (2026-07-27)
+>
+> **Sustituido por [`pinout-definitivo.md`](pinout-definitivo.md).** El fichero
+> de código que era su fuente de verdad, `boards/esp32s3_w5500_protoA.h`, ha
+> sido **retirado del repositorio**.
+>
+> Se conserva sólo como registro histórico de por qué se cambió. Sus errores:
+>
+> 1. La topología que propone **no cabe**: el cálculo
+>    [`03-presupuesto-gpio.md`](../../hardware/electronics/calculations/03-presupuesto-gpio.md)
+>    demostró un déficit de 4 a 9 pines. La afirmación de §1 de que «quedan 6–8
+>    pines de reserva» es falsa.
+> 2. Usa **GPIO 33, 35, 36 y 37**, ocupados por la PSRAM octal del
+>    ESP32-S3-WROOM-1-N16R8. No están disponibles.
+> 3. Usa el **GPIO 3**, pin de strapping, como entrada analógica (hallazgo X-04).
+> 4. Asume 9 interrupciones de piezo y multiplexor CD74HC4067; el diseño
+>    adoptado agrega las interrupciones y usa un ADC SPI externo.
+
 > **NINGÚN PIN DE ESTE DOCUMENTO SE HA VERIFICADO SOBRE HARDWARE.**
 > Es una propuesta que cumple el presupuesto del dosier §8.4 y las restricciones
 > publicadas del ESP32-S3. Debe contrastarse con la placa concreta y pasar la
