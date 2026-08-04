@@ -412,8 +412,10 @@ export function ScoreboardPage() {
                           <p>
                             Estadística reiniciada. Borrados: {resetOutcome.deleted.results} resultado(s),{" "}
                             {resetOutcome.deleted.penalties} penalización(es) y {resetOutcome.deleted.shotCounts}{" "}
-                            registro(s) de munición. Impactos conservados pero sin atribuir:{" "}
-                            {resetOutcome.hitsDetached}.
+                            registro(s) de munición.{" "}
+                            {resetOutcome.hitsDetached > 0
+                              ? `Impactos apartados en este reinicio (se conservan sin atribuir): ${resetOutcome.hitsDetached}.`
+                              : "Este reinicio no ha apartado impactos adicionales. Los apartados por reinicios anteriores siguen conservados sin atribuir y no se incluyen en este cero."}
                           </p>
                           {resetOutcome.notes.map((note) => (
                             <p key={note}>{note}</p>

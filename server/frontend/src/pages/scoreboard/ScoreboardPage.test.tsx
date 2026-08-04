@@ -409,7 +409,7 @@ describe("ScoreboardPage · reinicio de estadística por partida (F4 · §3.4)",
       expect(reset).toHaveBeenCalledWith("11111111-1111-4111-8111-111111111111", "p1"),
     );
     expect(await screen.findByText(/Borrados: 2 resultado\(s\)/)).toBeInTheDocument();
-    expect(screen.getByText(/Impactos conservados pero sin atribuir: 3/)).toBeInTheDocument();
+    expect(screen.getByText(/Impactos apartados en este reinicio.*: 3/)).toBeInTheDocument();
     // El marcador se recarga: lo que se ve ya no es lo de antes del borrado.
     await waitFor(() => expect(vi.mocked(api.getScoreboard).mock.calls.length).toBeGreaterThan(board1));
   });
@@ -428,6 +428,18 @@ describe("ScoreboardPage · reinicio de estadística por partida (F4 · §3.4)",
     confirmar.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await waitFor(() => expect(reset).toHaveBeenCalled());
     expect(reset).toHaveBeenCalledTimes(1);
+  });
+
+  it("un segundo reinicio no presenta su cero como el total de impactos apartados", async () => {
+    vi.spyOn(api, "resetParticipantStats").mockResolvedValue({ ...outcome, hitsDetached: 0 });
+    await openFicha(GESTOR);
+    await userEvent.click(await screen.findByRole("button", { name: /Reiniciar estadística de Ana/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Sí, reiniciar" }));
+
+    expect(
+      await screen.findByText(/no ha apartado impactos adicionales.*reinicios anteriores siguen conservados/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Impactos conservados pero sin atribuir: 0/)).toBeNull();
   });
 
   it("la confirmación dice que el acumulado global se borra y se recalcula", async () => {

@@ -1,6 +1,7 @@
 import { IngestService } from '../../src/modules/mqtt/ingest.service';
 import { ContractValidator } from '../../src/contracts/contract-validator';
 import type { IncidentInput, IncidentSinkPort } from '../../src/modules/hits/ports';
+import { Logger } from '@nestjs/common';
 
 /**
  * La persistencia de los diagnósticos es la MITAD de F6: sin ella, ordenar una
@@ -87,6 +88,37 @@ describe('Ingesta de diagnósticos (F6)', () => {
     const { service, sink } = build();
     await service.handleMessage(TOPIC, payload(), RECEIVED_AT);
     expect(sink.recorded[0].detail).toMatchObject({ firmware_version: '1.2.3' });
+  });
+
+  it('entrega al sink T1 y T3 sin convertir `event_us` en una fecha', async () => {
+    const { service, sink } = build();
+    await service.handleMessage(TOPIC, payload(), RECEIVED_AT);
+    expect(sink.recorded[0]).toMatchObject({
+      receivedAt: RECEIVED_AT,
+      moduleTime: {
+        bootId: '99999999-2222-4333-8444-555555555555',
+        eventUs: 1_000_000,
+        epochMs: null,
+      },
+    });
+  });
+
+  it('si falla la persistencia deja métrica y registro, pero la ingesta sigue aceptada', async () => {
+    const sink: IncidentSinkPort = {
+      record: jest.fn().mockRejectedValue(new Error('PostgreSQL no disponible')),
+    };
+    const logger = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const hits = { insert: jest.fn(), exists: jest.fn().mockResolvedValue(false) } as never;
+    const service = new IngestService(new ContractValidator(), hits, sink);
+
+    const result = await service.handleMessage(TOPIC, payload(), RECEIVED_AT);
+
+    expect(result.status).toBe('accepted');
+    expect(service.getMetrics().diagnosticPersistenceFailures).toBe(1);
+    expect(logger).toHaveBeenCalledWith(
+      expect.stringMatching(/Diagnóstico aceptado pero no persistido.*module-03.*PostgreSQL no disponible/),
+    );
+    logger.mockRestore();
   });
 
   it('un diagnóstico que incumple el contrato se rechaza y NO se guarda', async () => {

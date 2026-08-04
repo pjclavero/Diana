@@ -213,10 +213,15 @@ services:
     networks:
       - internal
     healthcheck:
-      # VERIFICADO (WP-08): el worker (server/worker/src/main.ts) es un bucle
-      # sin servidor HTTP; NO expone /health ni puerto 3100. El placeholder
-      # HTTP anterior habría fallado siempre. Se comprueba que el proceso vive.
-      test: ["CMD-SHELL", "pgrep -f 'node dist/main.js' || exit 1"]
+      # El worker (server/worker/src/main.ts) es un bucle sin servidor HTTP;
+      # NO expone /health ni puerto 3100. `pgrep -f "node dist/main.js"` sólo
+      # comprobaba que el PROCESO seguía vivo: con el motor de Prisma
+      # equivocado (ver server/worker/Dockerfile, causa raíz F-13 bis) el
+      # proceso seguía en pie mientras TODAS las tareas fallaban en bucle, y
+      # el contenedor se declaraba `healthy` sin haber completado ni una.
+      # Ahora se comprueba el heartbeat que main.ts escribe en cada vuelta
+      # (ver server/worker/src/health.ts + healthcheck.ts): vivo Y sirviendo.
+      test: ["CMD", "node", "dist/healthcheck.js"]
       interval: 20s
       timeout: 5s
       retries: 5

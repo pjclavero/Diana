@@ -92,6 +92,8 @@ export class ModuleSimulator {
   private strictOrder = false;
 
   private mqttReconnects = 0;
+  /** Secuencia propia de diagnósticos: evita repetir `event_id` sin alterar la de impactos. */
+  private diagnosticSequence = 0;
 
   constructor(opts: ModuleSimulatorOptions) {
     this.identity = opts.identity;
@@ -442,16 +444,38 @@ export class ModuleSimulator {
   // ---------------------------------------------------------------- baja tensión / diagnóstico
 
   async lowVoltage(voltage5vMv: number): Promise<void> {
-    const eventId = seededUuid(this.rng.fork(`diag-lowv-${this.moduleId}-${this.localSequence}`));
+    await this.publishDiagnostic(
+      'low_voltage',
+      voltage5vMv < 4500 ? 'critical' : 'warning',
+      `Tensión de 5V en ${voltage5vMv} mV`,
+      { voltage_5v_mv: voltage5vMv },
+    );
+  }
+
+  /**
+   * Publica el resultado de una prueba con la forma exacta del contrato MQTT
+   * v1. `detail` es el único espacio extensible del esquema congelado.
+   */
+  private async publishDiagnostic(
+    kind: 'low_voltage' | 'calibration_result' | 'self_test_result',
+    severity: 'info' | 'warning' | 'error' | 'critical',
+    message: string,
+    detail: Record<string, unknown>,
+  ): Promise<void> {
+    this.diagnosticSequence += 1;
+    const eventUs = this.uptimeUs();
+    const eventId = seededUuid(
+      this.rng.fork(`diag-${this.moduleId}-${this.bootId}-${this.diagnosticSequence}`),
+    );
     const payload = {
       schema_version: 1 as const,
       module_id: this.moduleId,
       event_id: eventId,
-      kind: 'low_voltage' as const,
-      severity: voltage5vMv < 4500 ? ('critical' as const) : ('warning' as const),
-      message: `Tensión de 5V en ${voltage5vMv} mV`,
-      device: this.deviceTime(this.uptimeUs()),
-      detail: { voltage_5v_mv: voltage5vMv },
+      kind,
+      severity,
+      message,
+      device: this.deviceTime(eventUs),
+      detail,
       firmware_version: this.firmwareVersion,
     };
     assertValid('module-diagnostic.schema.json', payload);
@@ -542,14 +566,57 @@ export class ModuleSimulator {
           return;
         case 'start_calibration':
           this.state = 'calibration';
+          for (const target of this.targets) target.state = 'calibration';
+          await this.publishDiagnostic(
+            'calibration_result',
+            'info',
+            'Calibración del módulo completada',
+            {
+              result: 'ok',
+              targets: this.targets.map((target) => ({
+                target_index: target.target_index,
+                threshold: this.threshold,
+              })),
+            },
+          );
+          for (const target of this.targets) target.state = 'safe';
+          this.state = 'ready';
           break;
         case 'abort_calibration':
           this.state = 'ready';
           break;
         case 'self_test':
+          await this.publishDiagnostic(
+            'self_test_result',
+            'info',
+            'Autodiagnóstico del módulo completado sin errores',
+            {
+              result: 'ok',
+              component: 'sensors',
+              targets: this.targets.map((target) => ({
+                target_index: target.target_index,
+                enabled: target.enabled,
+              })),
+            },
+          );
           break;
-        case 'led_test':
+        case 'led_test': {
+          const arr = (params.targets ?? []) as { target_index: number; state: TargetState }[];
+          for (const update of arr) {
+            const target = this.targets.find((item) => item.target_index === update.target_index);
+            if (target) target.state = update.state;
+          }
+          // El contrato v1 no define `led_test_result`. El resultado positivo
+          // se expresa como `self_test_result` y se discrimina en `detail`;
+          // `led_chain_error` queda reservado a un fallo real de la cadena.
+          await this.publishDiagnostic(
+            'self_test_result',
+            'info',
+            'Prueba de LED aplicada',
+            { result: 'ok', component: 'led', targets: arr },
+          );
           break;
+        }
         case 'flush_queue':
           await this.flushQueue();
           break;

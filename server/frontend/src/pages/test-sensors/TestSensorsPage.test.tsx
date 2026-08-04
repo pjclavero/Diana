@@ -68,6 +68,8 @@ describe("TestSensorsPage (F6)", () => {
           severity: "error",
           message: "Sensor 4 sin respuesta",
           occurredAt: "2026-07-26T10:00:00Z",
+          receivedAt: "2026-07-26T10:00:03Z",
+          timeBasis: "module_epoch",
         },
         {
           id: "i2",
@@ -75,6 +77,8 @@ describe("TestSensorsPage (F6)", () => {
           severity: "warning",
           message: "ruido que no toca",
           occurredAt: "2026-07-26T10:00:00Z",
+          receivedAt: "2026-07-26T10:00:03Z",
+          timeBasis: "module_epoch",
         },
       ],
     });
@@ -82,6 +86,38 @@ describe("TestSensorsPage (F6)", () => {
     expect(await screen.findByText("Sensor 4 sin respuesta")).toBeInTheDocument();
     // Sólo lo relacionado con la prueba: el resto de incidencias no se cuela.
     expect(screen.queryByText("ruido que no toca")).toBeNull();
+  });
+
+  it('la columna «Cuándo» distingue hora del módulo de mera recepción', async () => {
+    vi.spyOn(apiClient, "getModuleDiagnostics").mockResolvedValue({
+      module: "mod-a",
+      note: null,
+      items: [
+        {
+          id: "con-reloj",
+          kind: "self_test_result",
+          severity: "info",
+          message: "Con reloj",
+          occurredAt: "2026-07-26T10:00:00Z",
+          receivedAt: "2026-07-26T10:00:03Z",
+          timeBasis: "module_epoch",
+        },
+        {
+          id: "sin-reloj",
+          kind: "calibration_result",
+          severity: "info",
+          message: "Sin reloj",
+          occurredAt: null,
+          receivedAt: "2026-07-26T10:00:05Z",
+          timeBasis: "ingest_received",
+        },
+      ],
+    });
+
+    renderPage();
+
+    expect(await screen.findByText(/Hora del módulo:/)).toBeInTheDocument();
+    expect(screen.getByText(/Módulo sin reloj · recibido:/)).toBeInTheDocument();
   });
 
   it("si la consulta falla lo dice", async () => {

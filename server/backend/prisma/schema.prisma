@@ -17,6 +17,19 @@
 
 generator client {
   provider = "prisma-client-js"
+  // El motor se declara EXPRESAMENTE en vez de dejarlo a la detección.
+  //
+  // Prisma deduce el motor mirando la libssl del sistema donde se genera, y si
+  // no la encuentra cae en un valor fijo por defecto: `debian-openssl-1.1.x`.
+  // Eso fue exactamente lo que rompió el worker en producción: se generaba en
+  // una etapa del Dockerfile sin `openssl`, y la etapa de ejecución (Debian 12,
+  // OpenSSL 3) se encontraba un motor que no servía. El contenedor arrancaba y
+  // fallaba en la primera consulta, en bucle. Declararlo aquí hace que el
+  // acierto no dependa de qué imagen base tenga cada etapa ni de que alguien
+  // recuerde instalar `openssl` antes de generar.
+  //
+  // `native` mantiene el desarrollo local funcionando en cualquier máquina.
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -910,10 +923,17 @@ model Incident {
   severity       IncidentSeverity @default(warning)
   source         String           @db.VarChar(64)
   moduleId       String?          @map("module_id") @db.Uuid
+  moduleSlug     String?          @map("module_slug") @db.VarChar(128)
   targetSystemId String?          @map("target_system_id") @db.Uuid
   eventId        String?          @map("event_id") @db.VarChar(64)
   message        String           @db.VarChar(1024)
   detail         Json?
+  /// Hora de pared declarada por el módulo (`device.epoch_ms`); nula si no tenía reloj.
+  deviceOccurredAt DateTime?      @map("device_occurred_at") @db.Timestamptz(6)
+  /// T1 monotónico original: se conserva, pero no se puede convertir a una fecha civil.
+  deviceEventUs  BigInt?          @map("device_event_us")
+  deviceEpochMs  BigInt?          @map("device_epoch_ms")
+  deviceBootId   String?          @map("device_boot_id") @db.Uuid
   occurredAt     DateTime         @default(now()) @map("occurred_at") @db.Timestamptz(6)
   resolvedAt     DateTime?        @map("resolved_at") @db.Timestamptz(6)
   resolvedBy     String?          @map("resolved_by") @db.VarChar(64)
@@ -924,6 +944,7 @@ model Incident {
   @@index([occurredAt])
   @@index([severity, occurredAt])
   @@index([moduleId, occurredAt])
+  @@index([moduleSlug, occurredAt])
   @@map("incidents")
 }
 

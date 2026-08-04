@@ -36,6 +36,14 @@ export interface IncidentInput {
   eventId?: string | null;
   message: string;
   detail?: unknown;
+  /** T3: instante exacto en que el backend recibió el mensaje. */
+  receivedAt?: Date;
+  /** T1 del módulo. `epochMs=null` significa que no tenía reloj de pared. */
+  moduleTime?: {
+    bootId: string;
+    eventUs: number;
+    epochMs: number | null;
+  };
 }
 
 export interface IncidentSinkPort {

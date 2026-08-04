@@ -15,6 +15,12 @@ function formatWhen(iso: string): string {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleTimeString();
 }
 
+function formatDiagnosticWhen(result: DiagnosticResult): string {
+  return result.occurredAt
+    ? `Hora del módulo: ${formatWhen(result.occurredAt)}`
+    : `Módulo sin reloj · recibido: ${formatWhen(result.receivedAt)}`;
+}
+
 /**
  * Prueba de sensores (F6).
  *
@@ -130,7 +136,7 @@ export function TestSensorsPage() {
               <tbody>
                 {results.map((r) => (
                   <tr key={r.id}>
-                    <td>{formatWhen(r.occurredAt)}</td>
+                    <td>{formatDiagnosticWhen(r)}</td>
                     <td>{r.kind}</td>
                     <td>{r.severity}</td>
                     <td>{r.message}</td>

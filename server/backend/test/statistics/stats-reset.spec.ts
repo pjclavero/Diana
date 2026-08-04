@@ -313,6 +313,9 @@ describe('StatsResetService · reinicio de estadística por partida (§3.4)', ()
       { id: 'st1', scope: 'game', metric: 'aciertos', playerId: ANA, gameId: G1, roundId: null },
       { id: 'st2', scope: 'round', metric: 'aciertos', playerId: ANA, gameId: null, roundId: R1 },
       { id: 'st3', scope: 'player', metric: 'aciertos', playerId: ANA, gameId: null, roundId: null },
+      // Misma forma de claves nulas, pero otro ámbito: no pertenece al
+      // acumulado del jugador y nunca debe caer por compartir `playerId`.
+      { id: 'st-global', scope: 'global', metric: 'aciertos', playerId: ANA, gameId: null, roundId: null },
       { id: 'st4', scope: 'game', metric: 'aciertos', playerId: BEA, gameId: G1, roundId: null },
     );
 
@@ -325,8 +328,9 @@ describe('StatsResetService · reinicio de estadística por partida (§3.4)', ()
     // recálculo y quedan congelados para siempre.
     expect(outcome.deleted.globalStatistics).toBe(1);
     expect(outcome.notes.join(' ')).toContain('acumulada global');
-    // Sobrevive sólo lo de OTRO jugador.
-    expect(prisma.db.statistics.map((s) => s.id).sort()).toEqual(['st4']);
+    // Sobreviven lo de OTRO jugador y el ámbito global, aunque éste comparta
+    // `playerId` y las dos claves nulas con el acumulado de Ana.
+    expect(prisma.db.statistics.map((s) => s.id).sort()).toEqual(['st-global', 'st4']);
   });
 
   it('no toca el acumulado global de OTROS jugadores', async () => {

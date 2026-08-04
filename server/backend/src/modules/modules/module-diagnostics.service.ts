@@ -161,17 +161,53 @@ export class ModuleDiagnosticsService {
    * permite saber cómo fue una prueba: la llamada que la ordena no lo sabe.
    */
   async results(idOrSlug: string, actor: DiagnosticsActor, take = 20) {
-    const module = await this.resolve(idOrSlug, actor);
+    let module: { id: string; slug: string } | null;
+    try {
+      module = await this.resolve(idOrSlug, actor);
+    } catch (error) {
+      // Un administrador puede consultar por slug los diagnósticos de un
+      // dispositivo que publica antes de estar dado de alta. Para gestores no
+      // se abre este atajo: sin módulo registrado no se puede probar propiedad.
+      if (
+        actor.role === ROLE.ADMINISTRADOR &&
+        !UUID.test(idOrSlug) &&
+        error instanceof NotFoundException
+      ) {
+        module = null;
+      } else {
+        throw error;
+      }
+    }
     const items = await this.prisma.incident.findMany({
-      where: { moduleId: module.id, source: 'diagnostic' },
+      // `moduleSlug` rescata diagnósticos recibidos antes de que el módulo se
+      // registrara en la base; una vez conocido, aparecen en su historial.
+      where: module
+        ? {
+            source: 'diagnostic',
+            OR: [{ moduleId: module.id }, { moduleSlug: module.slug }],
+          }
+        : { source: 'diagnostic', moduleSlug: idOrSlug },
       orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
       take: Math.min(Math.max(take, 1), 100),
     });
     return {
-      module: module.slug,
-      items,
+      module: module?.slug ?? idOrSlug,
+      moduleRegistered: module !== null,
+      items: items.map((item) => ({
+        ...item,
+        // `occurredAt` significa aquí hora del SUCESO según el módulo. Si no
+        // tenía reloj (`epoch_ms=null`) queda a null: no se suplanta con T3.
+        occurredAt: item.deviceOccurredAt,
+        receivedAt: item.occurredAt,
+        timeBasis: item.deviceOccurredAt ? ('module_epoch' as const) : ('ingest_received' as const),
+        deviceEventUs: item.deviceEventUs?.toString() ?? null,
+        deviceEpochMs: item.deviceEpochMs?.toString() ?? null,
+      })),
       note:
-        items.length === 0
+        module === null
+          ? `El módulo «${idOrSlug}» no está registrado. Se muestran los diagnósticos ` +
+            'conservados bajo su identificador MQTT.'
+          : items.length === 0
           ? 'Sin resultados: el módulo no ha respondido a ninguna prueba todavía.'
           : null,
     };

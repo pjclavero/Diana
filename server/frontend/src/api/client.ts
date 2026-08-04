@@ -67,12 +67,18 @@ export interface DiagnosticResult {
   kind: string;
   severity: "info" | "warning" | "error" | "critical";
   message: string;
-  occurredAt: string;
+  /** Hora civil del suceso declarada por el módulo; nula si no tenía reloj. */
+  occurredAt: string | null;
+  /** Hora T3 de recepción en el backend, siempre identificada como tal. */
+  receivedAt: string;
+  timeBasis: "module_epoch" | "ingest_received";
+  deviceEventUs?: string | null;
   detail?: unknown;
 }
 
 export interface DiagnosticResults {
   module: string;
+  moduleRegistered?: boolean;
   items: DiagnosticResult[];
   note: string | null;
 }

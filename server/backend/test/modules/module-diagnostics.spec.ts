@@ -153,9 +153,86 @@ describe('Diagnóstico · ordenar no es saber el resultado', () => {
     const { service, prisma } = build();
     await service.results('mod-a', ADMIN, 5);
     expect(prisma.incident.findMany.mock.calls[0][0]).toMatchObject({
-      where: { moduleId: 'm1', source: 'diagnostic' },
+      where: {
+        source: 'diagnostic',
+        OR: [{ moduleId: 'm1' }, { moduleSlug: 'mod-a' }],
+      },
       take: 5,
     });
+  });
+
+  it('expone la hora del módulo y distingue la recepción cuando no había reloj', async () => {
+    const receivedAt = new Date('2026-08-04T10:00:03Z');
+    const deviceOccurredAt = new Date('2026-08-04T10:00:00Z');
+    const { service } = build({
+      incident: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'i-con-reloj',
+            kind: 'calibration_result',
+            severity: 'info',
+            message: 'Calibrado',
+            occurredAt: receivedAt,
+            deviceOccurredAt,
+            deviceEventUs: 4_000_000n,
+            deviceEpochMs: BigInt(deviceOccurredAt.getTime()),
+          },
+          {
+            id: 'i-sin-reloj',
+            kind: 'self_test_result',
+            severity: 'info',
+            message: 'Correcto',
+            occurredAt: receivedAt,
+            deviceOccurredAt: null,
+            deviceEventUs: 5_000_000n,
+            deviceEpochMs: null,
+          },
+        ]),
+      },
+    });
+
+    const result = await service.results('mod-a', ADMIN);
+    expect(result.items[0]).toMatchObject({
+      occurredAt: deviceOccurredAt,
+      receivedAt,
+      timeBasis: 'module_epoch',
+      deviceEventUs: '4000000',
+    });
+    expect(result.items[1]).toMatchObject({
+      occurredAt: null,
+      receivedAt,
+      timeBasis: 'ingest_received',
+      deviceEventUs: '5000000',
+    });
+  });
+
+  it('el admin consulta por slug diagnósticos recibidos antes del alta del módulo', async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        id: 'i-huerfana',
+        kind: 'self_test_result',
+        severity: 'warning',
+        message: 'Publicado antes del alta',
+        occurredAt: new Date('2026-08-04T10:00:03Z'),
+        deviceOccurredAt: null,
+        deviceEventUs: 1_000n,
+        deviceEpochMs: null,
+      },
+    ]);
+    const { service } = build({
+      module: { findUnique: jest.fn().mockResolvedValue(null) },
+      incident: { findMany },
+    });
+
+    const result = await service.results('module-sin-alta', ADMIN);
+
+    expect(findMany.mock.calls[0][0].where).toEqual({
+      source: 'diagnostic',
+      moduleSlug: 'module-sin-alta',
+    });
+    expect(result.moduleRegistered).toBe(false);
+    expect(result.items).toHaveLength(1);
+    expect(result.note).toMatch(/no está registrado.*diagnósticos conservados/i);
   });
 
   it('sin respuestas del módulo se dice que no hay, no se finge silencio normal', async () => {

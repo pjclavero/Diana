@@ -39,6 +39,8 @@ export interface IngestMetrics {
   ignored: number;
   replayed: number;
   outOfWindow: number;
+  /** Diagnósticos aceptados cuyo resultado no se pudo persistir. */
+  diagnosticPersistenceFailures: number;
   byRejectionCode: Record<string, number>;
   byTopicKind: Record<string, number>;
 }
@@ -76,6 +78,7 @@ export class IngestService {
     ignored: 0,
     replayed: 0,
     outOfWindow: 0,
+    diagnosticPersistenceFailures: 0,
     byRejectionCode: {},
     byTopicKind: {},
   };
@@ -104,6 +107,7 @@ export class IngestService {
     this.metrics.ignored = 0;
     this.metrics.replayed = 0;
     this.metrics.outOfWindow = 0;
+    this.metrics.diagnosticPersistenceFailures = 0;
     this.metrics.byRejectionCode = {};
     this.metrics.byTopicKind = {};
   }
@@ -213,6 +217,11 @@ export class IngestService {
         message: string;
         detail?: unknown;
         firmware_version?: string;
+        device: {
+          boot_id: string;
+          event_us: number;
+          epoch_ms?: number | null;
+        };
       };
       await this.incidents
         .record({
@@ -225,8 +234,20 @@ export class IngestService {
           // La versión va DEBAJO: si el módulo manda su propio
           // `firmware_version` en el detalle, manda el suyo.
           detail: { firmware_version: d.firmware_version, ...(d.detail as object) },
+          receivedAt,
+          moduleTime: {
+            bootId: d.device.boot_id,
+            eventUs: d.device.event_us,
+            epochMs: d.device.epoch_ms ?? null,
+          },
         })
-        .catch(() => undefined);
+        .catch((error: unknown) => {
+          this.metrics.diagnosticPersistenceFailures += 1;
+          this.logger.error(
+            `Diagnóstico aceptado pero no persistido: módulo=${d.module_id}, ` +
+              `event_id=${d.event_id} · ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
     }
 
     if (parsed.kind === 'module-hit') {

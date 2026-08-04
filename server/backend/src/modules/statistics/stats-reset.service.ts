@@ -193,7 +193,12 @@ export class StatsResetService {
         // saltaba el recálculo y quedaban congelados PARA SIEMPRE—. Se borran:
         // ausencia = no hay dato, que es la verdad hasta el próximo recálculo.
         const global = await tx.statistic.deleteMany({
-          where: { playerId: participant.playerId, gameId: null, roundId: null },
+          where: {
+            scope: 'player',
+            playerId: participant.playerId,
+            gameId: null,
+            roundId: null,
+          },
         });
         globals = global.count;
       }
