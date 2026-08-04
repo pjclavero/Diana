@@ -29,8 +29,10 @@ Rama `develop` @ `1aa1fbc`.
 > `0343a76` NO han pasado revisión independiente**: las tres fases siguen sin poder darse por
 > cerradas.
 >
-> **Estado de las suites, reejecutado hoy 2026-08-04 sobre `0343a76`**: backend **630 pasan,
-> 0 fallan, 7 se saltan** (637; las saltadas necesitan `DATABASE_URL`), frontend **179/179**,
+> **Estado de las suites, reejecutado hoy 2026-08-04 sobre `36f8e14`**: backend **639 pasan,
+> 0 fallan, 7 se saltan** (646; las saltadas necesitan `DATABASE_URL`), frontend **181/181**,
+> worker **15/15** (antes no tenía NINGUNA prueba, X-16), simulador **34/34**, contratos
+> **43 comprobaciones / 0 fallos**,
 > `tsc` limpio **incluido el árbol de pruebas** —que no compilaba— y tres ejecuciones seguidas
 > sin intermitencias. Durante el barrido el backend estaba en ROJO (584/8/7 sobre `1aa1fbc`). Las 8 que fallaban estaban todas en
 > `test/invitations/manager-activation.spec.ts`: **bomba de relojería en las propias pruebas**,
@@ -98,7 +100,7 @@ Rama `develop` @ `1aa1fbc`.
 | X-06 | El contrato que asume el panel no está negociado con el backend. Nació como «contrato REST»; la parte REST se ha ido cerrando (X-21) y **lo que queda vivo bajo este número es el contrato WebSocket**: el panel abre un WebSocket **crudo** contra `${VITE_WS_URL}/games/:id/live` (`server/frontend/src/api/realGameSocket.ts:41`), mientras el backend sirve **socket.io** en `path: '/ws/socket.io'`, `namespace: '/live'` (`server/backend/src/modules/websocket/live.gateway.ts:39-42`). Un `WebSocket` nativo no habla el protocolo de socket.io, así que **la vista en directo no puede funcionar contra el backend real**, y el proxy sólo enruta `/ws/` → `backend:3000/ws/` (`infrastructure/proxy/nginx.conf:103`) | WP-03 | WP-02, WP-03 | **CORREGIDO EN CÓDIGO (`5c3b7ac` + `eb42324`), SIN DESPLEGAR Y SIN PROBAR CON NAVEGADOR REAL.** `5c3b7ac`: gateway con `path: '/ws/socket.io'`, salas reales con `subscribe_game`/`unsubscribe_game`, último `game/state` recordado por partida con cota dura de 200, y el panel a `socket.io-client`. Ni `LiveGateway` ni `realGameSocket` tenían **ninguna** prueba: añadidas 15 + 13. **1ª supervisión: `NO CONFORME`, 2 bloqueantes reales; corregidos en `eb42324`.** El supervisor montó nginx 1.26 de verdad con el fichero del repo y probó el transporte de extremo a extremo: eso sí funcionaba. Lo que no: **B1 · el canal no pedía credenciales y difundía TODO** — el arreglo por salas sólo cubría el evento `live`, y el «canal de diagnóstico» seguía haciendo `server.emit` a todo el namespace, así que un cliente **sin token y sin suscribirse a nada** recibía la manguera MQTT completa (estados de partidas ajenas, telemetría, impactos, presencia); *el commit anterior afirmaba haber corregido esto y la afirmación era falsa para ese canal*. Ahora el saludo exige un JWT válido (los guards globales son de contexto HTTP y no llegan al gateway) y el diagnóstico va a una sala que hay que pedir expresamente. **B2 · el panel reventaba con un `game/state` válido** (`active_targets` no está en `required` y `LiveGamePage` lo recorría: `TypeError: … is not iterable`); antes era inalcanzable porque nunca conectaba, y el arreglo lo hizo alcanzable. Observaciones corregidas: los dos extremos usaban **palabras distintas para lo mismo** (`aborted` frente a `finished`/`cancelled`, `all_against_clock`/`all_vs_clock`, `penalty_applied`/`penalty`), así que una partida abortada se veía como si siguiera corriendo para siempre → nuevo `liveContract.ts` que traduce en la frontera; la cota LRU desalojaba **la partida en curso** y conservaba las terminadas; CORS del gateway alineado con `CORS_ORIGINS`; nginx mandaba `Connection: upgrade` también en las peticiones de sondeo (añadido el `map $http_upgrade $connection_upgrade`, validado con `nginx -t`). **HALLAZGO GRAVE que sigue abierto:** el panel de producción **se compila en modo `mock`** (`server/frontend/Dockerfile:19` y `compose.yml:83`, `VITE_API_MODE: ${VITE_API_MODE:-mock}`), así que **ni desplegando esto se usaría el cliente nuevo**; además `compose.yml` exportaba `VITE_WS_BASE_URL` como variable de ejecución cuando el código lee `VITE_WS_URL` en COMPILACIÓN (no hacía nada). El cableado se corrigió, pero **el modo sigue en `mock` a propósito**: pasar a `real` exige cerrar antes X-21. **Lo que sigue abierto:** no probado con navegador real ni contra MQTT/firmware real, y `io server disconnect` deja al cliente sin reintento (riesgo latente; hoy nadie lo emite). G-I **no** lo cerró, pese a que el backlog decía «G-I cierra X-06/X-18» |
 | X-18-INGESTA | **La ingesta e2e nunca se ha verificado:** tras ejecutar el escenario del simulador contra el broker de la VM, `hit_events = 0` y sin trazas de ingesta en el backend (`deployment/procedimiento.md` §9). Antes se le llamaba «X-18» a secas, chocando con el X-18 de §2.4 | WP-08/WP-11 | WP-02, WP-05 | **Abierto.** Sin reintentar desde 2026-07-21. G-I añadió persistencia de **presencia** y atribución de impactos, pero **no** re-ejecutó la prueba de ingesta extremo a extremo |
 | X-07 | ~~E2E de Playwright no ejecutables aquí~~ **Reclasificado por WP-07: Chromium SÍ se instala.** Ejecutados de verdad: **6 pasan, 12 fallan.** No es utillaje: bug real de strict-mode en `server/frontend/e2e/game-flow.spec.ts:46` (`getByText(/en directo\|conectando/i)` casa 2 elementos) y `vite preview` atado sólo a IPv6 `::1` (falta `--host 127.0.0.1` en `server/frontend/playwright.config.ts`) | WP-03 | WP-03, WP-11 | **Cerrado.** WP-03 los corrigió (4 bugs en total, no 2); E2E 18/18 con navegador real. El adaptador es mock: la ejecución contra el backend real queda en X-06 |
-| X-16 | El worker (`server/worker`) **no tiene ningún test**: `npm test` sale con código 1 ("No tests found"). En CI se usa `jest --passWithNoTests` para no romper, pero es una laguna de cobertura, no una solución | WP-07 | WP-02 | Abierto |
+| X-16 | El worker (`server/worker`) **no tiene ningún test**: `npm test` sale con código 1 ("No tests found"). En CI se usa `jest --passWithNoTests` para no romper, pero es una laguna de cobertura, no una solución | WP-07 | WP-02 | **PARCIALMENTE CERRADO (2026-08-04, `36f8e14`).** El worker ya tiene banco de pruebas propio (`jest.config.js` + `src/health.spec.ts`): **15 pruebas** sobre la lógica de salud, verificadas por mutación con control neutro. **Sigue abierto** lo que señala X-20: `tasks.ts` (ejecución de tareas) y `main.ts` (arranque) no tienen prueba propia —`tasks.ts` sí se ejerce desde `server/backend/test/worker/statistics-recompute.spec.ts`, añadido en F4—. Y el arreglo del motor de Prisma **no es comprobable con una prueba unitaria**: es una decisión de Dockerfile/esquema, y se verifica inspeccionando el artefacto tras reconstruir |
 | X-08 | **F-02** · La ACL de MQTT autoriza por `%c` (`client_id`, que elige el cliente) y no por `%u`: unas credenciales cualesquiera de módulo bastan para publicar `hit`, `status`, `telemetry`… en nombre de **cualquier otro módulo**. Falta `use_username_as_clientid true` | WP-10 | WP-01, WP-04, WP-05 | **CONFIRMADO EN VIVO (2026-07-21)** contra el broker de la VM: credenciales de m1 con `client_id=m2` publicaron en el tópico de m2 y el backend lo recibió. Mitigación = alinear usuario=client_id=module_id + `use_username_as_clientid true` (cambio de contrato §8, para el supervisor) |
 | X-09 | **F-04** · El contrato de variables de entorno entre `compose.yml` y el backend está roto en 5 variables: `JWT_SECRET` no se pasa, `CORS_ORIGIN` vs `CORS_ORIGINS`, `MQTT_HOST/PORT` vs `MQTT_URL`, `SESSION_SECRET` sin uso, `DIANA_ADMIN_*` sin pasar. Con `NODE_ENV=production` el backend **no arranca**; sin él, firma los JWT con `'desarrollo-inseguro-cambiar'` | WP-10 | WP-01, WP-02, WP-08 | Abierto. Alto |
 | X-10 | **F-13** · Faltan los `Dockerfile` de `server/backend` y `server/worker`; 4 de los 6 servicios que construyen imagen apuntan a un contexto sin `Dockerfile`. Impide ejecutar el stack y, por tanto, verificar F-02, F-03, F-05, F-06, F-08, F-09, F-11 y F-12 | WP-10 | WP-01, WP-02, **WP-08 (en curso)** | En curso en WP-08. WP-10 debe reabrir la verificación cuando arranque |
@@ -174,6 +176,32 @@ que es otra cosa.
 
 ## Bitácora
 
+- **2026-08-04** · **Worker de producción arreglado en el repositorio (no desplegado) y F6 ejercible de
+  extremo a extremo.** (a) **El worker mentía dos veces.** El contenedor se declaraba `healthy`
+  mientras todas sus tareas fallaban en bucle. Causa demostrada **en los binarios** (no por
+  lectura): la imagen `diana/worker:local` desplegada contiene sólo
+  `libquery_engine-debian-openssl-1.1.x.so.node` sobre un sistema Debian 12 con **OpenSSL
+  3.0.20**, mientras `diana/backend:local` sí lleva el `3.0.x` correcto. La etapa `build` del
+  Dockerfile generaba el cliente sin `openssl` instalado y Prisma cae entonces en un valor fijo
+  por defecto. Corregido declarando `binaryTargets` **en el esquema**, que no depende de qué
+  imagen base tenga cada etapa. El healthcheck pasa de `pgrep` (proceso vivo) a latido en disco
+  con comprobación real. (b) **La revisión independiente del arreglo encontró un tercer
+  defecto**: el healthcheck nuevo usaba un contador de fallos ÚNICO para todas las tareas, así
+  que el éxito de `statistics` (cada 5 min) borraba los fallos de `retention` (cada 24 h) y la
+  purga de datos podía llevar semanas rota sin detectarse. Cuentas por tarea. (c) **F6**: el
+  simulador declaraba el tópico de diagnóstico y **no publicaba en él jamás**, así que la cadena
+  ordenar→responder→persistir→mostrar no se había ejercido nunca; ahora responde y hay una
+  prueba que la recorre entera contra el contrato congelado. El LED contesta como
+  `self_test_result` con `detail.component`, porque el contrato **no admite** `led_test_result`.
+  (d) Cerradas además: fallo de persistencia de diagnósticos que se tragaba en silencio,
+  diagnóstico de módulo sin dar de alta invisible, hora mostrada = ingesta en vez de suceso, y
+  en F4 el borrado del acumulado global sin filtrar `scope`. Commits `0343a76` y `36f8e14`.
+  Suites: backend 639 (7 saltadas), frontend 181, worker 15, simulador 34, contratos 43/0.
+  **Acceso SSH a la VM: nunca estuvo roto**, el usuario es `diana-admin` (no `diana`), tal como
+  ya decía `deployment/procedimiento.md`; no se cambió nada en la máquina.
+  **Sin verificar todavía:** que la imagen reconstruida traiga el motor `3.0.x` (no hay acceso
+  al demonio de Docker desde ia02 ni desde los agentes; se comprueba al reconstruir, ANTES de
+  levantar), y el comportamiento del healthcheck dentro de un contenedor real.
 - **2026-08-04** · **Re-supervisión independiente de F4, F5 y F6: las tres `NO CONFORME`.**
   Ocho bloqueantes nuevos, todos de la misma clase: el arreglo estaba en el código y era
   correcto, pero **nada lo fijaba**. F5: la suite llevaba en rojo desde el 28 de julio por
