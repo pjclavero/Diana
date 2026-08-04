@@ -3,7 +3,19 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { TestLedsPage } from "./TestLedsPage";
-import { apiClient } from "../../api";
+import * as diagnosticsApi from "../../api/diagnosticsApi";
+
+/** Doble de la respuesta del servidor, con la forma completa del contrato. */
+const ack = (
+  over: Partial<diagnosticsApi.CommandAck> = {},
+): diagnosticsApi.CommandAck => ({
+  module_id: "m1",
+  action: "led_test",
+  command_id: "c",
+  delivered: true,
+  note: "",
+  ...over,
+});
 
 function renderPage() {
   return render(
@@ -19,7 +31,7 @@ describe("TestLedsPage (G-A: toggle y apagar)", () => {
   beforeEach(() => vi.restoreAllMocks());
 
   it("el mismo botón enciende y, al repetir, apaga (off)", async () => {
-    const led = vi.spyOn(apiClient, "testLed").mockResolvedValue({ command_id: "c" });
+    const led = vi.spyOn(diagnosticsApi, "testLed").mockResolvedValue(ack({ command_id: "c" }));
     renderPage();
 
     // Primer botón "Aplicar" de la diana 1 (estado 'safe').
@@ -34,7 +46,7 @@ describe("TestLedsPage (G-A: toggle y apagar)", () => {
   });
 
   it("'Apagar todas' envía off a las 9 dianas", async () => {
-    const led = vi.spyOn(apiClient, "testLed").mockResolvedValue({ command_id: "c" });
+    const led = vi.spyOn(diagnosticsApi, "testLed").mockResolvedValue(ack({ command_id: "c" }));
     renderPage();
 
     await userEvent.click(screen.getByRole("button", { name: "Apagar todas" }));
@@ -43,7 +55,7 @@ describe("TestLedsPage (G-A: toggle y apagar)", () => {
   });
 
   it("muestra el botón de volver", () => {
-    vi.spyOn(apiClient, "testLed").mockResolvedValue({ command_id: "c" });
+    vi.spyOn(diagnosticsApi, "testLed").mockResolvedValue(ack({ command_id: "c" }));
     renderPage();
     expect(screen.getByRole("button", { name: "← Volver" })).toBeInTheDocument();
   });
@@ -52,7 +64,7 @@ describe("TestLedsPage (G-A: toggle y apagar)", () => {
 describe("TestLedsPage · no pinta lo que no ha ocurrido (F6 · B2)", () => {
   it("si el servidor rechaza la orden, la diana NO se pinta encendida", async () => {
     const { ApiError } = await import("../../api/client");
-    vi.spyOn(apiClient, "testLed").mockRejectedValue(new ApiError("Estado no admitido"));
+    vi.spyOn(diagnosticsApi, "testLed").mockRejectedValue(new ApiError("Estado no admitido"));
     renderPage();
     await userEvent.click(screen.getAllByRole("button", { name: /Aplicar estado .* en la diana 1/ })[0]);
     expect(await screen.findByText("Estado no admitido")).toBeInTheDocument();
@@ -63,7 +75,7 @@ describe("TestLedsPage · no pinta lo que no ha ocurrido (F6 · B2)", () => {
   });
 
   it("si la orden no llegó al broker se dice, y tampoco se pinta", async () => {
-    vi.spyOn(apiClient, "testLed").mockResolvedValue({ command_id: "c1", delivered: false });
+    vi.spyOn(diagnosticsApi, "testLed").mockResolvedValue(ack({ command_id: "c1", delivered: false }));
     renderPage();
     await userEvent.click(screen.getAllByRole("button", { name: /Aplicar estado .* en la diana 1/ })[0]);
     expect(await screen.findByText(/NO llegó al broker/)).toBeInTheDocument();
@@ -75,7 +87,7 @@ describe("TestLedsPage · no pinta lo que no ha ocurrido (F6 · B2)", () => {
     // Control de la comprobación de arriba: sin este caso, unas pruebas que
     // exigen «ninguna diana encendida» pasarían aunque la pantalla no pintara
     // nunca.
-    vi.spyOn(apiClient, "testLed").mockResolvedValue({ command_id: "c1", delivered: true });
+    vi.spyOn(diagnosticsApi, "testLed").mockResolvedValue(ack({ command_id: "c1", delivered: true }));
     renderPage();
     await userEvent.click(screen.getAllByRole("button", { name: /Aplicar estado .* en la diana 1/ })[0]);
     await waitFor(() =>
@@ -84,7 +96,7 @@ describe("TestLedsPage · no pinta lo que no ha ocurrido (F6 · B2)", () => {
   });
 
   it("manda un ESTADO del contrato, no un patrón inventado", async () => {
-    const led = vi.spyOn(apiClient, "testLed").mockResolvedValue({ command_id: "c1", delivered: true });
+    const led = vi.spyOn(diagnosticsApi, "testLed").mockResolvedValue(ack({ command_id: "c1", delivered: true }));
     renderPage();
     await userEvent.click(screen.getAllByRole("button", { name: /Aplicar estado .* en la diana 1/ })[0]);
     await waitFor(() => expect(led).toHaveBeenCalled());

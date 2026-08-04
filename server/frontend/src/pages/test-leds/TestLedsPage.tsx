@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
-import { apiClient } from "../../api";
+import { testLed } from "../../api/diagnosticsApi";
 import { Card } from "../../components/ui/Feedback";
 import { BackButton } from "../../components/ui/BackButton";
 import { TargetLight } from "../../components/target/TargetLight";
@@ -24,7 +24,7 @@ export function TestLedsPage() {
     setSending(`${targetIndex}-${state}`);
     setError(null);
     try {
-      const ack = await apiClient.testLed(moduleId, targetIndex, next);
+      const ack = await testLed(moduleId, targetIndex, next);
       // La rejilla se pinta DESPUÉS de que el servidor acepte, y sólo si la
       // orden llegó al broker. Antes se pintaba antes del `await` y sin
       // `catch`: el operador veía la diana encendida en pantalla mientras en la
@@ -47,7 +47,7 @@ export function TestLedsPage() {
     setSending("all-off");
     setError(null);
     try {
-      await Promise.all(Array.from({ length: 9 }, (_, i) => apiClient.testLed(moduleId, i + 1, "off")));
+      await Promise.all(Array.from({ length: 9 }, (_, i) => testLed(moduleId, i + 1, "off")));
       setPreview(Object.fromEntries(Array.from({ length: 9 }, (_, i) => [i + 1, "off" as TargetState])));
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudieron apagar todas las dianas.");

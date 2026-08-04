@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { apiClient } from "../../api";
+import { getDiagnostics, testSensor } from "../../api/diagnosticsApi";
 import type { DiagnosticResult } from "../../api/client";
 import { Card } from "../../components/ui/Feedback";
 import { BackButton } from "../../components/ui/BackButton";
@@ -48,7 +48,7 @@ export function TestSensorsPage() {
 
   const load = useCallback(async () => {
     try {
-      const data = await apiClient.getModuleDiagnostics(moduleId);
+      const data = await getDiagnostics(moduleId);
       if (!mounted.current) return;
       setResults(data.items.filter((i) => SENSOR_KINDS.includes(i.kind)));
       setNote(data.note);
@@ -67,7 +67,7 @@ export function TestSensorsPage() {
     setBusy(true);
     setError(null);
     try {
-      const ack = await apiClient.testSensor(moduleId, targetIndex);
+      const ack = await testSensor(moduleId, targetIndex);
       setOrdered(
         ack.delivered === false
           ? "La orden NO llegó al broker: el módulo no la ha recibido."
