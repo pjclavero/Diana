@@ -17,15 +17,25 @@ function int(value: string | undefined, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function readHeartbeat(path: string): HeartbeatState | null {
+/**
+ * Lee y VALIDA el latido. La validación tiene que seguir a la forma real del
+ * fichero: cuando los contadores pasaron de uno global a uno por tarea, esta
+ * función siguió exigiendo el campo viejo (`consecutiveTaskFailures`) y empezó
+ * a descartar TODOS los latidos por «ilegibles», declarando enfermo un worker
+ * perfectamente sano. Un healthcheck que se equivoca en esa dirección es menos
+ * peligroso que el contrario, pero igual de inútil: reinicia en bucle un
+ * servicio que funciona.
+ */
+export function readHeartbeat(path: string): HeartbeatState | null {
   try {
     const raw = fs.readFileSync(path, 'utf8');
     const parsed = JSON.parse(raw);
     if (
       typeof parsed === 'object' &&
       parsed !== null &&
-      typeof parsed.updatedAt === 'string' &&
-      typeof parsed.consecutiveTaskFailures === 'number'
+      typeof (parsed as HeartbeatState).updatedAt === 'string' &&
+      typeof (parsed as HeartbeatState).tasks === 'object' &&
+      (parsed as HeartbeatState).tasks !== null
     ) {
       return parsed as HeartbeatState;
     }
@@ -55,4 +65,9 @@ function main(): void {
   process.exit(0);
 }
 
-main();
+// Sólo se ejecuta cuando Docker lo invoca como programa. Al importarlo (por
+// ejemplo desde una prueba) no debe salir del proceso: era lo que impedía
+// probar `readHeartbeat`, y por eso el fallo del validador llegó a producción.
+if (require.main === module) {
+  main();
+}

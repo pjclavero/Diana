@@ -219,3 +219,57 @@ describe('evaluateHealth', () => {
     expect(result.reason).toBe('ok');
   });
 });
+
+/**
+ * `readHeartbeat` NO tenía ninguna prueba, y ahí se coló un fallo real que sólo
+ * apareció en producción: al pasar los contadores de uno global a uno por
+ * tarea, el validador siguió exigiendo el campo viejo y descartaba TODOS los
+ * latidos por ilegibles. El worker funcionaba y el healthcheck lo declaraba
+ * enfermo. Con las 15 pruebas de la lógica pura en verde.
+ */
+describe('readHeartbeat · valida la forma REAL del fichero', () => {
+  const fs = require('fs') as typeof import('fs');
+  const os = require('os') as typeof import('os');
+  const path = require('path') as typeof import('path');
+  const { readHeartbeat } = require('./healthcheck') as typeof import('./healthcheck');
+
+  const escribir = (contenido: string): string => {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'hb-')), 'hb.json');
+    fs.writeFileSync(file, contenido);
+    return file;
+  };
+
+  it('acepta el latido que escribe el worker de VERDAD', () => {
+    // Contenido copiado de un latido real de producción.
+    const real = JSON.stringify({
+      updatedAt: '2026-08-04T23:11:39.644Z',
+      tasks: {
+        statistics: { consecutiveFailures: 0, lastError: null, lastSuccessAt: '2026-08-04T23:10:39.155Z' },
+        retention: { consecutiveFailures: 0, lastError: null, lastSuccessAt: '2026-08-04T23:10:39.589Z' },
+      },
+      lastError: null,
+      lastSuccessAt: '2026-08-04T23:10:39.589Z',
+    });
+    const state = readHeartbeat(escribir(real));
+    expect(state).not.toBeNull();
+    expect(state!.tasks.statistics.consecutiveFailures).toBe(0);
+  });
+
+  it('lo que escribe `initialHeartbeat` también se puede leer', () => {
+    // Ata las dos mitades: si una cambia de forma, esta prueba se entera.
+    const file = escribir(JSON.stringify(initialHeartbeat(new Date('2026-08-04T10:00:00.000Z'))));
+    expect(readHeartbeat(file)).not.toBeNull();
+  });
+
+  it('un fichero que no existe da null, no una excepción', () => {
+    expect(readHeartbeat('/no/existe/hb.json')).toBeNull();
+  });
+
+  it('un JSON corrupto da null', () => {
+    expect(readHeartbeat(escribir('{esto no es json'))).toBeNull();
+  });
+
+  it('un JSON válido pero sin la forma esperada da null', () => {
+    expect(readHeartbeat(escribir('{"updatedAt":"2026-08-04T10:00:00.000Z"}'))).toBeNull();
+  });
+});
