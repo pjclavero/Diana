@@ -69,7 +69,9 @@ describe('ModuleOwnershipService', () => {
       // Antes esto ascendía a gestor en el acto, sin que el comprador aceptara
       // nada y sin que quedara constancia de habérselo comunicado.
       expect(prisma.user.update).not.toHaveBeenCalled();
-      expect(activations.open).toHaveBeenCalledWith('u1', 'm1', 'admin-1');
+      // El cuarto argumento es el cliente de la transacción (ver la prueba de
+      // atomicidad más abajo): la venta y el código se escriben juntos.
+      expect(activations.open).toHaveBeenCalledWith('u1', 'm1', 'admin-1', expect.anything());
       expect((result as any).activation.note).toMatch(/NO es gestor todavía/);
     });
 
@@ -105,6 +107,109 @@ describe('ModuleOwnershipService', () => {
       const svc = new ModuleOwnershipService(prisma, activations);
 
       await expect(svc.link('m1', 'u1', admin)).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    /**
+     * La rama de REPARACIÓN no la tocaba ninguna prueba: se podía anular entera
+     * (`const repaired = null`) con la suite completa en verde. Es la red que
+     * recoge una venta a medias —módulo asignado, código nunca creado—, que
+     * dejaba al comprador poseyendo un módulo que no podía activar.
+     */
+    it('revincular al MISMO dueño repara el código que faltaba', async () => {
+      const prisma = buildPrisma({
+        module: { findUnique: jest.fn().mockResolvedValue({ id: 'm1', ownerId: 'u1' }) },
+      });
+      const activations = buildActivations();
+      const svc = new ModuleOwnershipService(prisma, activations);
+
+      const res: any = await svc.link('m1', 'u1', admin);
+
+      expect(activations.open).toHaveBeenCalledWith('u1', 'm1', 'admin-1');
+      expect(res.activation).not.toBeNull();
+      expect(res.activation.id).toBe('act-1');
+      // No se reasigna nada: ya era suyo.
+      expect(prisma.module.update).not.toHaveBeenCalled();
+    });
+
+    it('si al revincular ya tenía código vigente, no se inventa otro', async () => {
+      // `open` es idempotente: devuelve el pendiente. Aquí se comprueba que
+      // `link` respeta esa respuesta en vez de forzar uno nuevo.
+      const prisma = buildPrisma({
+        module: { findUnique: jest.fn().mockResolvedValue({ id: 'm1', ownerId: 'u1' }) },
+      });
+      const activations = buildActivations();
+      const svc = new ModuleOwnershipService(prisma, activations);
+
+      await svc.link('m1', 'u1', admin);
+      expect(activations.open).toHaveBeenCalledTimes(1);
+    });
+
+    it('a un rol que no se asciende se le vende el módulo SIN código', async () => {
+      // `open` devuelve null (no es jugador). La venta debe completarse igual y
+      // decirlo, en vez de reventar o de afirmar que hay un código.
+      const prisma = buildPrisma({
+        module: { findUnique: jest.fn().mockResolvedValue({ id: 'm1', ownerId: null }) },
+        user: { findUnique: jest.fn().mockResolvedValue({ id: 'u1', role: { name: ROLE.OPERADOR } }) },
+      });
+      const activations = buildActivations();
+      activations.open.mockResolvedValue(null);
+      const svc = new ModuleOwnershipService(prisma, activations);
+
+      const res: any = await svc.link('m1', 'u1', admin);
+      expect(res.activation).toBeNull();
+      expect(prisma.module.update).toHaveBeenCalled();
+    });
+
+    /**
+     * ATOMICIDAD: vender y abrir el código son un solo acto. Si se hacen por
+     * separado, un fallo entre medias deja el módulo vendido y sin código.
+     */
+    it('la venta y la apertura del código ocurren DENTRO de la misma transacción', async () => {
+      const prisma = buildPrisma({
+        module: { findUnique: jest.fn().mockResolvedValue({ id: 'm1', ownerId: null }) },
+        user: { findUnique: jest.fn().mockResolvedValue({ id: 'u1', role: { name: ROLE.JUGADOR } }) },
+      });
+      const activations = buildActivations();
+      const svc = new ModuleOwnershipService(prisma, activations);
+
+      await svc.link('m1', 'u1', admin);
+
+      expect(prisma.$transaction).toHaveBeenCalled();
+      // `open` recibe el cliente de la transacción como cuarto argumento: sin
+      // él escribiría fuera y la atomicidad sería decorativa.
+      expect(activations.open.mock.calls[0][3]).toBeDefined();
+    });
+
+    it('si abrir el código falla, la venta NO queda escrita', async () => {
+      const prisma = buildPrisma({
+        module: { findUnique: jest.fn().mockResolvedValue({ id: 'm1', ownerId: null }) },
+        user: { findUnique: jest.fn().mockResolvedValue({ id: 'u1', role: { name: ROLE.JUGADOR } }) },
+      });
+      // Una transacción real revierte lo escrito cuando el callback lanza.
+      const escrituras: string[] = [];
+      prisma.$transaction = jest.fn(async (cb: any) => {
+        try {
+          return await cb({
+            ...prisma,
+            module: {
+              ...prisma.module,
+              update: jest.fn(async () => {
+                escrituras.push('venta');
+                return {};
+              }),
+            },
+          });
+        } catch (e) {
+          escrituras.length = 0; // revertido
+          throw e;
+        }
+      });
+      const activations = buildActivations();
+      activations.open.mockRejectedValue(new Error('BD caída'));
+      const svc = new ModuleOwnershipService(prisma, activations);
+
+      await expect(svc.link('m1', 'u1', admin)).rejects.toThrow('BD caída');
+      expect(escrituras).toEqual([]);
     });
   });
 

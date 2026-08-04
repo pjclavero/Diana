@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { AppConfig, CONFIG } from '../../config/configuration';
+import { PrismaService } from '../../common/prisma/prisma.service';
 import {
   OnGatewayConnection,
   OnGatewayDisconnect,
@@ -79,6 +80,7 @@ export class LiveGateway implements EventPublisherPort, OnGatewayConnection, OnG
   constructor(
     private readonly jwt: JwtService,
     @Inject(CONFIG) private readonly config: AppConfig,
+    private readonly prisma: PrismaService,
   ) {
     LiveGateway.allowedOrigins = config.corsOrigins ?? [];
   }
@@ -89,16 +91,29 @@ export class LiveGateway implements EventPublisherPort, OnGatewayConnection, OnG
    * el puerto entraba sin pedir nada. El token viaja en el saludo
    * (`auth.token`), no en la URL, para que no acabe en los registros del proxy.
    */
-  handleConnection(client: Socket): void {
+  async handleConnection(client: Socket): Promise<void> {
     const token = LiveGateway.tokenOf(client);
     if (!token) return this.reject(client, 'sin credenciales');
+    let claims: { sub?: string; username?: string };
     try {
-      const claims = this.jwt.verify<{ sub?: string; username?: string }>(token);
-      client.data.user = claims;
-      this.logger.debug(`Cliente conectado al canal en directo: ${client.id}`);
+      claims = this.jwt.verify<{ sub?: string; username?: string }>(token);
     } catch {
-      this.reject(client, 'credenciales no válidas');
+      return this.reject(client, 'credenciales no válidas');
     }
+
+    // La cuenta se comprueba contra la BASE, igual que en REST (F5·B4). Un
+    // WebSocket dura horas: sin esto, desactivar o borrar a alguien lo echaba
+    // del API pero le dejaba el canal en directo abierto hasta que caducara su
+    // token. Cerrar la puerta y dejar la ventana abierta no es cerrar nada.
+    const user = claims.sub
+      ? await this.prisma.user
+          .findUnique({ where: { id: claims.sub }, select: { id: true, active: true } })
+          .catch(() => null)
+      : null;
+    if (!user || !user.active) return this.reject(client, 'cuenta no activa');
+
+    client.data.user = claims;
+    this.logger.debug(`Cliente conectado al canal en directo: ${client.id}`);
   }
 
   private reject(client: Socket, reason: string): void {

@@ -67,15 +67,20 @@ export class ModuleOwnershipService {
     const target = await this.prisma.user.findUnique({ where: { id: targetUserId }, include: { role: true } });
     if (!target) throw new NotFoundException(`Usuario ${targetUserId} no encontrado`);
 
-    await this.prisma.module.update({ where: { id: moduleId }, data: { ownerId: targetUserId } });
+    // La venta y la apertura del código van JUNTAS o no van. Separadas, un
+    // fallo entre medias (BD, clave foránea) dejaba el módulo vendido y sin
+    // código: el comprador poseía un módulo que no podía activar, y sólo se
+    // reparaba si un admin repetía la vinculación a mano.
+    const activation = await this.prisma.$transaction(async (tx) => {
+      await tx.module.update({ where: { id: moduleId }, data: { ownerId: targetUserId } });
+      return this.activations.open(targetUserId, moduleId, actor.userId, tx);
+    });
 
     // VENDER NO ES ASCENDER (F5, §3.1). Antes, vincular convertía al comprador
     // en gestor en el acto: se encontraba con permisos que nunca había aceptado
     // y el admin no tenía constancia de haberle entregado nada. Ahora la venta
     // abre un código de activación; el acceso de gestor queda activo cuando el
     // comprador lo introduce.
-    const activation = await this.activations.open(targetUserId, moduleId, actor.userId);
-
     const linked = await this.get(moduleId);
     return {
       ...linked,

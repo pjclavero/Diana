@@ -153,6 +153,101 @@ describe('StatsResetService · reinicio de estadística por partida (§3.4)', ()
     expect(prisma.db.hitEvents.find((h) => h.id === 'h4')!.participantId).toBe('pb1');
   });
 
+  /**
+   * LA MARCA ES LA MITAD DEL ARREGLO, y no la comprobaba nadie: se podía dejar
+   * de escribir `statsResetAt` con toda la suite en verde.
+   *
+   * Desatribuir a secas no basta. En una partida de un solo jugador, el
+   * marcador vuelve a DEDUCIR que un impacto sin dueño es suyo (es la única
+   * respuesta posible), así que el reinicio se deshacía solo al recargar: el
+   * operador pulsaba, veía ceros, recargaba y tenía otra vez sus números. La
+   * marca es lo que distingue «no sabemos de quién es» de «se apartó a
+   * propósito».
+   */
+  it('marca los impactos apartados con `statsResetAt`, no sólo los desatribuye', async () => {
+    const prisma = seed();
+    const antes = Date.now();
+    await service(prisma).resetParticipant(G1, 'pa1', GESTOR);
+
+    const apartados = prisma.db.hitEvents.filter((h) => ['h1', 'h2', 'h3'].includes(h.id));
+    for (const h of apartados) {
+      expect(h.statsResetAt).toBeInstanceOf(Date);
+      expect((h.statsResetAt as Date).getTime()).toBeGreaterThanOrEqual(antes);
+    }
+    // Los ajenos no se marcan: no se ha tocado a Bea ni al temporal.
+    expect(prisma.db.hitEvents.find((h) => h.id === 'h4')!.statsResetAt ?? null).toBeNull();
+    expect(prisma.db.hitEvents.find((h) => h.id === 'h5')!.statsResetAt ?? null).toBeNull();
+  });
+
+  /**
+   * ORDEN DE OPERACIONES (bloqueante B3). Apartar primero y borrar después no
+   * es una preferencia de estilo: al revés queda una ventana en la que un
+   * `POST /accuracy/rounds/:id/compute` concurrente recrea el `Result` con los
+   * aciertos ORIGINALES, deshaciendo el reinicio entero. Con este orden, lo
+   * peor que puede recrear es un resultado a cero.
+   */
+  it('aparta los impactos ANTES de borrar los resultados', async () => {
+    const prisma = seed();
+    const orden: string[] = [];
+    // El servicio opera sobre el cliente de la transacción, así que se observa
+    // ahí: se le entrega un envoltorio que anota el orden real de las llamadas.
+    const original = prisma.$transaction.bind(prisma);
+    prisma.$transaction = ((cb: (tx: unknown) => unknown) =>
+      original(((tx: Record<string, any>) => {
+        const espia = new Proxy(tx, {
+          get(target, prop: string) {
+            const tabla = target[prop];
+            if (prop === 'hitEvent' || prop === 'result') {
+              return new Proxy(tabla, {
+                get(t: Record<string, any>, m: string) {
+                  if (prop === 'hitEvent' && m === 'updateMany') {
+                    return (...a: unknown[]) => {
+                      orden.push('apartar-impactos');
+                      return t[m](...a);
+                    };
+                  }
+                  if (prop === 'result' && m === 'deleteMany') {
+                    return (...a: unknown[]) => {
+                      orden.push('borrar-resultados');
+                      return t[m](...a);
+                    };
+                  }
+                  return typeof t[m] === 'function' ? t[m].bind(t) : t[m];
+                },
+              });
+            }
+            return typeof tabla === 'function' ? tabla.bind(target) : tabla;
+          },
+        });
+        return cb(espia);
+      }) as never)) as never;
+
+    await service(prisma).resetParticipant(G1, 'pa1', GESTOR);
+
+    expect(orden).toEqual(['apartar-impactos', 'borrar-resultados']);
+  });
+
+  /**
+   * TOCTOU (bloqueante B3): comprobar el estado ANTES de abrir la transacción
+   * deja una ventana para que la partida arranque entre la comprobación y el
+   * borrado, y entonces el motor recalcula justo lo que se acaba de borrar.
+   */
+  it('vuelve a comprobar el estado DENTRO de la transacción', async () => {
+    const prisma = seed();
+    // La partida arranca justo después de la comprobación previa, ya con la
+    // transacción abierta.
+    const original = prisma.$transaction.bind(prisma);
+    prisma.$transaction = (async (cb: unknown) => {
+      prisma.db.games.find((g) => g.id === G1)!.status = 'running';
+      return (original as (c: unknown) => unknown)(cb);
+    }) as never;
+
+    await expect(service(prisma).resetParticipant(G1, 'pa1', GESTOR)).rejects.toThrow();
+    // Y nada se ha borrado: la transacción no llegó a tocar los datos.
+    expect(prisma.db.results).toHaveLength(6);
+    expect(prisma.db.hitEvents.every((h) => h.statsResetAt == null)).toBe(true);
+  });
+
   it('el recálculo posterior NO resucita los números: da cero y «no calculable»', async () => {
     const prisma = seed();
     await service(prisma).resetParticipant(G1, 'pa1', GESTOR);

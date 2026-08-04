@@ -5,9 +5,20 @@ import {
 } from '../../src/modules/invitations/manager-activation.service';
 import { ROLE } from '../../src/domain/rbac/permissions';
 
-const AHORA = new Date('2026-07-26T10:00:00Z');
-const MANANA = new Date('2026-07-27T10:00:00Z');
-const AYER = new Date('2026-07-25T10:00:00Z');
+/**
+ * RELATIVAS AL RELOJ, NUNCA ABSOLUTAS.
+ *
+ * Estas tres constantes eran fechas fijas de julio de 2026. El servicio compara
+ * la caducidad contra `Date.now()`, así que a partir del día siguiente «mañana»
+ * ya era pasado: los 8 casos que ejercían el camino feliz empezaron a fallar
+ * solos por caducidad. Una prueba que se cae con el calendario deja de vigilar
+ * lo que vigilaba, porque su rojo ya no distingue un defecto real del paso del
+ * tiempo. Atadas al reloj de la ejecución, el resultado no depende del día.
+ */
+const UN_DIA = 24 * 60 * 60 * 1000;
+const AHORA = new Date();
+const MANANA = new Date(AHORA.getTime() + UN_DIA);
+const AYER = new Date(AHORA.getTime() - UN_DIA);
 
 const jugador = { id: 'u1', username: 'ana', email: 'ana@example.com', role: { name: ROLE.JUGADOR } };
 

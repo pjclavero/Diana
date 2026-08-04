@@ -83,6 +83,9 @@ export class ScoreboardService {
       elapsedUs: h.coordinatorElapsedUs === null ? null : Number(h.coordinatorElapsedUs),
     }));
 
+    /** Los que siguen contando: sin la marca que deja un reinicio. */
+    const contados = hits.filter((h) => h.statsResetAt == null);
+
     const resultRows = round
       ? await this.prisma.result.findMany({ where: { roundId: round.id } })
       : [];
@@ -148,13 +151,20 @@ export class ScoreboardService {
       multiPanel: panelIds.length > 1,
       ranking: rankingResult.entries,
       warnings: rankingResult.warnings,
-      board: buildBoard(boardInput, hits),
+      // Los impactos apartados por un reinicio quedan FUERA del recuento y de
+      // la rejilla, que es justo lo que el panel promete al confirmarlo. Antes
+      // sólo salían del ranking: el operador leía «4 válidos» que ya no eran de
+      // nadie, con la fila del jugador a cero y las dianas encendidas.
+      board: buildBoard(boardInput, contados),
       totals: {
-        detected: hits.length,
-        valid: hits.filter((h) => h.countsForScore).length,
-        invalid: hits.filter((h) => !h.countsForScore).length,
+        detected: contados.length,
+        valid: contados.filter((h) => h.countsForScore).length,
+        invalid: contados.filter((h) => !h.countsForScore).length,
         unattributed: rankingResult.unattributedHits,
         inferred: rankingResult.inferredHits,
+        // Los apartados no desaparecen: se declaran aparte. Son telemetría real
+        // del firmware y ocultarlos sería tan falso como contarlos.
+        reset: rankingResult.resetHits,
       },
     };
   }

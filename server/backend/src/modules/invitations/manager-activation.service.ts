@@ -4,6 +4,12 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { ROLE } from '../../domain/rbac/permissions';
 import { SmtpService } from './smtp.service';
 
+/**
+ * Cliente de Prisma dentro de una transacción: el que recibe el callback de
+ * `$transaction`. No expone gestión de conexión ni transacciones anidadas.
+ */
+export type PrismaTx = Parameters<Parameters<PrismaService['$transaction']>[0]>[0];
+
 /** Sin I, O, 0 ni 1: el código se dicta por teléfono y se teclea a mano. */
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const CODE_LENGTH = 8;
@@ -64,8 +70,20 @@ export class ManagerActivationService {
    * tiene un código pendiente y vigente se devuelve ese, para no dejar dos
    * credenciales vivas por haber vendido dos módulos.
    */
-  async open(userId: string, moduleId: string | null, createdBy?: string) {
-    const user = await this.prisma.user.findUnique({
+  async open(
+    userId: string,
+    moduleId: string | null,
+    createdBy?: string,
+    /**
+     * Cliente de la transacción en curso, si la hay. Vender el módulo y abrir
+     * el código son UN SOLO acto: hacerlos por separado permitía que la venta
+     * quedara escrita y el código no, dejando al comprador con un módulo que no
+     * puede activar. Quien no necesite atomicidad puede seguir llamando sin él.
+     */
+    tx?: PrismaTx,
+  ) {
+    const db = tx ?? this.prisma;
+    const user = await db.user.findUnique({
       where: { id: userId },
       include: { role: true },
     });
@@ -76,7 +94,7 @@ export class ManagerActivationService {
     // era gestor y no se podía ni regenerar ni revocar. Callejón sin salida.
     if (user.role.name !== ROLE.JUGADOR) return null;
 
-    const existing = await this.prisma.managerActivation.findFirst({
+    const existing = await db.managerActivation.findFirst({
       where: { userId, status: ACTIVATION_STATUS.pending, expiresAt: { gt: new Date() } },
       orderBy: { createdAt: 'desc' },
     });
@@ -84,7 +102,7 @@ export class ManagerActivationService {
 
     for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
-        const activation = await this.prisma.managerActivation.create({
+        const activation = await db.managerActivation.create({
           data: {
             userId,
             moduleId,

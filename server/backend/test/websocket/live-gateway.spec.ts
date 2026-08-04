@@ -2,7 +2,9 @@ import { LiveGateway, LIVE_MESSAGE } from '../../src/modules/websocket/live.gate
 
 const AT = new Date('2026-07-26T10:00:00Z');
 
-function buildGateway(over: { verify?: jest.Mock; corsOrigins?: string[] } = {}) {
+function buildGateway(
+  over: { verify?: jest.Mock; corsOrigins?: string[]; cuenta?: unknown } = {},
+) {
   const rooms = new Map<string, { emit: jest.Mock }>();
   const to = jest.fn((room: string) => {
     if (!rooms.has(room)) rooms.set(room, { emit: jest.fn() });
@@ -14,9 +16,21 @@ function buildGateway(over: { verify?: jest.Mock; corsOrigins?: string[] } = {})
     corsOrigins: over.corsOrigins ?? ['http://localhost:8080'],
     jwt: { secret: 's' },
   } as never;
-  const gateway = new LiveGateway({ verify } as never, config);
+  // La cuenta se comprueba contra la BASE en el saludo: un token válido de una
+  // cuenta desactivada no debe abrir el canal.
+  const cuenta = 'cuenta' in over ? over.cuenta : { id: 'u1', active: true };
+  const findUnique = jest.fn().mockResolvedValue(cuenta);
+  const prisma = { user: { findUnique } } as never;
+  const gateway = new LiveGateway({ verify } as never, config, prisma);
   gateway.server = server;
-  return { gateway, rooms, to, verify, server: server as unknown as { emit: jest.Mock } };
+  return {
+    gateway,
+    rooms,
+    to,
+    verify,
+    findUnique,
+    server: server as unknown as { emit: jest.Mock },
+  };
 }
 
 const client = (token?: string) =>
@@ -168,29 +182,29 @@ describe('LiveGateway · el directo va SÓLO a su partida', () => {
 });
 
 describe('LiveGateway · el canal exige credenciales (B1)', () => {
-  it('sin token se rechaza la conexión y se cierra', () => {
+  it('sin token se rechaza la conexión y se cierra', async () => {
     const { gateway } = buildGateway();
     const c = client();
-    gateway.handleConnection(c);
+    await gateway.handleConnection(c);
     const spy = c as unknown as { disconnect: jest.Mock; emit: jest.Mock };
     expect(spy.disconnect).toHaveBeenCalledWith(true);
     expect(spy.emit).toHaveBeenCalledWith('unauthorized', { reason: 'sin credenciales' });
   });
 
-  it('con un token inválido tampoco se entra', () => {
+  it('con un token inválido tampoco se entra', async () => {
     const verify = jest.fn(() => {
       throw new Error('firma incorrecta');
     });
     const { gateway } = buildGateway({ verify });
     const c = client('basura');
-    gateway.handleConnection(c);
+    await gateway.handleConnection(c);
     expect((c as unknown as { disconnect: jest.Mock }).disconnect).toHaveBeenCalledWith(true);
   });
 
-  it('con un token válido se entra y queda registrado quién es', () => {
+  it('con un token válido se entra y queda registrado quién es', async () => {
     const { gateway, verify } = buildGateway();
     const c = client('bueno');
-    gateway.handleConnection(c);
+    await gateway.handleConnection(c);
     expect(verify).toHaveBeenCalledWith('bueno');
     expect((c as unknown as { disconnect: jest.Mock }).disconnect).not.toHaveBeenCalled();
     expect((c as unknown as { data: { user?: unknown } }).data.user).toMatchObject({
@@ -198,11 +212,35 @@ describe('LiveGateway · el canal exige credenciales (B1)', () => {
     });
   });
 
-  it('el token también se acepta en la cabecera Authorization', () => {
+  it('una cuenta DESACTIVADA no abre el canal aunque su token sea válido', async () => {
+    // Un WebSocket dura horas: sin comprobar la cuenta, desactivar a alguien lo
+    // echaba del REST y le dejaba el directo abierto hasta que caducara el token.
+    const { gateway } = buildGateway({ cuenta: { id: 'u1', active: false } });
+    const c = client('bueno');
+    await gateway.handleConnection(c);
+    const spy = c as unknown as { disconnect: jest.Mock; emit: jest.Mock };
+    expect(spy.disconnect).toHaveBeenCalledWith(true);
+    expect(spy.emit).toHaveBeenCalledWith('unauthorized', { reason: 'cuenta no activa' });
+  });
+
+  it('una cuenta BORRADA tampoco entra', async () => {
+    const { gateway } = buildGateway({ cuenta: null });
+    const c = client('bueno');
+    await gateway.handleConnection(c);
+    expect((c as unknown as { disconnect: jest.Mock }).disconnect).toHaveBeenCalledWith(true);
+  });
+
+  it('se consulta al usuario del token, no a otro', async () => {
+    const { gateway, findUnique } = buildGateway();
+    await gateway.handleConnection(client('bueno'));
+    expect(findUnique.mock.calls[0][0].where).toEqual({ id: 'u1' });
+  });
+
+  it('el token también se acepta en la cabecera Authorization', async () => {
     const { gateway, verify } = buildGateway();
     const c = client() as unknown as { handshake: { headers: Record<string, string> } };
     c.handshake.headers.authorization = 'Bearer desde-cabecera';
-    gateway.handleConnection(c as never);
+    await gateway.handleConnection(c as never);
     expect(verify).toHaveBeenCalledWith('desde-cabecera');
   });
 });

@@ -115,7 +115,7 @@ describe('ScoreboardService (G-G)', () => {
     const board = await new ScoreboardService(prisma).forGame('g1');
     expect(board.round).toBeNull();
     expect(prisma.hitEvent.findMany).not.toHaveBeenCalled();
-    expect(board.totals).toEqual({ detected: 0, valid: 0, invalid: 0, unattributed: 0, inferred: 0 });
+    expect(board.totals).toEqual({ detected: 0, valid: 0, invalid: 0, unattributed: 0, inferred: 0, reset: 0 });
     expect(board.ranking[0]).toMatchObject({ name: 'Ana', validHits: 0 });
   });
 
@@ -129,10 +129,62 @@ describe('ScoreboardService (G-G)', () => {
       },
     });
     const board = await new ScoreboardService(prisma).forGame('g1');
-    expect(board.totals).toEqual({ detected: 2, valid: 1, invalid: 1, unattributed: 0, inferred: 0 });
+    expect(board.totals).toEqual({ detected: 2, valid: 1, invalid: 1, unattributed: 0, inferred: 0, reset: 0 });
     expect(board.ranking[0]).toMatchObject({ validHits: 1, invalidHits: 1, totalTimeUs: 1500 });
     expect(board.board[0].targets[0].state).toBe('hit');
     expect(board.board[0].targets[1].state).toBe('invalid');
+  });
+
+  /**
+   * EL SERVICIO ES EL ESLABÓN QUE NADIE PROBABA. La función pura del marcador
+   * sí sabía apartar los impactos reiniciados, y el reinicio sí los marcaba,
+   * pero que el servicio LEYERA la marca y se la pasara al dominio no lo
+   * comprobaba ninguna prueba: se podía dejar de propagar y todo seguía verde,
+   * con lo que el reinicio volvía a ser invisible al recargar.
+   */
+  describe('impactos apartados por un reinicio (F4 · B2)', () => {
+    const conReinicio = () =>
+      buildPrisma({
+        hitEvent: {
+          findMany: jest.fn().mockResolvedValue([
+            { participantId: 'p1', moduleSlug: 'mod-a', targetIndex: 1, classification: 'valid_hit', countsForScore: true, coordinatorElapsedUs: BigInt(1000), statsResetAt: null },
+            { participantId: null, moduleSlug: 'mod-a', targetIndex: 2, classification: 'valid_hit', countsForScore: true, coordinatorElapsedUs: BigInt(2000), statsResetAt: new Date('2026-08-04T10:00:00Z') },
+            { participantId: null, moduleSlug: 'mod-a', targetIndex: 3, classification: 'valid_hit', countsForScore: true, coordinatorElapsedUs: BigInt(3000), statsResetAt: new Date('2026-08-04T10:00:00Z') },
+          ]),
+        },
+      });
+
+    it('la marca del reinicio se PIDE a la base: sin ella no hay nada que apartar', async () => {
+      const prisma = conReinicio();
+      await new ScoreboardService(prisma).forGame('g1');
+      const select = prisma.hitEvent.findMany.mock.calls[0][0]?.select;
+      // O se seleccionan todos los campos, o `statsResetAt` tiene que estar.
+      if (select) expect(select).toHaveProperty('statsResetAt');
+    });
+
+    it('los apartados NO se cuentan en los totales ni se deducen del único jugador', async () => {
+      const board = await new ScoreboardService(conReinicio()).forGame('g1');
+      expect(board.totals.detected).toBe(1);
+      expect(board.totals.valid).toBe(1);
+      expect(board.totals.reset).toBe(2);
+      // Con un solo participante, un impacto sin dueño se le deduciría. La
+      // marca es lo que impide que el reinicio se deshaga solo.
+      expect(board.ranking[0]).toMatchObject({ validHits: 1 });
+    });
+
+    it('los apartados tampoco pintan la diana como acertada', async () => {
+      const board = await new ScoreboardService(conReinicio()).forGame('g1');
+      const estados = board.board[0].targets.map((t: { state: string }) => t.state);
+      expect(estados[0]).toBe('hit');
+      // Las dianas 2 y 3 corresponden a impactos apartados: no siguen encendidas.
+      expect(estados[1]).not.toBe('hit');
+      expect(estados[2]).not.toBe('hit');
+    });
+
+    it('se avisa de que hay impactos fuera del recuento', async () => {
+      const board = await new ScoreboardService(conReinicio()).forGame('g1');
+      expect(board.warnings.join(' ')).toMatch(/reinici|fuera del recuento/i);
+    });
   });
 
   it('el histórico de un temporal se declara inexistente, no cero', async () => {

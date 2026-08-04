@@ -56,6 +56,10 @@ describe("TestLedsPage · no pinta lo que no ha ocurrido (F6 · B2)", () => {
     renderPage();
     await userEvent.click(screen.getAllByRole("button", { name: /Aplicar estado .* en la diana 1/ })[0]);
     expect(await screen.findByText("Estado no admitido")).toBeInTheDocument();
+    // Lo que importa NO es que salga el error, sino que la rejilla no mienta:
+    // comprobar sólo el texto dejaba pasar el pintado optimista, que es
+    // exactamente el defecto que este bloque dice cerrar.
+    expect(screen.queryAllByRole("button", { pressed: true })).toHaveLength(0);
   });
 
   it("si la orden no llegó al broker se dice, y tampoco se pinta", async () => {
@@ -63,6 +67,20 @@ describe("TestLedsPage · no pinta lo que no ha ocurrido (F6 · B2)", () => {
     renderPage();
     await userEvent.click(screen.getAllByRole("button", { name: /Aplicar estado .* en la diana 1/ })[0]);
     expect(await screen.findByText(/NO llegó al broker/)).toBeInTheDocument();
+    // Aceptada por el servidor pero encolada sin salir: tampoco se pinta.
+    expect(screen.queryAllByRole("button", { pressed: true })).toHaveLength(0);
+  });
+
+  it("cuando la orden SÍ sale, la diana se pinta (si no, no probaríamos nada)", async () => {
+    // Control de la comprobación de arriba: sin este caso, unas pruebas que
+    // exigen «ninguna diana encendida» pasarían aunque la pantalla no pintara
+    // nunca.
+    vi.spyOn(apiClient, "testLed").mockResolvedValue({ command_id: "c1", delivered: true });
+    renderPage();
+    await userEvent.click(screen.getAllByRole("button", { name: /Aplicar estado .* en la diana 1/ })[0]);
+    await waitFor(() =>
+      expect(screen.queryAllByRole("button", { pressed: true }).length).toBeGreaterThan(0),
+    );
   });
 
   it("manda un ESTADO del contrato, no un patrón inventado", async () => {
