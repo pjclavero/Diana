@@ -42,7 +42,12 @@ COPY server/worker/package.json server/worker/package-lock.json ./
 RUN npm ci
 
 COPY server/backend/prisma ./prisma
-COPY server/worker/tsconfig.json ./
+# Los DOS tsconfig: el de desarrollo y el de compilación. `tsconfig.build.json`
+# es el que excluye las pruebas del `dist/` de producción, y `npm run build` lo
+# invoca por nombre: sin copiarlo, la imagen falla con «path does not exist»
+# aunque en el repositorio todo esté bien. Funcionaba en el repo y no en la
+# imagen, que es justo el fallo que sólo aparece al construir de verdad.
+COPY server/worker/tsconfig.json server/worker/tsconfig.build.json ./
 COPY server/worker/src ./src
 # Cliente Prisma (client + engines) a partir del esquema compartido y compilación.
 RUN npx prisma generate --schema ./prisma/schema.prisma && npm run build
