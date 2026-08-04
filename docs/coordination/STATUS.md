@@ -176,6 +176,26 @@ que es otra cosa.
 
 ## Bitácora
 
+- **2026-08-05** · **DESPLEGADO en la VM 109: `develop` @ `6da16d4`** (antes `133d760`, 17 commits).
+  X-06, D9, F4, F5, F6, los ocho bloqueantes de las re-supervisiones, el arreglo del worker y el
+  cableado de las tres pantallas de diagnóstico. **3 migraciones aplicadas** y verificadas contra
+  la base viva (`stats_reset_at`, `manager_activations`, `module_slug`/`device_occurred_at`).
+  Copia de la base tomada y verificada ANTES de tocar nada. 7/7 contenedores `healthy`.
+  **El worker vuelve a ejecutar sus tareas**: `recomputePlayerStatistics` y las tres de retención
+  corren sin un solo error, donde llevaba semanas en bucle de fallos. Motor de Prisma comprobado
+  DENTRO de la imagen antes de levantar: `debian-openssl-3.0.x`.
+  **Dos fallos reales cazados durante el despliegue, ambos del tipo «funciona en el repositorio,
+  falla en la imagen»:** (a) el Dockerfile del worker no copiaba `tsconfig.build.json`, añadido
+  al arreglar el healthcheck: la compilación se cayó en seco (`7372bab`); (b) **el healthcheck
+  descartaba TODOS los latidos** —el validador seguía exigiendo el campo anterior al cambio a
+  contadores por tarea— y declaraba enfermo un worker perfectamente sano; `readHeartbeat` no
+  tenía ninguna prueba y el módulo ejecutaba su `main()` al importarse, que era la razón de fondo
+  de que no la tuviera (`6da16d4`, 20 pruebas, verificado por mutación).
+  **Lo que este despliegue NO resuelve:** quedan **11 pantallas** en el adaptador de
+  demostración (`stats`, `home`, `users`, `system`, `topology`, `new-game`, `incidents`,
+  `countdown`, `module-detail`, `backups`, `results`) — es el resto vivo de X-21. Y sigue sin
+  verificarse la ingesta de extremo a extremo (X-18-INGESTA): no hay hardware ni simulador
+  conectado al broker de la VM.
 - **2026-08-04** · **Worker de producción arreglado en el repositorio (no desplegado) y F6 ejercible de
   extremo a extremo.** (a) **El worker mentía dos veces.** El contenedor se declaraba `healthy`
   mientras todas sus tareas fallaban en bucle. Causa demostrada **en los binarios** (no por
