@@ -1,14 +1,29 @@
 # Diana · Informe de tareas frente al encargo
 
-**Fecha:** 2026-07-26 (revisión completa de estados) · **Rama:** `develop` @ `133d760` ·
-**Desplegado en la VM:** `develop` @ `133d760` (incluye D9; verificado por SSH el 2026-07-26) · **VM:** `diana-server` (109, 192.168.1.209)
+**Fecha:** 2026-08-04 (barrido de obsolescencia) · **Rama:** `develop` @ `1aa1fbc` ·
+**Desplegado en la VM:** `develop` @ `133d760` (**seis commits por detrás del HEAD**; incluye D9, verificado por SSH el 2026-07-26) · **VM:** `diana-server` (109, 192.168.1.209)
 
-> **Aviso de alcance de esta revisión.** Los estados se han contrastado el 2026-07-26 contra el
+> **Aviso de alcance de esta revisión.** Los estados se han contrastado el 2026-08-04 contra el
 > código de `develop` y el historial de git. **No se ha tocado la VM 109** para hacerla, ni por
 > lectura: lo que aquí figura como verificado en la VM procede de las verificaciones anteriores
-> registradas en `deployment/procedimiento.md` §8-§9 y en el commit de despliegue `8220a45`.
+> registradas en `deployment/procedimiento.md` §8-§10 y en el commit de despliegue `8220a45`.
 > **La verificación funcional con credenciales reales sigue sin hacerse**: nadie ha jugado una
 > partida de principio a fin desde el panel.
+>
+> **Lo que ha cambiado desde la revisión del 2026-07-26.** Han entrado seis commits que la
+> versión anterior de este informe no reflejaba: `5c3b7ac`+`eb42324` (X-06, vista en directo),
+> `d42f474`+`1aa1fbc` (F6, diagnóstico real), `85403db`+`4ff69ec` (F4, reinicio de estadística)
+> y `afe3e82`+`1aa1fbc` (F5, ascenso a gestor con código). **Todo ello está en el repositorio y
+> en ningún otro sitio:** no está desplegado, faltan **dos migraciones** por aplicar en
+> producción (`20260726200000_manager_activation`, `20260726210000_hit_stats_reset`), y las tres
+> fases F4/F5/F6 salieron **`NO CONFORME`** en su primera supervisión —diez bloqueantes entre
+> las tres, uno de seguridad— con las correcciones **pendientes de revisión independiente**.
+>
+> **Estado de las suites al 2026-08-04, reejecutado:** frontend **178/178** y `tsc -b` limpio;
+> backend **584 pasan, 8 FALLAN, 7 saltadas**. Las 8 fallas son de
+> `test/invitations/manager-activation.spec.ts` y se deben a fechas absolutas fijadas en la
+> propia prueba (`MANANA = 2026-07-27`) sin congelar el reloj: es un defecto de la suite, no del
+> producto, pero **el backend NO está en verde hoy**, en contra de lo que declara `1aa1fbc`.
 
 Este informe recorre **todas** las tareas del encargo (requisitos de programa) y del dosier
 (requisitos de producto) y marca, una a una, si están hechas o no. Después, para cada tarea
@@ -175,14 +190,18 @@ Restricciones verificadas: 24 tablas, índices únicos de idempotencia, 4 marcas
 propiedad, firmware, jugadores, equipos, participantes, presets, vistas, matrices, marcador,
 duelo, demo, invitaciones, unirse por QR, resiliencia). Editor de matriz 3×3 con datos reales,
 regla de precisión no calculable, ningún estado comunicado sólo por color. **E2E ejecutados con
-navegador real: 18/18** (contra adaptador mock). Unitarias del frontend a `133d760`: **131/131**,
-con `tsc` y `oxlint` limpios.
+navegador real: 18/18** (contra adaptador mock). Unitarias del frontend a `1aa1fbc`
+(reejecutadas el 2026-08-04): **178/178**, con `tsc -b` limpio y `oxlint` sin avisos nuevos.
 **Matiz que hay que decir:** la imagen de producción se compila con `VITE_API_MODE=mock`
-(`server/frontend/Dockerfile:19`). Las pantallas nuevas no dependen de ese modo —tienen cliente
-propio contra `/api` real con JWT— pero las **heredadas** (estado del sistema, telemetría y
-configuración de módulo, calibración, prueba de sensores/LED, diagnósticos, incidencias)
-siguen colgando de `realAdapter`, cuyas rutas el backend no expone: enseñan **datos de
-demostración**, y el propio panel lo declara. Es el resto vivo de X-21.
+(`server/frontend/Dockerfile:19`, `compose.yml:83`). Las pantallas nuevas no dependen de ese
+modo —tienen cliente propio contra `/api` real con JWT— pero las **heredadas** (estado del
+sistema, telemetría y configuración de módulo, incidencias) siguen colgando de `realAdapter`:
+enseñan **datos de demostración**, y el propio panel lo declara. Es el resto vivo de X-21.
+**Corrección respecto a la versión anterior de este informe:** aquella lista incluía
+«calibración, prueba de sensores/LED, diagnósticos» entre las pantallas cuyas rutas *el backend
+no expone*, y **eso ya no es cierto** — F6 (`d42f474`) las implementó y hoy existen en
+`module-diagnostics.controller.ts`. Lo que sigue impidiendo que se usen no es la falta de
+backend, sino que la imagen se compila en modo `mock`.
 
 **A10 · WebSocket tiempo real — 🟡**
 Gateway implementado en el backend (`namespace: '/live'`, `path: '/ws/socket.io'`), con salas
@@ -195,9 +214,21 @@ contra el backend real** (X-06). El REST sí es alcanzable por el proxy.
 **Corregido en código el mismo 2026-07-26 (`5c3b7ac`), después de escribirse el párrafo
 anterior:** el panel pasa a `socket.io-client`, el gateway sirve en `/ws/socket.io` con salas
 reales por partida —antes emitía a **todos** los clientes— y recuerda el último estado para
-quien se suscribe. Se sigue en 🟡 y no en ✅ por tres razones concretas: **no está desplegado**,
-**no se ha probado con un navegador real contra el backend desplegado**, y **el canal en directo
-no exige autenticación**: el namespace no valida el JWT.
+quien se suscribe.
+**Supervisión de X-06: `NO CONFORME`, 2 bloqueantes, cerrados en `eb42324`.** El supervisor
+montó nginx 1.26 con el fichero del repo y probó el transporte de extremo a extremo (eso sí
+funcionaba). Los dos fallos: **el canal no pedía credenciales y difundía TODO** —el arreglo por
+salas sólo cubría el evento `live`, y el canal de diagnóstico seguía emitiendo a todo el
+namespace, así que un cliente sin token y sin suscribirse a nada recibía la manguera MQTT
+completa—, y **el panel reventaba con un `game/state` válido** (`active_targets` no está en
+`required` y `LiveGamePage` lo recorría). Ambos corregidos: el saludo exige ahora un JWT válido
+y el diagnóstico va a una sala que hay que pedir expresamente.
+**Actualización 2026-08-04:** se sigue en 🟡 y no en ✅ por dos razones —**no está desplegado** y
+**no se ha probado con un navegador real contra el backend desplegado**—. La tercera razón que
+figuraba aquí, «el canal en directo no exige autenticación», **ha dejado de ser cierta**.
+**Y una razón nueva, que pesa:** aunque se desplegara, el panel de producción **se compila en
+modo `mock`** (`VITE_API_MODE`), así que **no usaría el cliente nuevo**; pasar a `real` exige
+cerrar antes el resto de X-21.
 
 **A11 · Simulador — 🟡**
 33/33 tests. **Conecta al Mosquitto real y completa un escenario de partida** (una credencial
@@ -267,13 +298,19 @@ clave.
 Stack sano y API respondiendo (ver A12). **Último despliegue: 2026-07-26** (`develop` @
 `045fdd1`): 4 migraciones aplicadas contra la base viva, imágenes backend/frontend/worker
 reconstruidas, **8/8 contenedores `healthy`**, copia de la base tomada antes de tocar nada.
-**Resto abierto:** (a) **restauración** en base aislada y **`reboot`** verificando el retorno
-automático **siguen sin ejecutarse**; (b) el HEAD de `develop` (`133d760`, D9) **no está
-desplegado**; (c) la verificación viva fue de superficie (contenedores, esquema y códigos HTTP),
-**sin autenticarse con credenciales reales ni jugar una partida**; (d) dos incidencias de
-infraestructura abiertas en la VM, el **DNS roto** (MagicDNS de Tailscale) y la **memoria por
-debajo de lo nominal**, que obliga a parar contenedores para poder compilar sin que BuildKit
-muera por OOM (`deployment/procedimiento.md` §8).
+**Resto abierto (revisado 2026-08-04):** (a) **restauración** en base aislada y **`reboot`**
+verificando el retorno automático **siguen sin ejecutarse**; (b) el HEAD de `develop`
+(`1aa1fbc`) **no está desplegado** — la VM sigue en `133d760`, **seis commits por detrás**, y le
+faltan **dos migraciones** (`20260726200000_manager_activation`, `20260726210000_hit_stats_reset`),
+de modo que el próximo despliegue conlleva cambio de esquema; (c) la verificación viva fue de
+superficie (contenedores, esquema y códigos HTTP), **sin autenticarse con credenciales reales ni
+jugar una partida**; (d) **tres** incidencias de infraestructura abiertas en la VM: el **DNS
+roto** (MagicDNS de Tailscale), la **memoria por debajo de lo nominal** —que obliga a parar
+contenedores para compilar sin que BuildKit muera por OOM (`deployment/procedimiento.md` §8)— y,
+nueva, **el worker roto**: `diana-worker-1` figura `healthy` mientras **todas** sus tareas
+fallan en bucle por desajuste del motor de Prisma (`debian-openssl-3.0.x` frente a `1.1.x`);
+el healthcheck es un `pgrep` y no lo detecta. Por eso la tabla `statistics` de producción está
+vacía. Ver riesgo P-09.
 
 **A27 · CI reproducible — 🟡**
 5 workflows escritos con YAML validado (`ci`, `firmware-idf`, `integration`, `e2e`, `nightly`),
@@ -296,13 +333,33 @@ conservan como tales; el estado vivo está en `STATUS.md`.
 ### Lote G-A…G-I y programa F1–F6 (posteriores al encargo original)
 
 No son tareas del encargo §1, sino requisitos de producto añadidos por la dirección los días
-2026-07-21 y 2026-07-22 (`docs/product/alcance-panel-roles-firmware.md` §6). Estado a
-2026-07-26: **G-A…G-H cerrados con supervisor independiente y desplegados**; **G-I desplegado
-salvo D9**, cuyo barrido de obsolescencia está en `develop` (`133d760`) con **tres
-supervisiones `NO CONFORME` ya corregidas y la cuarta EN CURSO**, sin desplegar. F1, F2 y F3
-cerradas y desplegadas; F4 y F5 mayoritariamente entregadas por G-D con restos abiertos
-(reset de estadística por partida; código de activación de gestor; envío real de correo);
-**F6 (diagnóstico) sigue sin cablear al backend**. Detalle por bloque en `STATUS.md`.
+2026-07-21 y 2026-07-22 (`docs/product/alcance-panel-roles-firmware.md` §6). **Estado a
+2026-08-04:** **G-A…G-I cerrados con supervisor independiente y desplegados**, D9 incluido
+(4ª supervisión: `CONFORME CON OBSERVACIONES`; la versión anterior de este informe la daba «EN
+CURSO»). **F1, F2 y F3 cerradas y desplegadas.**
+
+**F4, F5 y F6 están hoy CONSTRUIDAS EN EL REPOSITORIO — y en ningún otro sitio.** Las tres
+frases de la revisión anterior («resto abierto: reset de estadística por partida; código de
+activación de gestor» y «F6 sigue sin cablear al backend») eran ciertas el 26 de julio y hoy son
+**falsas**:
+
+- **F4** · el reinicio de estadística por partida existe (`85403db`):
+  `POST /api/statistics/games/:gameId/participants/:participantId/reset`.
+- **F5** · el código de activación del ascenso a gestor existe (`afe3e82`): modelo
+  `ManagerActivation`, caducidad de 24 h, `link()` ya no asciende. *(El envío real de correo
+  **sigue** pendiente de SMTP, y no se finge lo contrario.)*
+- **F6** · el diagnóstico está cableado al backend real (`d42f474`):
+  `module-diagnostics.controller.ts` expone `identify`, `test-led`, `test-sensor`, `calibrate`,
+  `abort-calibration` y `GET diagnostics`.
+
+**Pero las tres siguen sin poder darse por cerradas, por tres motivos distintos que conviene no
+mezclar:** (1) **no están desplegadas** —la VM sigue en `133d760`— y faltan dos migraciones;
+(2) **las tres salieron `NO CONFORME`** en su primera supervisión (diez bloqueantes entre las
+tres, uno de seguridad: el rol y los permisos salían del token y quedaban obsoletos hasta 8 h,
+de modo que un ex-gestor degradado conservaba sus permisos toda la vida del token) y las
+correcciones (`4ff69ec`, `1aa1fbc`) **aún no han pasado revisión independiente**; (3) el bucle
+completo de F6 (ordenar → el módulo publica → el operador lee) **no se ha ejercido en ninguna
+capa**, ni siquiera contra el simulador del repo. Detalle por bloque en `STATUS.md`.
 
 ### B. VM y sistema (resumen de lo hecho)
 
@@ -394,10 +451,13 @@ force-push.
 
 Cerrar el despliegue (restauración aislada y `reboot`), la ingesta e2e (X-18-INGESTA) y el
 WebSocket (X-06, que no es enrutado sino protocolos distintos en cada extremo); **hacer la
-verificación funcional con credenciales reales**, que nadie ha hecho; **arreglar el DNS y la
-memoria de la VM**, que hoy hacen frágil cualquier despliegue; cerrar el resto de X-21 (las
-pantallas heredadas, entre ellas el diagnóstico F6); cerrar D9 con su 4ª supervisión y
-desplegarlo; instalar `gh` y confirmar el estado de Tailscale; mergear y actualizar la
+verificación funcional con credenciales reales**, que nadie ha hecho; **completar la revisión
+independiente de las correcciones de F4, F5 y F6**, que salieron `NO CONFORME` y siguen sin
+revisar; **desplegar los seis commits que la VM no tiene**, con sus dos migraciones; **devolver
+la suite del backend al verde** (8 fallas por fechas fijas en las pruebas de F5); **arreglar el
+worker de producción**, que se declara `healthy` mientras todas sus tareas fallan; **arreglar el
+DNS y la memoria de la VM**, que hoy hacen frágil cualquier despliegue; cerrar el resto de X-21
+(las pantallas heredadas y el paso del panel de modo `mock` a `real`); instalar `gh` y confirmar el estado de Tailscale; mergear y actualizar la
 documentación de la VM en `s9-server` (A26); decidir F-02 con el supervisor y activar TLS
 (F-07); atender las 23 vulnerabilidades de npm (X-15); y emitir la 2ª vuelta + dictamen final
 del programa, para abrir el PR a `main` y el informe §25 definitivo. Todo lo que exige hardware

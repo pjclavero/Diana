@@ -275,7 +275,59 @@ base aislada, y `reboot` de la VM verificando que el stack vuelve solo (`onboot`
 | Ingesta e2e (X-18-INGESTA) | 🔴 **no reintentada** | sigue como quedó el 2026-07-21 |
 | Restauración de copia y `reboot` | 🔴 **no ejecutados** | siguen siendo el cierre pendiente del ciclo |
 
-**Lo que quedó fuera de este despliegue:** el commit `133d760` (D9, barrido de obsolescencia de
-G-I) es **posterior**. Está en `develop`, probado en local y con la cuarta supervisión en
-curso, pero **no corre en la VM**. Mientras no se redespliegue, la detección de caída que hay
-en producción depende por completo del Last Will.
+**Lo que quedó fuera de este despliegue:** nada de D9 quedó fuera — `133d760` **es** el commit
+desplegado en esta operación (segundo despliegue del día) y su cuarta supervisión se cerró
+después como `CONFORME CON OBSERVACIONES`.
+
+---
+
+## 11. Deuda de despliegue pendiente a 2026-08-04
+
+**La VM 109 sigue en `133d760`.** El HEAD de `develop` es **`1aa1fbc`**, seis commits por
+delante, y **nada de lo que sigue está desplegado**:
+
+| Commits | Bloque | Qué añade |
+|---|---|---|
+| `5c3b7ac`, `eb42324` | **X-06** · vista en directo | Panel a `socket.io-client`, gateway con salas reales por partida, **autenticación por JWT en el saludo del canal** y cierre de la fuga por la que un cliente sin token recibía todo el tráfico MQTT |
+| `d42f474`, `1aa1fbc` | **F6** · diagnóstico | Rutas reales de `identify`, `test-led`, `test-sensor`, `calibrate`, `abort-calibration` y `GET diagnostics`; persistencia de los diagnósticos que llegan por MQTT |
+| `85403db`, `4ff69ec` | **F4** · reinicio de estadística | Endpoint de reinicio por partida; corrección del worker para que borre las filas de un jugador sin resultados en vez de saltárselas |
+| `afe3e82`, `1aa1fbc` | **F5** · ascenso a gestor | `ManagerActivation` con código de 24 h; `JwtStrategy` pasa a leer el rol **vigente de la base en cada petición** |
+
+**Dos migraciones sin aplicar en producción.** El próximo despliegue **conlleva cambio de
+esquema**, así que exige el procedimiento completo (copia de la base **antes** de tocar nada,
+`migrate deploy`, verificación del esquema) y no un simple `up -d`:
+
+| Migración | Origen | Qué introduce |
+|---|---|---|
+| `20260726200000_manager_activation` | F5 | Tabla de códigos de activación de gestor (código único, estado, caducidad, nota de entrega, emisor). Aditiva y re-ejecutable |
+| `20260726210000_hit_stats_reset` | F4 | `HitEvent.statsResetAt`, que distingue «nunca se pudo atribuir» de «se apartó a propósito». Aditiva |
+
+**Antes de desplegar, tres avisos que no son opcionales:**
+
+1. **Las correcciones de F4, F5 y F6 no han pasado revisión independiente.** Las tres fases
+   salieron `NO CONFORME` en su primera supervisión (diez bloqueantes entre las tres, uno de
+   seguridad) y las correcciones están sin revisar al escribir esto.
+2. **La suite del backend no está en verde** (584/8/7 al 2026-08-04). Las 8 fallas son de
+   `test/invitations/manager-activation.spec.ts` y se deben a fechas absolutas fijadas en la
+   propia prueba, no a un defecto del producto — pero desplegar con la suite en rojo deja sin
+   red de seguridad.
+3. **Desplegar X-06 no hará funcionar la vista en directo por sí solo:** la imagen del panel se
+   compila con `VITE_API_MODE=mock` (`server/frontend/Dockerfile:19`, `compose.yml:83`), así que
+   seguiría usando el adaptador de demostración. Pasar a `real` exige antes cerrar el resto de
+   X-21.
+
+### Incidencia viva · el worker se declara `healthy` estando roto (2026-08-04)
+
+Hallazgo del supervisor de F4 sobre la VM 109: **`diana-worker-1` figura `healthy` mientras
+TODAS sus tareas fallan en bucle** por un desajuste del motor de Prisma (`debian-openssl-3.0.x`
+frente a `1.1.x`). El healthcheck del worker es un `pgrep` (§7: «NO expone HTTP (es un bucle);
+healthcheck de proceso `pgrep`»), así que comprueba que el proceso **vive**, no que **trabaje**.
+
+**Consecuencia medida:** la tabla `statistics` de producción está **vacía**. Durante semanas eso
+se atribuyó a que «nadie escribe esa tabla» — y esa premisa falsa llegó a fundamentar el diseño
+de F4, hasta que su supervisión la tumbó (el escritor es `server/worker/src/tasks.ts`,
+`recomputePlayerStatistics`, cada 5 minutos). La tabla está vacía **porque el escritor está
+roto**, no porque no exista.
+
+**Lección para este procedimiento: `healthy` no es evidencia de funcionamiento.** Un healthcheck
+de proceso no distingue un servicio que trabaja de uno que falla en bucle. **Sin resolver.**

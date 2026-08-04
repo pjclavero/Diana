@@ -140,9 +140,18 @@ El gestor no se «solicita» en abstracto: nace de **vender/vincular un módulo*
   se borran los `Result`, `Penalty` y `ShotCount` de ese jugador **en esa partida** (todos sus
   puestos, incluido el de ronda) y se **desatribuyen** sus `HitEvent` (`participantId = NULL`)
   **sin borrarlos**, porque son telemetría del firmware y no del backend. El participante sigue
-  en la partida. El acumulado global se corrige solo: hoy **se deriva** de los `Result`, no hay
-  ningún total escrito que restar. Se rechaza con la partida en curso (`running`/`paused`),
-  porque el motor recalcularía lo borrado.
+  en la partida. Se rechaza con la partida en curso (`running`/`paused`), porque el motor
+  recalcularía lo borrado.
+  ⚠️ **Corregido el 2026-08-04:** este párrafo decía «el acumulado global se corrige solo: hoy
+  **se deriva** de los `Result`, no hay ningún total escrito que restar». **Era falso.** La tabla
+  `Statistic` **sí** se escribe, desde `server/worker/src/tasks.ts` (`recomputePlayerStatistics`,
+  cada 5 minutos). La supervisión de F4 lo tumbó como bloqueante: el reinicio dejaba intactos los
+  totales globales y, al reiniciar la única partida de un jugador, el worker le congelaba los
+  totales para siempre. El reinicio **borra ahora también el acumulado global** (ausencia = no hay
+  dato) y el worker borra las filas de un jugador que se queda sin resultados en vez de
+  saltárselas. Un impacto apartado se distingue de uno que nunca se pudo atribuir mediante
+  `HitEvent.statsResetAt`, para que el ranking no se lo readjudique en las partidas de un solo
+  jugador.
 
 > **Decidido (2026-07-21):** el temporal es una identidad **por partida**, sin `User`, sin
 > `Statistic` acumulada, sin acceso; sus números viven sólo en el `Result`/`Participant` de esa
@@ -151,21 +160,27 @@ El gestor no se «solicita» en abstracto: nace de **vender/vincular un módulo*
 ## 4. Qué existe ya y qué es nuevo
 
 Primera columna de estado: **inventario original, verificado en el código el 2026-07-21**, que
-es el que justificó el plan. Segunda columna: **dónde está cada cosa hoy, 2026-07-26**,
-verificado en el código de `develop` @ `133d760`.
+es el que justificó el plan. Segunda columna: **dónde está cada cosa hoy, 2026-08-04**,
+verificado en el código de `develop` @ `1aa1fbc`.
 
-| Elemento | Estado 2026-07-21 | Estado 2026-07-26 |
+> **Leer esta columna con cuidado: «hecho» significa «está en el repositorio».** La VM 109 sigue
+> en `133d760`, así que **F4, F5 y F6 no están desplegadas** y faltan dos migraciones por
+> aplicar. Además, las tres salieron `NO CONFORME` en su primera supervisión y **las
+> correcciones no han pasado revisión independiente** al escribir esto. Lo desplegado se marca
+> explícitamente como «desplegado».
+
+| Elemento | Estado 2026-07-21 | Estado 2026-08-04 |
 |---|---|---|
 | `FirmwareVersion` (versión, sha256, firma) + `Deployment` por módulo | 🟢 modelo existe; faltan endpoints y UI | ✅ **hecho y desplegado** (F3 + G-B): subida del binario con sha256 y tamaño calculados por el servidor, descarga pública para el módulo, aceptación por el gestor → `Deployment` + OTA por MQTT, compatibilidad de placa y un despliegue en vuelo garantizado por índice único. **Nunca ha terminado en un dispositivo real** |
 | `ModulePosition` (topología) | 🟢 modelo existe; falta endpoint | ✅ **hecho** (G-H): `GET/PUT /api/topology/panels[/:idOrSlug]` con la matriz real, selector de panel y matrices favoritas por slug |
 | `Player.userId` (jugador↔usuario) + `Statistic` | 🟢 modelo existe; falta vista con auth de jugador | ✅ **hecho** (G-D + G-G): ficha e histórico del jugador en el marcador; el temporal se declara **sin histórico** |
 | `GameMode` / `GamePreset` (tipos de partida) | 🟢 existe | ✅ + **presets por gestor** (G-F, 5 por gestor). Aviso operativo: `game_modes` hay que **sembrarlo** en cada entorno nuevo (`procedimiento.md` §8) |
-| Diagnóstico self-test | 🟡 parcial; faltan test-sensor y test-led | 🔴 **sigue sin cerrarse contra el backend real.** La UI existe y G-A la arregló, pero llama al adaptador de demostración: el backend **no expone** `test-led`, `test-sensor`, `calibrate` ni `commands/identify`; sólo `self_test`. Es F6 y el resto vivo de X-21 |
+| Diagnóstico self-test | 🟡 parcial; faltan test-sensor y test-led | 🟡 **hecho en el repositorio (F6), sin desplegar y sin ejercer nunca.** *(La casilla anterior decía «el backend no expone `test-led`, `test-sensor`, `calibrate` ni `commands/identify`»: era cierto el 2026-07-26 y hoy es FALSO.)* `module-diagnostics.controller.ts` expone las seis rutas —`identify`, `test-led`, `test-sensor`, `calibrate`, `abort-calibration` y `GET diagnostics`—, acotadas por propiedad (módulo ajeno → **404, no 403**). **Dos decisiones de honestidad:** ordenar una prueba **no es** conocer su resultado (la llamada devuelve el comando y si el broker lo aceptó; el resultado se lee luego en `GET diagnostics`), y **no existe prueba de sensor por diana en el contrato v1**, así que se pide `self_test` y la respuesta declara que el alcance es el módulo entero. Corregido además que los diagnósticos que llegaban por MQTT **se validaban y se tiraban**: ahora se persisten. **Sin cerrar:** supervisión 1ª `NO CONFORME` (3 bloqueantes, entre ellos que `led_test` y `start_calibration` llevaban parámetros que el esquema no admite, así que **la prueba de LED y la calibración no salían nunca**), correcciones sin revisión independiente; **el bucle completo no se ha ejercido en ninguna capa**, ni siquiera contra el simulador; y la imagen del panel se compila en modo `mock`, así que desplegarlo no bastaría |
 | Roles **jugador/gestor/admin** | 🔴 hoy 5 roles técnicos distintos, sin rol jugador | ✅ **hecho y desplegado** (F1), conservando los roles técnicos |
 | **Propiedad de módulo** (`owner`) + vincular/desvincular | 🔴 nuevo: `Module` no tiene dueño | ✅ **hecho y desplegado** (F2): `Module.ownerId`, `link`/`unlink`, y el acotado por dueño llega ya hasta paneles y matrices |
-| **Aprobación usuario→gestor + código** | 🔴 nuevo | ✅ **hecho** (F5, 2026-07-26): `ManagerActivation`. **Hallazgo al abrirlo:** vincular un módulo ascendía a gestor EN EL ACTO, así que los pasos 3-5 del §3.1 no es que estuvieran incompletos — no existían, y el comprador se encontraba con permisos que nunca había aceptado. Ahora vender abre un código con caducidad de 24 h que sólo puede activar su destinatario; el admin lo ve, lo regenera y lo revoca; quedarse sin módulos revoca los pendientes. **El envío real de correo sigue pendiente de SMTP** y no se afirma lo contrario: sin relay, la nota dice que NO se ha enviado nada y el código se muestra al admin para dictarlo |
+| **Aprobación usuario→gestor + código** | 🔴 nuevo | 🟡 **hecho en el repositorio (F5), sin desplegar y con las correcciones sin revisar.** `ManagerActivation`. **Hallazgo al abrirlo:** vincular un módulo ascendía a gestor EN EL ACTO, así que los pasos 3-5 del §3.1 no es que estuvieran incompletos — no existían, y el comprador se encontraba con permisos que nunca había aceptado. Ahora vender abre un código con caducidad de 24 h que sólo puede activar su destinatario; el admin lo ve, lo regenera y lo revoca; quedarse sin módulos revoca los pendientes. **El envío real de correo sigue pendiente de SMTP** y no se afirma lo contrario: sin relay, la nota dice que NO se ha enviado nada y el código se muestra al admin para dictarlo. **Supervisión 1ª `NO CONFORME`, 4 bloqueantes corregidos y pendientes de revisión independiente**, el más serio de seguridad: el rol y los permisos salían del **token**, congelados hasta 8 h, así que un ex-gestor degradado conservaba sus permisos toda la vida del token —revocarle los códigos no servía de nada— y un recién ascendido veía menús de gestor mientras el backend le respondía 403; ahora el rol se lee **de la base en cada petición**. Otro bloqueante: la pantalla de activación **no era alcanzable desde el menú**, o sea el paso 3 del §3.1 no se podía ejercer desde el panel. **Migración `20260726200000_manager_activation` sin aplicar en producción** |
 | **Usuarios temporales** | 🔴 nuevo | ✅ **hecho y desplegado** (G-D.2): identidad por partida (XOR `playerId`/`guestName`), sin `User` y **sin estadística acumulada por construcción**, no por convención |
-| **Reset de estadísticas por partida** | 🔴 nuevo | ✅ **hecho** (F4, 2026-07-26): `POST /api/statistics/games/:gameId/participants/:participantId/reset` con permiso `stats:reset` (gestor de sus paneles + admin), auditado e idempotente. Borra `Result`, `Penalty` y `ShotCount` de ese jugador **en esa partida** —las entradas con las que se recalcula, no sólo el resultado— y **desatribuye** sus `HitEvent` sin borrarlos (telemetría inmutable). La estadística global no se corrompe porque **se deriva** de los `Result`: nadie escribe la tabla `Statistic`. **No verificado contra el backend desplegado ni contra PostgreSQL real** |
+| **Reset de estadísticas por partida** | 🔴 nuevo | 🟡 **hecho en el repositorio (F4), sin desplegar y con las correcciones sin revisar.** `POST /api/statistics/games/:gameId/participants/:participantId/reset` con permiso `stats:reset` (gestor de sus paneles + admin), auditado e idempotente. Borra `Result`, `Penalty` y `ShotCount` de ese jugador **en esa partida** —las entradas con las que se recalcula, no sólo el resultado— y **desatribuye** sus `HitEvent` sin borrarlos (telemetría inmutable). ⚠️ **La frase anterior de esta casilla, «la estadística global no se corrompe porque se deriva de los `Result`: nadie escribe la tabla `Statistic`», ERA FALSA** y sostenía todo el diseño: el escritor existe y está en `server/worker/src/tasks.ts` (`recomputePlayerStatistics`, cada 5 min); el grep que fundamentó la afirmación sólo miró `backend/src`. La supervisión lo tumbó (1ª `NO CONFORME`, 3 bloqueantes, corregidos y **pendientes de revisión independiente**): el reinicio dejaba intactos los totales globales y, peor, al reiniciar la **única** partida de un jugador el `if (results.length === 0) continue` del worker le congelaba los totales **para siempre**. Otro bloqueante: en una partida de **un solo jugador** —el modo normal del producto— el reinicio **no se veía**, porque el ranking le readjudicaba los impactos desatribuidos. **Migración `20260726210000_hit_stats_reset` sin aplicar en producción. No verificado contra el backend desplegado ni contra PostgreSQL real** |
 | **Login en el panel** (JWT) + rutas reales panel↔backend | 🔴 nuevo (X-21/X-22) | ✅ login **hecho y desplegado** (F1; cierra X-22). Rutas reales: 🟡 **las pantallas nuevas sí**, las heredadas siguen en datos de demostración (X-21 parcial) |
 
 ## 5. Decisiones (2026-07-21)
@@ -421,4 +436,7 @@ caída se detectaba jamás**. Estado real ahora:
   antes incluso de que el barrido lo declare caído.
 
 _Actualizado con el lote de mejoras · 2026-07-22; G-H y G-G · 2026-07-26; G-I y D9 · 2026-07-26;
-barrido de documentación (§4, §6.2, §6.3, §6.6, §6.7, §6.9 y cabecera) · 2026-07-26_
+barrido de documentación (§4, §6.2, §6.3, §6.6, §6.7, §6.9 y cabecera) · 2026-07-26;
+**barrido de obsolescencia de §4 (F4, F5, F6) · 2026-08-04** — las tres casillas se habían
+quedado en el estado del 26 de julio y dos de ellas afirmaban lo contrario de lo que hoy hay en
+el repositorio_

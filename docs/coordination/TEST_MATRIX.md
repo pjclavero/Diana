@@ -11,11 +11,19 @@ La columna **Resultado** sólo se rellena con salida realmente ejecutada.
 > - Suites reproducidas ejecutando → `docs/quality/suites-evidence.md` y
 >   `docs/quality/dictamen-calidad.md`.
 > - Seguridad, con salida real de comandos → `docs/security/evidence/`.
-> - Despliegue e integración contra la VM → `docs/deployment/procedimiento.md` §8-§9 y el
+> - Despliegue e integración contra la VM → `docs/deployment/procedimiento.md` §8-§11 y el
 >   commit de despliegue `8220a45`.
-> - Cifras vigentes a `133d760`: backend 471 pasan + 7 saltadas, frontend 131/131,
->   integración 7/7, contratos 43/0. Firmware (389/389) y simulador (33/33) **no se han
->   vuelto a ejecutar desde el 2026-07-21**.
+> - **Cifras vigentes a `1aa1fbc`, reejecutadas el 2026-08-04: backend 584 pasan, 8 FALLAN y
+>   7 se saltan** (599 en total); frontend **178/178** con `tsc -b` limpio. Integración 7/7 y
+>   contratos 43/0 siguen siendo las del 2026-07-26, sin reejecutar. Firmware (389/389) y
+>   simulador (33/33) **no se han vuelto a ejecutar desde el 2026-07-21**.
+> - **La suite del backend NO está en verde.** Las 8 fallas están todas en
+>   `test/invitations/manager-activation.spec.ts` y la causa es una bomba de relojería en la
+>   propia prueba: fija fechas absolutas (`MANANA = 2026-07-27`, l. 9) y **no congela el
+>   reloj**, así que desde el 27 de julio el servicio considera caducados unos códigos que la
+>   prueba da por vigentes. Es un defecto de la suite, **no del producto** — pero una suite en
+>   rojo por causa espuria esconde las regresiones de verdad (riesgo P-10 en `RISKS.md`).
+>   *(No se ha podido reejecutar con el reloj congelado: no hay `faketime` en esta máquina.)*
 >
 > Y lo que hay que decir sin rodeos: **los 16 escenarios E2E del §19 (E-01…E-16) NO están
 > hechos.** Son `test.fixme` en `tests/e2e/scenarios.spec.ts`, con 0 aserciones. Las filas de

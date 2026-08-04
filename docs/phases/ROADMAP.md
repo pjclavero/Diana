@@ -8,7 +8,9 @@ que dependa del hardware físico está marcado como superado, porque no hay hard
 
 Leyenda: ✅ completada · 🟡 parcial · ⬜ no iniciada · 🔬 bloqueada por hardware
 
-**Última revisión: 2026-07-26** (`develop` @ `70b2590`; desplegado en la VM 109 @ `133d760`).
+**Última revisión: 2026-08-04** (`develop` @ `1aa1fbc`; **desplegado en la VM 109 @ `133d760`**,
+seis commits por detrás). Nada de X-06, F4, F5 ni F6 está desplegado, y quedan **dos migraciones
+sin aplicar** en producción (`20260726200000_manager_activation`, `20260726210000_hit_stats_reset`).
 
 ---
 
@@ -89,8 +91,16 @@ sobre hardware.
 - 23 entidades iniciales, migración versionada, ingesta MQTT idempotente con validación
   estricta, motor de partidas extensible, WebSocket, OpenAPI, exportación CSV, 5 roles.
   Después: F1-F3, el lote G-A…G-I y las deudas, con 8 migraciones aditivas más.
-- **A `133d760`: 471 pruebas pasan, 7 saltadas** (las saltadas exigen `DATABASE_URL`).
-- Stack Compose completo con perfiles, healthchecks, ACL de Mosquitto y copias.
+- **A `1aa1fbc` (reejecutado el 2026-08-04): 584 pruebas pasan, 8 FALLAN y 7 se saltan** (599
+  en total). Las 7 saltadas exigen `DATABASE_URL`. **Las 8 que fallan son un defecto de la
+  propia suite, no del producto:** `test/invitations/manager-activation.spec.ts` fija fechas
+  absolutas (`MANANA = 2026-07-27`) sin congelar el reloj, así que hoy el servicio considera
+  caducados unos códigos que la prueba da por vigentes. El commit `1aa1fbc` declara «592 pasan»;
+  esa cifra **no se reproduce hoy**. Ver riesgo P-10.
+- Stack Compose completo con perfiles, healthchecks, ACL de Mosquitto y copias. **Aviso: el
+  verde del stack no es evidencia de funcionamiento** — en producción `diana-worker-1` figura
+  `healthy` mientras todas sus tareas fallan en bucle por desajuste del motor de Prisma
+  (riesgo P-09).
 
 **Riesgo cerrado (2026-07-21):** la migración se generó con `prisma migrate diff` y no se
 había ejecutado nunca contra una base viva. **Ya se ejecuta contra la base viva de la VM**
@@ -114,7 +124,8 @@ se ha probado**, ni el `reboot` con retorno automático. Hasta eso, la puerta no
 - Ningún estado se comunica sólo por color: color + patrón + símbolo + etiqueta, con test
   que lo impide.
 - La regla de precisión no calculable está implementada y probada.
-- **131/131 unitarias**, `tsc` y `oxlint` limpios a `133d760`.
+- **178/178 unitarias**, `tsc -b` limpio y `oxlint` sin avisos nuevos a `1aa1fbc`
+  (reejecutado el 2026-08-04; eran 131/131 a `133d760`).
 
 **Corregido respecto a la versión anterior de este documento:** los E2E de Playwright del
 frontend **sí se ejecutaron**, con navegador real: **18/18** tras corregir 4 bugs reales
@@ -123,10 +134,16 @@ frontend **sí se ejecutaron**, con navegador real: **18/18** tras corregir 4 bu
 **Pendiente:** (a) los 16 escenarios E2E obligatorios del §19 (`tests/e2e/scenarios.spec.ts`)
 siguen como `test.fixme`, 0 aserciones; (b) la vista en directo **nunca pudo funcionar contra
 el backend real** —el panel abría un WebSocket crudo y el backend sirve socket.io (X-06)—:
-**corregido en código el 2026-07-26 (`5c3b7ac`), sin desplegar, sin probar con navegador real
-contra el backend desplegado y con el canal en directo aún **sin autenticación**; (c) las
-pantallas heredadas siguen mostrando datos de demostración (X-21 parcial), lo que incluye el
-diagnóstico de sensores y LED.
+**corregido en código (`5c3b7ac` + `eb42324`), sin desplegar y sin probar con navegador real
+contra el backend desplegado.** La falta de autenticación del canal, que esta línea declaraba
+abierta el 2026-07-26, **ya no lo está**: la supervisión de X-06 la dictaminó `NO CONFORME` y
+`eb42324` la cerró —el saludo exige ahora un JWT válido y el canal de diagnóstico, que seguía
+difundiendo la manguera MQTT completa a cualquier cliente sin token, va a una sala que hay que
+pedir expresamente; (c) las pantallas heredadas siguen mostrando datos de demostración (X-21
+parcial). **Matiz importante sobre el diagnóstico de sensores y LED:** ya **no** es cierto que
+le falte el backend —F6 lo implementó y las rutas existen—, pero la imagen de producción se
+compila con `VITE_API_MODE=mock` (`server/frontend/Dockerfile:19`), así que lo que se despliegue
+seguiría enseñando datos de demostración hasta que se pase a `real`.
 
 ## Fase 7 — Integración de un módulo completo ⬜ 🔬
 
@@ -177,7 +194,17 @@ No procede: exige PCB final, carcasa y pruebas de recepción.
 
 ---
 
-## Lo siguiente, por orden de valor (revisado 2026-07-26)
+## Lo siguiente, por orden de valor (revisado 2026-08-04)
+
+> **Añadido el 2026-08-04, por delante de todo lo demás:** (i) **completar la revisión
+> independiente de las correcciones de F4, F5 y F6** — las tres salieron `NO CONFORME` en su
+> primera supervisión, con diez bloqueantes entre las tres y uno de seguridad (el rol salía del
+> token y quedaba obsoleto hasta 8 h), y las correcciones aún no se han revisado; (ii) **devolver
+> la suite del backend al verde** (8 fallas por fechas fijas en las pruebas de F5, riesgo P-10:
+> una suite en rojo por causa espuria esconde las regresiones de verdad); (iii) **arreglar el
+> worker de producción**, que se declara `healthy` mientras todas sus tareas fallan en bucle
+> (riesgo P-09); y (iv) **desplegar**, teniendo en cuenta que la VM está seis commits por detrás
+> y le faltan **dos migraciones**.
 
 Los dos primeros puntos de la lista anterior **ya están hechos** y se dejan anotados para que
 se vea el avance: la migración corre contra PostgreSQL real (7/7 de integración) y la ACL se
@@ -190,8 +217,9 @@ probó contra Mosquitto real — y esa prueba fue la que **confirmó F-02 en viv
    impactos. Sin eso, el sistema no ha demostrado nunca su función principal.
 3. **Arreglar el DNS y la memoria de la VM 109.** Hoy no se puede compilar sin parar
    contenedores, y sin DNS no hay `git pull` ni `docker pull`: cualquier despliegue es frágil.
-4. **Cerrar D9** (4ª supervisión en curso) y **redesplegar**: el HEAD de `develop` no está en
-   la VM.
+4. **Redesplegar**: el HEAD de `develop` (`1aa1fbc`) no está en la VM, que sigue en `133d760`.
+   D9 ya está cerrado (4ª supervisión: `CONFORME CON OBSERVACIONES`) y desplegado; lo que hoy
+   falta por desplegar es X-06, F4, F5 y F6, con sus dos migraciones.
 5. **Compilar el firmware con ESP-IDF.** Sigue siendo la laguna mayor del proyecto.
 6. **Cerrar F-02** (usuario = client_id = module_id + `use_username_as_clientid`) y **activar
    TLS** (F-07). F-02 está confirmado explotable en vivo.
