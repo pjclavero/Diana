@@ -1,0 +1,14 @@
+{
+  "_schema": "module-maintenance-command.schema.json",
+  "schema_version": 1,
+  "request_id": "1c2d3e4f-5061-4718-9293-a4b5c6d7e8f9",
+  "module_id": "module-03",
+  "command_type": "request_telemetry",
+  "issued_at_ms": 1784500002000,
+  "expires_in_ms": 5000,
+  "nonce": 1,
+  "requested_by": {
+    "actor_type": "operator",
+    "actor_id": "operator-cli"
+  }
+}

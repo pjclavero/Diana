@@ -29,10 +29,10 @@
     "issuer": {
       "type": "string",
       "enum": [
-        "backend",
         "coordinator",
         "operator-cli"
-      ]
+      ],
+      "description": "Ampliación v1.1: 'backend' se retira de este enum. El tópico module/{module_id}/command es el canal de juego, propiedad exclusiva del coordinador (README §2.1); el backend tiene su propio canal, module/{module_id}/maintenance/command, con su propio esquema y su propio issuer implícito. Admitir 'backend' aquí habría dejado el contrato afirmando como legítimo justo lo que la ACL prohíbe (el backend nunca ha tenido, ni tiene ahora, permiso de escritura sobre este tópico) — la clase de incoherencia entre documento y sistema que este contrato existe para evitar."
     },
     "module_id": {
       "$ref": "../schemas/common.schema.json#/$defs/identifier"

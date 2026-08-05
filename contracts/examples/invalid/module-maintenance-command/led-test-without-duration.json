@@ -1,0 +1,15 @@
+{
+  "_schema": "module-maintenance-command.schema.json",
+  "_reason": "command_type='led_test' sin params.duration_ms. Es una operación de categoría 'actuar' y necesita un tiempo de actuación acotado, igual que 'identify' en module-command.schema.json.",
+  "schema_version": 1,
+  "request_id": "4f506172-8394-4a41-a5b6-c7d8e9f0a1b2",
+  "module_id": "module-03",
+  "command_type": "led_test",
+  "issued_at_ms": 1784500005000,
+  "expires_in_ms": 4000,
+  "nonce": 4,
+  "requested_by": {
+    "actor_type": "user",
+    "actor_id": "pjclavero@gmail.com"
+  }
+}

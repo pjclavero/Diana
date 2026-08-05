@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diana.seccionnueve/contracts/mqtt/module-maintenance-command.schema.json",
+  "title": "Comando de mantenimiento a módulo",
+  "description": "targets/v1/module/{module_id}/maintenance/command · QoS 1 · retain=false. Canal EXCLUSIVO del backend (ampliación v1.1 del contrato, ver README §0 y §2). El coordinador NUNCA publica aquí y el backend NUNCA publica en module/{module_id}/command: la autoridad se reparte por dominio (juego vs. mantenimiento), no por disponibilidad. Sólo admite operaciones de mantenimiento; ninguna orden de juego (activar/desactivar diana, estados de partida, secuencias, pausas) es válida en este tópico, tenga o no la app o el operador intención de emitirla — ese repertorio sigue viviendo, sin excepción, en module/{module_id}/command bajo control exclusivo del coordinador.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "$ref": "../schemas/common.schema.json#/$defs/schemaVersion"
+    },
+    "request_id": {
+      "$ref": "../schemas/common.schema.json#/$defs/uuid",
+      "description": "Identificador de la orden de mantenimiento. Cumple dos papeles, igual que command_id en module-command: (1) idempotencia — el módulo lo recuerda en la caché de las últimas 128 órdenes de este canal y descarta duplicados; (2) correlación — el módulo lo repite tal cual en su respuesta, sea un diagnóstico de kind='command_rejected' (rechazo, ver module-diagnostic.schema.json) o el resultado positivo (p.ej. kind='self_test_result', kind='calibration_result')."
+    },
+    "module_id": {
+      "$ref": "../schemas/common.schema.json#/$defs/identifier"
+    },
+    "command_type": {
+      "type": "string",
+      "enum": [
+        "led_test",
+        "piezo_test",
+        "request_telemetry",
+        "self_test",
+        "identify",
+        "query_version",
+        "query_status",
+        "start_calibration",
+        "abort_calibration"
+      ],
+      "description": "Lista CERRADA de mantenimiento. No incluye ni admitirá por ampliación implícita ninguna orden de juego. Categoría por consecuencia (ver 'expires_in_ms' y README §6-bis para la regla de reloj): 'read' — no actúan sobre el hardware: request_telemetry, identify, query_version, query_status. 'act' — arrancan un proceso o mueven un actuador: led_test, piezo_test, self_test, start_calibration. 'safety' — para lo que otra orden arrancó: abort_calibration. Es la única orden de 'act' que se acepta SIEMPRE, incluso sin reloj y aunque su propio TTL ya haya vencido (ver expires_in_ms): una orden de parada tardía sigue queriendo decir 'para', y rechazarla dejaría sin forma de abortar una calibración en marcha justo cuando más urge cortarla. led_test, piezo_test e identify no tienen ni necesitan contraria: van acotados por params.duration_ms (máx. 60000 ms) y se autoterminan solos; start_calibration sí la tiene porque, igual que en module-command.schema.json (que ya define el par start_calibration/abort_calibration para el canal de juego), abre un proceso de duración no acotada por el propio mensaje. self_test no tiene contraria en este contrato ni la tuvo nunca en module-command.schema.json: es una rutina interna de duración conocida por el firmware, no un proceso que el emisor deje abierto."
+    },
+    "issued_at_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Epoch UTC (ms) del emisor (backend). Misma semántica que module-command: base de la caducidad, nunca la hora de recepción."
+    },
+    "expires_in_ms": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 600000,
+      "description": "TTL en milisegundos medido desde issued_at_ms del emisor, NO desde la recepción (contrato 6 del README: medirlo desde la recepción reiniciaría el plazo en cada reentrega QoS 1 y no protegería nada). Regla de módulo sin reloj sincronizado (clock_ok=false) y de caducidad vencida, decidida explícitamente para esta ampliación (README §6-bis), por categoría de command_type: 'read' se ACEPTA igual que el resto del contrato (rechazarlo dejaría indiagnosticable el caso exacto que más falta hace: un módulo recién arrancado sin hora, ver X-14/F-16); 'act' se RECHAZA con detail.reason='expired' si clock_ok=false o si ya venció el TTL, porque no hay forma honesta de acotar cuánto tiempo lleva circulando una orden que va a mover un actuador o alterar la calibración; 'safety' (abort_calibration, la única) se ACEPTA SIEMPRE, sin reloj y aunque haya vencido su propio expires_in_ms — sigue siendo obligatorio y válido en el payload (100–600000) porque otras reglas de idempotencia lo usan, pero el receptor no lo evalúa como motivo de rechazo para esta orden. Esta es una responsabilidad DOBLE, para las tres categorías: el módulo la aplica en firmware (hoy sólo en el simulador, el firmware ESP-IDF no se ha compilado nunca con esta regla) y el backend, como emisor, la comprueba también antes de publicar — no delega toda la defensa en el receptor."
+    },
+    "nonce": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Contador monotónico del backend para ESTE canal, persistido en NVS por el módulo en un espacio INDEPENDIENTE del nonce de module/{module_id}/command. Mismo propósito que el contrato 6 (protección de reproducción); espacios separados para que un replay capturado en un canal no consuma ni sea bloqueado por el contador del otro."
+    },
+    "requested_by": {
+      "type": "object",
+      "description": "Origen humano de la orden. No sustituye al transporte (que siempre es 'backend' en este canal): registra en nombre de quién actuó el backend, para auditoría.",
+      "properties": {
+        "actor_type": {
+          "type": "string",
+          "enum": [
+            "user",
+            "operator"
+          ]
+        },
+        "actor_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Identificador del usuario u operador (p.ej. email, login o 'operator-cli'). Sin datos sensibles."
+        }
+      },
+      "required": [
+        "actor_type",
+        "actor_id"
+      ],
+      "additionalProperties": false
+    },
+    "params": {
+      "type": "object",
+      "description": "Parámetros dependientes de command_type. El firmware valida también según el tipo.",
+      "properties": {
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60000
+        },
+        "target_index": {
+          "$ref": "../schemas/common.schema.json#/$defs/targetIndex"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "request_id",
+    "module_id",
+    "command_type",
+    "issued_at_ms",
+    "expires_in_ms",
+    "nonce",
+    "requested_by"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "command_type": {
+            "const": "led_test"
+          }
+        },
+        "required": [
+          "command_type"
+        ]
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "duration_ms"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command_type": {
+            "const": "piezo_test"
+          }
+        },
+        "required": [
+          "command_type"
+        ]
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "duration_ms"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "command_type": {
+            "const": "identify"
+          }
+        },
+        "required": [
+          "command_type"
+        ]
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "duration_ms"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

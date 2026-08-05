@@ -1,0 +1,15 @@
+{
+  "_schema": "module-command.schema.json",
+  "_reason": "issuer='backend' ya no pertenece al enum de este esquema (ampliación v1.1, cierre de F-02 más orden expresa del operador): el backend no tiene ni puede tener permiso de escritura sobre el tópico de juego module/{module_id}/command. Su canal es module/{module_id}/maintenance/command (module-maintenance-command.schema.json).",
+  "schema_version": 1,
+  "command_id": "ad506082-af5e-4d6c-bf71-5e6f70819203",
+  "issued_at_ms": 1784500000000,
+  "expires_in_ms": 5000,
+  "nonce": 42,
+  "issuer": "backend",
+  "module_id": "module-03",
+  "action": "identify",
+  "params": {
+    "duration_ms": 4000
+  }
+}

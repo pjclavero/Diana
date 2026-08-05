@@ -1,0 +1,18 @@
+{
+  "_schema": "module-maintenance-command.schema.json",
+  "_reason": "params.target_index=15 fuera del rango 1..9 de targetIndex. abort_calibration acepta target_index opcional (para abortar la calibración de una diana concreta dentro del módulo) pero sigue validado contra el mismo $defs/targetIndex que el resto del contrato.",
+  "schema_version": 1,
+  "request_id": "61728394-a5b6-4c7d-9e9f-0a1b2c3d4e5f",
+  "module_id": "module-03",
+  "command_type": "abort_calibration",
+  "issued_at_ms": 1784500008000,
+  "expires_in_ms": 5000,
+  "nonce": 7,
+  "requested_by": {
+    "actor_type": "operator",
+    "actor_id": "operator-cli"
+  },
+  "params": {
+    "target_index": 15
+  }
+}

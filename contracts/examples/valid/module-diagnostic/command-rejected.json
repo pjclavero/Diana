@@ -1,0 +1,21 @@
+{
+  "_schema": "module-diagnostic.schema.json",
+  "schema_version": 1,
+  "module_id": "module-03",
+  "event_id": "50617283-94a5-4b6c-8d8e-9f0a1b2c3d4e",
+  "request_id": "2d3e4f50-6172-4829-a3a4-b5c6d7e8f9a0",
+  "kind": "command_rejected",
+  "severity": "warning",
+  "message": "led_test rechazado: partida activa en curso",
+  "device": {
+    "boot_id": "9c4f5f71-9e4d-4c5b-ae60-4d5e6f708192",
+    "uptime_us": 1832999000,
+    "event_us": 1832998900
+  },
+  "detail": {
+    "accepted": false,
+    "reason": "game_in_progress",
+    "request_id": "2d3e4f50-6172-4829-a3a4-b5c6d7e8f9a0"
+  },
+  "firmware_version": "0.1.0"
+}

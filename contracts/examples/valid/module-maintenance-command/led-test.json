@@ -1,0 +1,18 @@
+{
+  "_schema": "module-maintenance-command.schema.json",
+  "schema_version": 1,
+  "request_id": "2d3e4f50-6172-4829-a3a4-b5c6d7e8f9a0",
+  "module_id": "module-03",
+  "command_type": "led_test",
+  "issued_at_ms": 1784500003000,
+  "expires_in_ms": 4000,
+  "nonce": 2,
+  "requested_by": {
+    "actor_type": "user",
+    "actor_id": "pjclavero@gmail.com"
+  },
+  "params": {
+    "duration_ms": 3000,
+    "target_index": 5
+  }
+}

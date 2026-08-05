@@ -11,6 +11,10 @@
     "module_id": {
       "$ref": "../schemas/common.schema.json#/$defs/identifier"
     },
+    "request_id": {
+      "$ref": "../schemas/common.schema.json#/$defs/uuid",
+      "description": "Ampliación v1.1. Presente cuando este diagnóstico es la respuesta directa a una orden de module/{module_id}/maintenance/command: repite el request_id de esa orden para que el backend correlacione petición y resultado. OPCIONAL a propósito: los diagnósticos espontáneos (boot, sensor_error, low_voltage, mqtt_disconnect, etc.) no responden a ninguna orden y los emisores existentes, ya desplegados antes de esta ampliación, no lo envían — exigirlo habría roto de forma retroactiva un campo que no existía cuando se escribieron. Es OBLIGATORIO únicamente cuando kind='command_rejected' (ver 'allOf' de este esquema), porque un rechazo sin request_id es, por definición, incorrelable."
+    },
     "event_id": {
       "$ref": "../schemas/common.schema.json#/$defs/eventId"
     },
@@ -67,5 +71,55 @@
     "device",
     "firmware_version"
   ],
-  "additionalProperties": false
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "command_rejected"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "request_id",
+          "detail"
+        ],
+        "properties": {
+          "detail": {
+            "type": "object",
+            "description": "Forma cerrada del rechazo (ampliación v1.1): {request_id, accepted:false, reason}. El request_id se repite también aquí, además del nivel superior, porque 'detail' es el cuerpo libre documentado que consumen los paneles de diagnóstico sin tener que leer fuera de él.",
+            "required": [
+              "accepted",
+              "reason"
+            ],
+            "properties": {
+              "accepted": {
+                "const": false
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "expired",
+                  "module_mismatch",
+                  "unknown_command",
+                  "game_in_progress",
+                  "duplicate",
+                  "params_out_of_range"
+                ],
+                "description": "Lista cerrada de motivos de rechazo: expired (caducado o, en command_type de categoría 'act', sin reloj sincronizado), module_mismatch (module_id no coincide con el propio), unknown_command (command_type no reconocido por este firmware), game_in_progress (comando de mantenimiento incompatible con una partida activa — responsabilidad del módulo, comprobada también por el backend antes de emitir), duplicate (request_id ya ejecutado), params_out_of_range (parámetros fuera de los límites permitidos para ese command_type)."
+              },
+              "request_id": {
+                "$ref": "../schemas/common.schema.json#/$defs/uuid"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

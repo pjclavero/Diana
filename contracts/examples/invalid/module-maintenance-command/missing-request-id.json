@@ -1,0 +1,14 @@
+{
+  "_schema": "module-maintenance-command.schema.json",
+  "_reason": "Falta request_id: sin él el módulo no puede correlacionar su respuesta (diagnostic) con esta orden, y tampoco puede deduplicar por idempotencia.",
+  "schema_version": 1,
+  "module_id": "module-03",
+  "command_type": "query_status",
+  "issued_at_ms": 1784500006000,
+  "expires_in_ms": 4000,
+  "nonce": 5,
+  "requested_by": {
+    "actor_type": "operator",
+    "actor_id": "operator-cli"
+  }
+}

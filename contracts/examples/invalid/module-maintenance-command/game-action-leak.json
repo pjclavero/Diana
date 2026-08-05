@@ -1,0 +1,15 @@
+{
+  "_schema": "module-maintenance-command.schema.json",
+  "_reason": "command_type='set_targets' es una orden de juego. El canal de mantenimiento tiene una lista cerrada que no incluye ninguna acción de module-command.schema.json; esto debe rechazarlo por enum.",
+  "schema_version": 1,
+  "request_id": "3e4f5061-7283-4930-b4b5-c6d7e8f9a0b1",
+  "module_id": "module-03",
+  "command_type": "set_targets",
+  "issued_at_ms": 1784500004000,
+  "expires_in_ms": 4000,
+  "nonce": 3,
+  "requested_by": {
+    "actor_type": "operator",
+    "actor_id": "operator-cli"
+  }
+}

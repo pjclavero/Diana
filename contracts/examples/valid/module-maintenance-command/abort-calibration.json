@@ -1,0 +1,14 @@
+{
+  "_schema": "module-maintenance-command.schema.json",
+  "schema_version": 1,
+  "request_id": "50617283-94a5-4b6c-8d8e-9f0a1b2c3d4e",
+  "module_id": "module-03",
+  "command_type": "abort_calibration",
+  "issued_at_ms": 1784500007000,
+  "expires_in_ms": 5000,
+  "nonce": 6,
+  "requested_by": {
+    "actor_type": "operator",
+    "actor_id": "operator-cli"
+  }
+}

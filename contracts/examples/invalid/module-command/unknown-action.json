@@ -6,7 +6,7 @@
   "issued_at_ms": 1784500000000,
   "expires_in_ms": 5000,
   "nonce": 42,
-  "issuer": "backend",
+  "issuer": "coordinator",
   "module_id": "module-03",
   "action": "self_destruct"
 }
