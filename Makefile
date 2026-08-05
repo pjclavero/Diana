@@ -27,7 +27,7 @@ ENV_EXAMPLE   := .env.example
 
 .PHONY: help bootstrap dev test lint build up down deploy backup restore \
         reset-dev simulate logs ps contracts-test config config-dev \
-        mosquitto-users firmware-host-test check-ports load-test
+        mosquitto-users firmware-host-test check-ports load-test api-contract
 
 help: ## Muestra esta ayuda
 	@echo "Diana · objetivos disponibles:"
@@ -103,6 +103,23 @@ ps: ## Lista el estado de los servicios (incluye healthchecks)
 
 contracts-test: ## Valida los contratos MQTT (esquemas + ejemplos válidos/inválidos)
 	python3 contracts/validate.py
+
+# El generador de tipos NO es dependencia del panel: se invoca con `npx -y` a
+# una versión EXACTA. Motivo comprobado, no estético: `openapi-typescript`
+# declara `peer typescript@^5.x` en TODAS sus versiones publicadas (7.4.0 a
+# 7.13.0, la última) y el panel usa `typescript@~6.0.2`. Tenerlo como
+# devDependency rompía `npm ci` con ERESOLVE en el job Frontend, y las salidas
+# eran relajar los peers de TODO el árbol del panel (--legacy-peer-deps) o
+# forzar el peer con `overrides`: ambas ACEPTAN el conflicto en vez de
+# resolverlo. Sacándolo del árbol no hay conflicto que aceptar: el panel
+# instala con peers estrictos y la herramienta corre con su propio TypeScript
+# 5.x soportado. Verificado: la salida es byte a byte idéntica por las dos vías.
+OPENAPI_TS := openapi-typescript@7.13.0
+
+api-contract: ## Regenera el contrato REST (OpenAPI + tipos TS) y falla si diverge del árbol
+	cd server/backend && npm run openapi
+	cd server/frontend && npx -y $(OPENAPI_TS) ../../contracts/api/openapi.json -o src/api/generated/schema.d.ts
+	git diff --exit-code contracts/api/openapi.json server/frontend/src/api/generated/schema.d.ts
 
 config: ## Vuelca la configuración resuelta del stack base (equivalente a `docker compose config`)
 	$(COMPOSE) config

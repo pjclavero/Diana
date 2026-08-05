@@ -8,7 +8,6 @@ import type {
 } from "./client";
 import { ApiError } from "./client";
 import type {
-  BackupInfo,
   FirmwareRelease,
   GameConfig,
   GameState,
@@ -23,7 +22,6 @@ import type {
   UserAccount,
 } from "../types/domain";
 import {
-  MOCK_BACKUPS,
   MOCK_DIAGNOSTICS,
   MOCK_FIRMWARE,
   MOCK_INCIDENTS,
@@ -220,14 +218,5 @@ export const mockApiClient: DianaApiClient = {
 
   async listUsers(): Promise<UserAccount[]> {
     return delay(clone(MOCK_USERS));
-  },
-
-  async listBackups(): Promise<BackupInfo[]> {
-    return delay(clone(MOCK_BACKUPS));
-  },
-
-  async triggerBackup(): Promise<BackupInfo> {
-    const backup: BackupInfo = { id: `b-${++idCounter}`, created_at: new Date().toISOString(), size_bytes: 15_100_000, kind: "manual" };
-    return delay(backup);
   },
 };

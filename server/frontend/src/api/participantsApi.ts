@@ -1,38 +1,11 @@
-import { ApiError } from "./client";
-import { getToken } from "../auth/tokenStore";
+import { apiRequestAs } from "./typedRequest";
 
-/** API REAL de participantes y partidas (G-D.2). */
-const BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
-
-async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getToken();
-  let res: Response;
-  try {
-    res = await fetch(`${BASE}${path}`, {
-      ...init,
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(init?.headers as Record<string, string>),
-      },
-    });
-  } catch {
-    throw new ApiError("No se puede contactar con el servidor.");
-  }
-  if (res.status === 401 || res.status === 403) throw new ApiError("No tiene permiso para esta acción.");
-  if (!res.ok) {
-    let detail = "";
-    try {
-      const body = (await res.json()) as { message?: string | string[] };
-      detail = (Array.isArray(body.message) ? body.message[0] : body.message) ?? "";
-    } catch {
-      /* sin cuerpo */
-    }
-    throw new ApiError(detail || "El servidor no ha podido completar la operación.");
-  }
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
-}
+/**
+ * API REAL de participantes y partidas (G-D.2).
+ *
+ * MIGRADO a la puerta del contrato. Prioridad: `listGames` desenvuelve
+ * `{items}` de `/api/games` (fallo silencioso de tabla vacía).
+ */
 
 export interface GameLite {
   id: string;
@@ -55,41 +28,63 @@ export interface Participant {
 }
 
 export async function listGames(): Promise<GameLite[]> {
-  const page = await req<{ items: GameLite[] }>("/games?take=100");
+  const page = await apiRequestAs<{ items: GameLite[] }>()("/api/games", "/api/games?take=100");
   return page.items;
 }
 
 export function listParticipants(gameId: string): Promise<Participant[]> {
-  return req<Participant[]>(`/participants?gameId=${encodeURIComponent(gameId)}`);
+  return apiRequestAs<Participant[]>()("/api/participants", `/api/participants?gameId=${encodeURIComponent(gameId)}`);
 }
 
 export function addRegisteredParticipant(gameId: string, playerId: string): Promise<Participant> {
-  return req<Participant>("/participants", { method: "POST", body: JSON.stringify({ game_id: gameId, player_id: playerId }) });
-}
-
-export function addTemporaryParticipant(gameId: string, guestName: string): Promise<Participant> {
-  return req<Participant>("/participants", { method: "POST", body: JSON.stringify({ game_id: gameId, guest_name: guestName }) });
-}
-
-export function setParticipantTeam(id: string, teamId: string | null): Promise<Participant> {
-  return req<Participant>(`/participants/${id}/team`, { method: "PATCH", body: JSON.stringify({ team_id: teamId }) });
-}
-
-export function setParticipantPanel(id: string, targetSystemId: string | null): Promise<Participant> {
-  return req<Participant>(`/participants/${id}/panel`, {
-    method: "PATCH",
-    body: JSON.stringify({ target_system_id: targetSystemId }),
+  return apiRequestAs<Participant>()<"/api/participants", "post">("/api/participants", "/api/participants", {
+    method: "POST",
+    body: JSON.stringify({ game_id: gameId, player_id: playerId }),
   });
 }
 
+export function addTemporaryParticipant(gameId: string, guestName: string): Promise<Participant> {
+  return apiRequestAs<Participant>()<"/api/participants", "post">("/api/participants", "/api/participants", {
+    method: "POST",
+    body: JSON.stringify({ game_id: gameId, guest_name: guestName }),
+  });
+}
+
+export function setParticipantTeam(id: string, teamId: string | null): Promise<Participant> {
+  return apiRequestAs<Participant>()<"/api/participants/{id}/team", "patch">(
+    "/api/participants/{id}/team",
+    `/api/participants/${id}/team`,
+    { method: "PATCH", body: JSON.stringify({ team_id: teamId }) },
+  );
+}
+
+export function setParticipantPanel(id: string, targetSystemId: string | null): Promise<Participant> {
+  return apiRequestAs<Participant>()<"/api/participants/{id}/panel", "patch">(
+    "/api/participants/{id}/panel",
+    `/api/participants/${id}/panel`,
+    { method: "PATCH", body: JSON.stringify({ target_system_id: targetSystemId }) },
+  );
+}
+
 export function removeParticipant(id: string): Promise<void> {
-  return req<void>(`/participants/${id}`, { method: "DELETE" });
+  return apiRequestAs<void>()<"/api/participants/{id}", "delete">(
+    "/api/participants/{id}",
+    `/api/participants/${id}`,
+    { method: "DELETE" },
+  );
 }
 
 // --- Unirse por QR (G-D) ---
 
 export function ensureJoinCode(gameId: string, regenerate = false): Promise<{ id: string; joinCode: string }> {
-  return req<{ id: string; joinCode: string }>(`/games/${gameId}/join-code${regenerate ? "?regenerate=1" : ""}`, { method: "POST" });
+  const url = regenerate
+    ? (`/api/games/${gameId}/join-code?regenerate=1` as const)
+    : (`/api/games/${gameId}/join-code` as const);
+  return apiRequestAs<{ id: string; joinCode: string }>()<"/api/games/{id}/join-code", "post">(
+    "/api/games/{id}/join-code",
+    url,
+    { method: "POST" },
+  );
 }
 
 export interface JoinGameInfo {
@@ -102,10 +97,16 @@ export interface JoinGameInfo {
 
 /** Público: información de la partida por su código de unión (para la pantalla de unión). */
 export function gameByJoinCode(code: string): Promise<JoinGameInfo> {
-  return req<JoinGameInfo>(`/games/join/${encodeURIComponent(code)}`);
+  return apiRequestAs<JoinGameInfo>()("/api/games/join/{code}", `/api/games/join/${encodeURIComponent(code)}`);
 }
 
 /** Público: unirse como jugador temporal con el código de unión. */
 export function joinByCode(code: string, guestName: string): Promise<{ gameId: string; participantId: string; name: string | null }> {
-  return req(`/games/join/${encodeURIComponent(code)}/guest`, { method: "POST", body: JSON.stringify({ guest_name: guestName }) });
+  return apiRequestAs<{ gameId: string; participantId: string; name: string | null }>()<
+    "/api/games/join/{code}/guest",
+    "post"
+  >("/api/games/join/{code}/guest", `/api/games/join/${encodeURIComponent(code)}/guest`, {
+    method: "POST",
+    body: JSON.stringify({ guest_name: guestName }),
+  });
 }

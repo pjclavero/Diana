@@ -121,7 +121,7 @@
             "description": ""
           }
         },
-        "summary": "Devuelve la identidad y los permisos del token actual",
+        "summary": "Devuelve la identidad, permisos y estado vigente del usuario",
         "tags": [
           "auth"
         ]
@@ -381,6 +381,43 @@
         ],
         "tags": [
           "roles"
+        ]
+      }
+    },
+    "/api/players/search": {
+      "get": {
+        "operationId": "PlayersSearchController_find",
+        "parameters": [
+          {
+            "name": "q",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "take",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Busca jugadores por nombre, apellidos, licencia o usuario vinculado",
+        "tags": [
+          "players"
         ]
       }
     },
@@ -732,6 +769,35 @@
         ]
       }
     },
+    "/api/systems/{id}/status": {
+      "get": {
+        "operationId": "SystemStatusController_status",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Estado compuesto del sistema, incluidos los conflictos detectados",
+        "tags": [
+          "systems"
+        ]
+      }
+    },
     "/api/systems": {
       "get": {
         "operationId": "SystemsController_list",
@@ -903,6 +969,400 @@
         "summary": "Elimina targetSystem",
         "tags": [
           "systems"
+        ]
+      }
+    },
+    "/api/modules/mine": {
+      "get": {
+        "operationId": "ModuleOwnershipController_mine",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Módulos de los que el usuario autenticado es dueño",
+        "tags": [
+          "modules"
+        ]
+      }
+    },
+    "/api/modules/overview": {
+      "get": {
+        "operationId": "ModuleOwnershipController_overview",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Resumen de módulos + estado de actualización (dashboard). Admin: todos; gestor: los suyos",
+        "tags": [
+          "modules"
+        ]
+      }
+    },
+    "/api/modules/{id}/config/desired": {
+      "get": {
+        "operationId": "ModuleOwnershipController_buildConfig",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Configuración deseada que se enviaría al módulo (sin publicar)",
+        "tags": [
+          "modules"
+        ]
+      }
+    },
+    "/api/modules/{id}/config/push": {
+      "post": {
+        "operationId": "ModuleOwnershipController_pushConfig",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushConfigDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Publica la configuración deseada (coordinador a seguir, red, calibración)",
+        "tags": [
+          "modules"
+        ]
+      }
+    },
+    "/api/modules/{id}/link": {
+      "post": {
+        "operationId": "ModuleOwnershipController_link",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkModuleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Vincula un módulo a un usuario (admin: a cualquiera; gestor: a sí mismo)",
+        "tags": [
+          "modules"
+        ]
+      }
+    },
+    "/api/modules/{id}/unlink": {
+      "post": {
+        "operationId": "ModuleOwnershipController_unlink",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Desvincula un módulo (admin: cualquiera; gestor: los suyos)",
+        "tags": [
+          "modules"
+        ]
+      }
+    },
+    "/api/modules/{idOrSlug}/commands/identify": {
+      "post": {
+        "operationId": "ModuleDiagnosticsController_identify",
+        "parameters": [
+          {
+            "name": "idOrSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdentifyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Ordena al módulo identificarse (parpadeo) para localizarlo",
+        "tags": [
+          "modules"
+        ]
+      }
+    },
+    "/api/modules/{idOrSlug}/targets/{targetIndex}/test-led": {
+      "post": {
+        "operationId": "ModuleDiagnosticsController_testLed",
+        "parameters": [
+          {
+            "name": "idOrSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "targetIndex",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LedTestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Prueba de LED de una diana",
+        "tags": [
+          "modules"
+        ]
+      }
+    },
+    "/api/modules/{idOrSlug}/targets/{targetIndex}/test-sensor": {
+      "post": {
+        "operationId": "ModuleDiagnosticsController_testSensor",
+        "parameters": [
+          {
+            "name": "idOrSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "targetIndex",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Pide el autodiagnóstico del módulo (no hay prueba por diana en v1)",
+        "tags": [
+          "modules"
+        ]
+      }
+    },
+    "/api/modules/{idOrSlug}/targets/{targetIndex}/calibrate": {
+      "post": {
+        "operationId": "ModuleDiagnosticsController_calibrate",
+        "parameters": [
+          {
+            "name": "idOrSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "targetIndex",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Arranca la calibración de una diana",
+        "tags": [
+          "modules"
+        ]
+      }
+    },
+    "/api/modules/{idOrSlug}/commands/abort-calibration": {
+      "post": {
+        "operationId": "ModuleDiagnosticsController_abortCalibration",
+        "parameters": [
+          {
+            "name": "idOrSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Aborta la calibración en curso",
+        "tags": [
+          "modules"
+        ]
+      }
+    },
+    "/api/modules/{idOrSlug}/diagnostics": {
+      "get": {
+        "operationId": "ModuleDiagnosticsController_results",
+        "parameters": [
+          {
+            "name": "idOrSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Resultados que el módulo ha devuelto de verdad",
+        "tags": [
+          "modules"
         ]
       }
     },
@@ -1251,6 +1711,92 @@
         "summary": "Elimina target",
         "tags": [
           "targets"
+        ]
+      }
+    },
+    "/api/topology/panels": {
+      "get": {
+        "operationId": "TopologyPanelsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Paneles disponibles para el editor de matrices",
+        "tags": [
+          "topology"
+        ]
+      }
+    },
+    "/api/topology/panels/{idOrSlug}": {
+      "get": {
+        "operationId": "TopologyPanelsController_get",
+        "parameters": [
+          {
+            "name": "idOrSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Matriz 3×3 real de un panel + módulos sin colocar",
+        "tags": [
+          "topology"
+        ]
+      },
+      "put": {
+        "operationId": "TopologyPanelsController_save",
+        "parameters": [
+          {
+            "name": "idOrSlug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavePanelDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Guarda la matriz del panel (reemplazo completo)",
+        "tags": [
+          "topology"
         ]
       }
     },
@@ -1779,40 +2325,7 @@
     "/api/presets": {
       "get": {
         "operationId": "PresetsController_list",
-        "parameters": [
-          {
-            "name": "skip",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "take",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "orderBy",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "order",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+        "parameters": [],
         "responses": {
           "200": {
             "description": ""
@@ -1823,7 +2336,7 @@
             "bearer": []
           }
         ],
-        "summary": "Lista gamePreset",
+        "summary": "Presets visibles (propios + de muestra) y el uso del límite",
         "tags": [
           "presets"
         ]
@@ -1836,7 +2349,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "$ref": "#/components/schemas/CreatePresetDto"
               }
             }
           }
@@ -1851,7 +2364,7 @@
             "bearer": []
           }
         ],
-        "summary": "Crea gamePreset",
+        "summary": "Crea un preset (gestor: propio con límite de 5; admin: de muestra)",
         "tags": [
           "presets"
         ]
@@ -1880,7 +2393,7 @@
             "bearer": []
           }
         ],
-        "summary": "Obtiene gamePreset por identificador",
+        "summary": "Obtiene un preset visible por id",
         "tags": [
           "presets"
         ]
@@ -1902,7 +2415,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "$ref": "#/components/schemas/UpdatePresetDto"
               }
             }
           }
@@ -1917,7 +2430,7 @@
             "bearer": []
           }
         ],
-        "summary": "Modifica gamePreset",
+        "summary": "Edita un preset propio (admin: cualquiera)",
         "tags": [
           "presets"
         ]
@@ -1944,9 +2457,91 @@
             "bearer": []
           }
         ],
-        "summary": "Elimina gamePreset",
+        "summary": "Borra un preset propio (admin: cualquiera)",
         "tags": [
           "presets"
+        ]
+      }
+    },
+    "/api/games/{id}/join-code": {
+      "post": {
+        "operationId": "GameJoinController_code",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Genera (o regenera con ?regenerate=1) el código de unión de la partida",
+        "tags": [
+          "games"
+        ]
+      }
+    },
+    "/api/games/join/{code}": {
+      "get": {
+        "operationId": "GameJoinController_byCode",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Información pública de una partida por su código de unión",
+        "tags": [
+          "games"
+        ]
+      }
+    },
+    "/api/games/join/{code}/guest": {
+      "post": {
+        "operationId": "GameJoinController_joinGuest",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinGuestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Se une a la partida como jugador temporal (público; el código autoriza)",
+        "tags": [
+          "games"
         ]
       }
     },
@@ -2002,6 +2597,26 @@
           }
         ],
         "summary": "Crea una partida",
+        "tags": [
+          "games"
+        ]
+      }
+    },
+    "/api/games/panel-occupancy": {
+      "get": {
+        "operationId": "GamesController_panelOccupancy",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Paneles ocupados ahora mismo por partidas activas (G-H)",
         "tags": [
           "games"
         ]
@@ -2135,6 +2750,170 @@
         "summary": "pause_game · resume_game · abort_game · end_game",
         "tags": [
           "games"
+        ]
+      }
+    },
+    "/api/participants": {
+      "get": {
+        "operationId": "ParticipantsController_list",
+        "parameters": [
+          {
+            "name": "gameId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Lista los participantes de una partida (?gameId=)",
+        "tags": [
+          "participants"
+        ]
+      },
+      "post": {
+        "operationId": "ParticipantsController_add",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddParticipantDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Añade un participante: registrado/plantilla (player_id) o temporal (guest_name)",
+        "tags": [
+          "participants"
+        ]
+      }
+    },
+    "/api/participants/{id}/panel": {
+      "patch": {
+        "operationId": "ParticipantsController_setPanel",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetParticipantPanelDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Asigna el panel en el que juega (permite atribuir sus impactos)",
+        "tags": [
+          "participants"
+        ]
+      }
+    },
+    "/api/participants/{id}/team": {
+      "patch": {
+        "operationId": "ParticipantsController_setTeam",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetParticipantTeamDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Reasigna el equipo de un participante (team_id null = sin equipo)",
+        "tags": [
+          "participants"
+        ]
+      }
+    },
+    "/api/participants/{id}": {
+      "delete": {
+        "operationId": "ParticipantsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Quita un participante de la partida",
+        "tags": [
+          "participants"
         ]
       }
     },
@@ -2312,43 +3091,10 @@
         ]
       }
     },
-    "/api/participants": {
+    "/api/manager-activations": {
       "get": {
-        "operationId": "ParticipantsController_list",
-        "parameters": [
-          {
-            "name": "skip",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "take",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "orderBy",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "order",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+        "operationId": "ManagerActivationController_list",
+        "parameters": [],
         "responses": {
           "200": {
             "description": ""
@@ -2359,20 +3105,42 @@
             "bearer": []
           }
         ],
-        "summary": "Lista participant",
+        "summary": "Ascensos generados: a quién, cuándo y si se pudo entregar",
         "tags": [
-          "participants"
+          "manager-activations"
         ]
-      },
+      }
+    },
+    "/api/manager-activations/mine": {
+      "get": {
+        "operationId": "ManagerActivationController_mine",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "¿Tengo un ascenso a gestor pendiente?",
+        "tags": [
+          "manager-activations"
+        ]
+      }
+    },
+    "/api/manager-activations/activate": {
       "post": {
-        "operationId": "ParticipantsController_create",
+        "operationId": "ManagerActivationController_activate",
         "parameters": [],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "$ref": "#/components/schemas/ActivateDto"
               }
             }
           }
@@ -2387,15 +3155,331 @@
             "bearer": []
           }
         ],
-        "summary": "Crea participant",
+        "summary": "El comprador introduce su código y su acceso de gestor queda activo",
         "tags": [
-          "participants"
+          "manager-activations"
         ]
       }
     },
-    "/api/participants/{id}": {
+    "/api/manager-activations/{id}/regenerate": {
+      "post": {
+        "operationId": "ManagerActivationController_regenerate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Regenera el código y reintenta la entrega",
+        "tags": [
+          "manager-activations"
+        ]
+      }
+    },
+    "/api/manager-activations/{id}/revoke": {
+      "post": {
+        "operationId": "ManagerActivationController_revoke",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Anula un ascenso pendiente",
+        "tags": [
+          "manager-activations"
+        ]
+      }
+    },
+    "/api/invitations": {
       "get": {
-        "operationId": "ParticipantsController_get",
+        "operationId": "InvitationsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Lista las invitaciones (con su código y estado de envío)",
+        "tags": [
+          "invitations"
+        ]
+      },
+      "post": {
+        "operationId": "InvitationsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInvitationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Crea una invitación por correo (código visible; envío real según SMTP)",
+        "tags": [
+          "invitations"
+        ]
+      }
+    },
+    "/api/invitations/{id}/resend": {
+      "post": {
+        "operationId": "InvitationsController_resend",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Regenera el código y reintenta el envío (auditado)",
+        "tags": [
+          "invitations"
+        ]
+      }
+    },
+    "/api/invitations/{id}/revoke": {
+      "post": {
+        "operationId": "InvitationsController_revoke",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Revoca una invitación pendiente",
+        "tags": [
+          "invitations"
+        ]
+      }
+    },
+    "/api/invitations/accept/{code}": {
+      "get": {
+        "operationId": "InvitationsController_byCode",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Información pública de una invitación por su código",
+        "tags": [
+          "invitations"
+        ]
+      },
+      "post": {
+        "operationId": "InvitationsController_accept",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptInvitationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Acepta la invitación: crea un jugador registrado (guarda histórico)",
+        "tags": [
+          "invitations"
+        ]
+      }
+    },
+    "/api/smtp-settings": {
+      "get": {
+        "operationId": "InvitationsController_getSmtp",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Configuración SMTP (sin la contraseña). Sólo admin",
+        "tags": [
+          "invitations"
+        ]
+      },
+      "put": {
+        "operationId": "InvitationsController_setSmtp",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SmtpDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Actualiza la configuración SMTP. Sólo admin",
+        "tags": [
+          "invitations"
+        ]
+      }
+    },
+    "/api/views": {
+      "get": {
+        "operationId": "ViewsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Lista las vistas (grupos de paneles) visibles",
+        "tags": [
+          "views"
+        ]
+      },
+      "post": {
+        "operationId": "ViewsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateViewDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Crea una vista",
+        "tags": [
+          "views"
+        ]
+      }
+    },
+    "/api/views/{id}": {
+      "get": {
+        "operationId": "ViewsController_get",
         "parameters": [
           {
             "name": "id",
@@ -2416,13 +3500,71 @@
             "bearer": []
           }
         ],
-        "summary": "Obtiene participant por identificador",
+        "summary": "Obtiene una vista con sus paneles",
         "tags": [
-          "participants"
+          "views"
         ]
       },
-      "patch": {
-        "operationId": "ParticipantsController_update",
+      "delete": {
+        "operationId": "ViewsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Borra una vista",
+        "tags": [
+          "views"
+        ]
+      }
+    },
+    "/api/views/{id}/duelo-readiness": {
+      "get": {
+        "operationId": "ViewsController_duelo",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "¿La vista sirve para duelo? (todos los paneles con los mismos módulos)",
+        "tags": [
+          "views"
+        ]
+      }
+    },
+    "/api/views/{id}/panels": {
+      "post": {
+        "operationId": "ViewsController_addPanel",
         "parameters": [
           {
             "name": "id",
@@ -2438,11 +3580,48 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "$ref": "#/components/schemas/PanelDto"
               }
             }
           }
         },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Añade un panel a la vista",
+        "tags": [
+          "views"
+        ]
+      }
+    },
+    "/api/views/{id}/panels/{targetSystemId}": {
+      "delete": {
+        "operationId": "ViewsController_removePanel",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "targetSystemId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -2453,13 +3632,63 @@
             "bearer": []
           }
         ],
-        "summary": "Modifica participant",
+        "summary": "Quita un panel de la vista",
         "tags": [
-          "participants"
+          "views"
+        ]
+      }
+    },
+    "/api/matrix-layouts": {
+      "get": {
+        "operationId": "MatrixLayoutsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Lista las matrices guardadas visibles (favoritas primero)",
+        "tags": [
+          "matrix-layouts"
         ]
       },
-      "delete": {
-        "operationId": "ParticipantsController_remove",
+      "post": {
+        "operationId": "MatrixLayoutsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLayoutDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Guarda una matriz explícita",
+        "tags": [
+          "matrix-layouts"
+        ]
+      }
+    },
+    "/api/matrix-layouts/{id}": {
+      "get": {
+        "operationId": "MatrixLayoutsController_get",
         "parameters": [
           {
             "name": "id",
@@ -2480,9 +3709,140 @@
             "bearer": []
           }
         ],
-        "summary": "Elimina participant",
         "tags": [
-          "participants"
+          "matrix-layouts"
+        ]
+      },
+      "patch": {
+        "operationId": "MatrixLayoutsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLayoutDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Renombra o marca/desmarca como favorita",
+        "tags": [
+          "matrix-layouts"
+        ]
+      },
+      "delete": {
+        "operationId": "MatrixLayoutsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "matrix-layouts"
+        ]
+      }
+    },
+    "/api/matrix-layouts/capture": {
+      "post": {
+        "operationId": "MatrixLayoutsController_capture",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaptureLayoutDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Guarda como matriz la colocación actual de un panel",
+        "tags": [
+          "matrix-layouts"
+        ]
+      }
+    },
+    "/api/matrix-layouts/{id}/apply": {
+      "post": {
+        "operationId": "MatrixLayoutsController_apply",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyLayoutDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Aplica la matriz a un panel (recoloca sus módulos)",
+        "tags": [
+          "matrix-layouts"
         ]
       }
     },
@@ -2958,6 +4318,328 @@
         "summary": "Evolución histórica de un jugador",
         "tags": [
           "statistics"
+        ]
+      }
+    },
+    "/api/statistics/games/{gameId}/participants/{participantId}/reset": {
+      "post": {
+        "operationId": "StatsResetController_reset",
+        "parameters": [
+          {
+            "name": "gameId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "participantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Reinicia la estadística de un jugador en esa partida (borra resultados, penalizaciones y munición; desatribuye sus impactos, que no se borran)",
+        "tags": [
+          "statistics"
+        ]
+      }
+    },
+    "/api/scoreboard/games/{gameId}": {
+      "get": {
+        "operationId": "ScoreboardController_game",
+        "parameters": [
+          {
+            "name": "gameId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "round_id",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Marcador: resultados + estado de las dianas de la partida",
+        "tags": [
+          "scoreboard"
+        ]
+      }
+    },
+    "/api/scoreboard/participants/{participantId}": {
+      "get": {
+        "operationId": "ScoreboardController_participant",
+        "parameters": [
+          {
+            "name": "participantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Estadística histórica del jugador que ocupa ese puesto",
+        "tags": [
+          "scoreboard"
+        ]
+      }
+    },
+    "/api/resilience/games/{gameId}": {
+      "get": {
+        "operationId": "ResilienceController_status",
+        "parameters": [
+          {
+            "name": "gameId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Módulos caídos, cuenta atrás de reconexión y opciones",
+        "tags": [
+          "resilience"
+        ]
+      }
+    },
+    "/api/resilience/games/{gameId}/decision": {
+      "post": {
+        "operationId": "ResilienceController_decide",
+        "parameters": [
+          {
+            "name": "gameId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Decisión del operador: reanudar sin el módulo o abortar",
+        "tags": [
+          "resilience"
+        ]
+      }
+    },
+    "/api/firmware/upload": {
+      "post": {
+        "operationId": "FirmwareBinaryController_upload",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadFirmwareDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Sube el binario de una versión de firmware (calcula sha256/tamaño)",
+        "tags": [
+          "firmware"
+        ]
+      }
+    },
+    "/api/firmware/{id}/binary": {
+      "get": {
+        "operationId": "FirmwareBinaryController_download",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Descarga el binario (lo usa el módulo en la OTA; sin autenticación)",
+        "tags": [
+          "firmware"
+        ]
+      }
+    },
+    "/api/modules/{moduleId}/firmware/available": {
+      "get": {
+        "operationId": "FirmwareDeploymentController_available",
+        "parameters": [
+          {
+            "name": "moduleId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Versiones de firmware firmadas disponibles para un módulo",
+        "tags": [
+          "firmware"
+        ]
+      }
+    },
+    "/api/modules/{moduleId}/firmware/deployments": {
+      "get": {
+        "operationId": "FirmwareDeploymentController_history",
+        "parameters": [
+          {
+            "name": "moduleId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Historial de despliegues OTA de un módulo",
+        "tags": [
+          "firmware"
+        ]
+      }
+    },
+    "/api/modules/{moduleId}/firmware/deploy": {
+      "post": {
+        "operationId": "FirmwareDeploymentController_deploy",
+        "parameters": [
+          {
+            "name": "moduleId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeployFirmwareDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Acepta y dispara la OTA de una versión a un módulo",
+        "tags": [
+          "firmware"
         ]
       }
     },
@@ -3488,6 +5170,98 @@
           }
         }
       },
+      "PushConfigDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "LinkModuleDto": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "description": "Usuario al que se vincula el módulo. Un no-admin sólo puede indicar su propio id."
+          }
+        },
+        "required": [
+          "user_id"
+        ]
+      },
+      "IdentifyDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "LedTestDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "SavePanelDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreatePresetDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdatePresetDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "JoinGuestDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "AddParticipantDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "SetParticipantPanelDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "SetParticipantTeamDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ActivateDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateInvitationDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "AcceptInvitationDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "SmtpDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateViewDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "PanelDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateLayoutDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CaptureLayoutDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ApplyLayoutDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateLayoutDto": {
+        "type": "object",
+        "properties": {}
+      },
       "RecordAmmoDto": {
         "type": "object",
         "properties": {
@@ -3524,6 +5298,18 @@
           "remaining_known",
           "must_use_all_ammo"
         ]
+      },
+      "DecisionDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UploadFirmwareDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "DeployFirmwareDto": {
+        "type": "object",
+        "properties": {}
       }
     }
   }

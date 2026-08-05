@@ -1,5 +1,4 @@
 import type {
-  BackupInfo,
   FirmwareRelease,
   GameSummary,
   ModuleConfig,
@@ -46,14 +45,15 @@ export const MOCK_MODULES: ModuleStatus[] = [
 ];
 
 export const MOCK_SYSTEM_STATUS: SystemStatus = {
-  system_id: MOCK_SYSTEM_ID,
+  id: MOCK_SYSTEM_ID,
+  slug: MOCK_SYSTEM_ID,
+  name: "Sistema de demostración",
   state: "ready",
   coordinator_module_id: "module-01",
   modules_expected: 9,
   modules_online: MOCK_MODULES.length,
   conflicts: [],
   active_game_id: null,
-  backend_time_ms: Date.UTC(2026, 6, 20, 12, 0, 0),
 };
 
 export const MOCK_TELEMETRY: Record<string, ModuleTelemetry> = Object.fromEntries(
@@ -148,7 +148,7 @@ export const MOCK_PRESETS: GamePreset[] = [
   {
     id: "preset-clock-full",
     name: "Todas contra reloj",
-    config: { mode: "all_vs_clock" },
+    config: { mode: "all_against_clock" },
   },
   {
     id: "preset-reaction",
@@ -224,9 +224,4 @@ export const MOCK_INCIDENTS: Incident[] = [
 export const MOCK_USERS: UserAccount[] = [
   { id: "u1", username: "operador1", role: "operator", active: true },
   { id: "u2", username: "admin", role: "admin", active: true },
-];
-
-export const MOCK_BACKUPS: BackupInfo[] = [
-  { id: "b1", created_at: "2026-07-20T04:00:00Z", size_bytes: 15_000_000, kind: "auto" },
-  { id: "b2", created_at: "2026-07-19T04:00:00Z", size_bytes: 14_800_000, kind: "auto" },
 ];

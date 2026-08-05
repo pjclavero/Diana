@@ -17,8 +17,16 @@ import type {
  *  - El coordinador publica `phase: "aborted"`; el panel sólo da por terminada
  *    una partida con `finished` o `cancelled`. Una partida abortada se quedaba
  *    en pantalla como si siguiera corriendo, para siempre.
- *  - Publica `mode: "all_against_clock"`; el panel lo llama `all_vs_clock`.
  *  - Publica `kind: "penalty_applied"`; el panel espera `penalty`.
+ *
+ * El desajuste de `mode` (el coordinador publicaba `all_against_clock`, el
+ * panel lo llamaba `all_vs_clock`, y encima `new-game` ofrecía dos modos que
+ * el motor no implementa: `memory`, `no_shoot`) se cerró aparte, en el
+ * cableado de `new-game` (auditoría 2026-08-05 §4, G2): `GameMode` usa ahora
+ * las claves reales del motor en todas partes, así que `mode` ya no necesita
+ * traducción aquí. La tabla sigue existiendo como validación explícita de
+ * las claves que el panel reconoce; lo desconocido se conserva tal cual
+ * (ver `normalizeState`), no se inventa.
  *
  * TypeScript no lo veía porque el mensaje llegaba tipado como `unknown` y se
  * afirmaba con un `as`. Se traduce AQUÍ, en la frontera, y no en las pantallas.
@@ -36,10 +44,9 @@ const PHASE: Record<string, GamePhase> = {
 const MODE: Record<string, GameMode> = {
   random: "random",
   sequence: "sequence",
-  all_against_clock: "all_vs_clock",
+  all_against_clock: "all_against_clock",
   reaction: "reaction",
-  memory: "memory",
-  no_shoot: "no_shoot",
+  duelo: "duelo",
 };
 
 const KIND: Record<string, GameEventKind> = {

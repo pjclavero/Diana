@@ -37,6 +37,44 @@ jobs:
         run: python3 contracts/validate.py
 
   # ---------------------------------------------------------------------------
+  # Contrato REST: regenera `contracts/api/openapi.json` desde el propio
+  # backend (sin BD ni broker) y los tipos TS derivados, y falla si el árbol
+  # commiteado diverge de lo generado. Es la puerta del PRODUCTOR (parte A de
+  # docs/coordination/AUDITORIA-PANTALLAS-2026-08-05.md §3.3): sin ella,
+  # `contracts/validate.py` da verde aunque `contracts/api/openapi.json` sea
+  # un fósil, porque no lo lee. La puerta del CONSUMIDOR es el `Typecheck` del
+  # job Frontend de más abajo, en cuanto los clientes usen los tipos
+  # generados aquí (`server/frontend/src/api/generated/schema.d.ts`).
+  # ---------------------------------------------------------------------------
+  api-contract:
+    name: Contrato REST (deriva productor/consumidor)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: server/backend/package-lock.json
+      - name: Instalar dependencias del backend
+        working-directory: server/backend
+        run: npm ci
+      - name: Regenerar contracts/api/openapi.json desde el backend
+        working-directory: server/backend
+        run: npm run openapi
+      # El generador NO se instala en el panel (ver comentario de `api-contract`
+      # en el Makefile): declara `peer typescript@^5.x` en todas sus versiones
+      # y el panel usa ~6.0.2, así que como devDependency rompía `npm ci` con
+      # ERESOLVE en el job Frontend. Se invoca a versión exacta con `npx -y`,
+      # con su propio TypeScript soportado; ya no hace falta instalar el
+      # frontend en este job, ni relajar peers en ningún job.
+      - name: Regenerar tipos TS del contrato (openapi-typescript, fuera del árbol del panel)
+        working-directory: server/frontend
+        run: npx -y openapi-typescript@7.13.0 ../../contracts/api/openapi.json -o src/api/generated/schema.d.ts
+      - name: Fallar si el árbol diverge de lo generado
+        run: git diff --exit-code contracts/api/openapi.json server/frontend/src/api/generated/schema.d.ts
+
+  # ---------------------------------------------------------------------------
   # Backend NestJS: prisma generate, typecheck, lint (si existe), unitarias.
   # Las de integración NO se ejecutan aquí (necesitan PostgreSQL): integration.yml.
   # ---------------------------------------------------------------------------

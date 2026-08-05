@@ -1,5 +1,4 @@
 import type {
-  BackupInfo,
   FirmwareRelease,
   GameConfig,
   GameState,
@@ -139,10 +138,6 @@ export interface DianaApiClient {
 
   // --- Usuarios ---
   listUsers(): Promise<UserAccount[]>;
-
-  // --- Copias y estado del sistema ---
-  listBackups(): Promise<BackupInfo[]>;
-  triggerBackup(): Promise<BackupInfo>;
 }
 
 export class ApiError extends Error {
