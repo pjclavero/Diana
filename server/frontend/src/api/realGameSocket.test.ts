@@ -77,7 +77,7 @@ describe("RealGameSocket · habla socket.io, no WebSocket crudo (X-06)", () => {
       event: { kind: "penalty_applied" },
     });
     expect(received[0].state.phase).toBe("cancelled");
-    expect(received[0].state.mode).toBe("all_vs_clock");
+    expect(received[0].state.mode).toBe("all_against_clock");
     expect((received[0] as unknown as { event: { kind: string } }).event.kind).toBe("penalty");
   });
 

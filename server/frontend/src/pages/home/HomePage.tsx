@@ -2,12 +2,27 @@ import { Link } from "react-router-dom";
 import { apiClient } from "../../api";
 import { DEFAULT_SYSTEM_ID } from "../../config";
 import { useAsync } from "../../hooks/useAsync";
+import { useAuth } from "../../auth/AuthContext";
 import { Card, ErrorState, LoadingState } from "../../components/ui/Feedback";
+import { summarizeConflicts, systemStateLabel } from "../../api/systemStatusLabels";
 
+/**
+ * `system` se fusionó aquí (auditoría 2026-08-05 §4, decisión del operador):
+ * era una pantalla aparte que sólo repetía y ampliaba lo que Inicio ya
+ * mostraba. La tarjeta de Conflictos SE CONSERVA — el carril E acaba de
+ * cablear la detección real en el backend (`GET /systems/:id/status`,
+ * permiso `systems:read`) — pero ya no afirma «sin conflictos detectados»
+ * a secas: dice qué se comprueba de verdad, para no confundir «no hay» con
+ * «no se mira» (mismo defecto de fondo del proyecto, G4).
+ */
 export function HomePage() {
+  const { can } = useAuth();
+  const seesSystem = can("systems:read");
   const { data: system, loading, error, reload } = useAsync(() => apiClient.getSystemStatus(DEFAULT_SYSTEM_ID), []);
   const { data: modules } = useAsync(() => apiClient.listModules(DEFAULT_SYSTEM_ID), []);
   const { data: incidents } = useAsync(() => apiClient.listIncidents(), []);
+
+  const conflictSummary = system ? summarizeConflicts(system.conflicts) : null;
 
   return (
     <div>
@@ -16,18 +31,59 @@ export function HomePage() {
       {loading && <LoadingState label="Cargando estado general…" />}
       {error && <ErrorState message={error} onRetry={reload} />}
 
-      {system && (
+      {system && seesSystem && (
+        <Card title={`Sistema ${system.name}`}>
+          <dl className="kv-list">
+            <div>
+              <dt>Estado</dt>
+              <dd>
+                <strong>{systemStateLabel(system.state)}</strong>
+              </dd>
+            </div>
+            <div>
+              <dt>Módulo coordinador</dt>
+              <dd>{system.coordinator_module_id ?? "sin asignar"}</dd>
+            </div>
+            <div>
+              <dt>Módulos en línea</dt>
+              <dd>
+                {system.modules_online} / {system.modules_expected}
+              </dd>
+            </div>
+            <div>
+              <dt>Partida activa</dt>
+              <dd>{system.active_game_id ?? "ninguna"}</dd>
+            </div>
+          </dl>
+        </Card>
+      )}
+
+      {system && !seesSystem && (
         <Card title="Estado general">
           <p>
-            Sistema <strong>{system.system_id}</strong>: estado <strong>{system.state}</strong>. Módulos en línea{" "}
+            Estado <strong>{systemStateLabel(system.state)}</strong>. Módulos en línea{" "}
             <strong>
               {system.modules_online} / {system.modules_expected}
             </strong>
             . Partida activa: <strong>{system.active_game_id ?? "ninguna"}</strong>.
           </p>
-          {system.conflicts.length > 0 && (
-            <p role="alert">Conflictos detectados: {system.conflicts.join(", ")}</p>
+        </Card>
+      )}
+
+      {system && seesSystem && conflictSummary && (
+        <Card title="Conflictos">
+          {conflictSummary.messages.length > 0 ? (
+            <ul>
+              {conflictSummary.messages.map((m) => (
+                <li key={m} role="alert">
+                  {m}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>Sin conflictos activos.</p>
           )}
+          <p className="hint">{conflictSummary.scopeNote}</p>
         </Card>
       )}
 

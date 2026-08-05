@@ -18,7 +18,6 @@ const NAV_SECTIONS: { title: string; links: NavLinkDef[] }[] = [
     title: "General",
     links: [
       { to: "/", label: "Inicio" },
-      { to: "/sistema", label: "Estado del sistema", perm: "modules:read" },
       { to: "/modulos", label: "Módulos", perm: "modules:read" },
       { to: "/modulos-propiedad", label: "Propiedad de módulos", perm: "modules:read" },
       { to: "/topologia", label: "Editor de matriz", perm: "topology:write" },
@@ -32,7 +31,6 @@ const NAV_SECTIONS: { title: string; links: NavLinkDef[] }[] = [
       { to: "/demo", label: "Modo demo" },
       { to: "/duelo", label: "Duelo (práctica)" },
       { to: "/presets", label: "Presets", perm: "presets:read" },
-      { to: "/resultados", label: "Resultados" },
       { to: "/marcador", label: "Marcador (dardos)", perm: "statistics:read" },
       { to: "/estadisticas", label: "Estadísticas" },
     ],
@@ -57,7 +55,6 @@ const NAV_SECTIONS: { title: string; links: NavLinkDef[] }[] = [
       { to: "/firmware", label: "Firmware", perm: "firmware:read" },
       { to: "/incidencias", label: "Incidencias", perm: "incidents:read" },
       { to: "/usuarios", label: "Usuarios y permisos", perm: "users:read" },
-      { to: "/copias", label: "Copias y estado", perm: "maintenance:read" },
     ],
   },
 ];

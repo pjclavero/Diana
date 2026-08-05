@@ -6,14 +6,16 @@ import { useAsync } from "../../hooks/useAsync";
 import { Card, ErrorState, LoadingState } from "../../components/ui/Feedback";
 import type { GameConfig, GameMode } from "../../types/domain";
 
+// Claves reales del motor (src/domain/game/strategies/*.ts, GameMode en
+// types/domain.ts). «Memoria» y «No disparar» no existen en el backend: se
+// quitaron (auditoría 2026-08-05 §4, G2). Las etiquetas son las que ve el
+// operador; los `value` son las claves que el backend acepta tal cual.
 const MODES: { value: GameMode; label: string }[] = [
   { value: "random", label: "Dianas aleatorias" },
   { value: "sequence", label: "Secuencia fija" },
-  { value: "all_vs_clock", label: "Todas contra reloj" },
+  { value: "all_against_clock", label: "Todas contra reloj" },
   { value: "reaction", label: "Reacción" },
-  { value: "memory", label: "Memoria" },
-  { value: "no_shoot", label: "No disparar" },
-  { value: "duel", label: "Duelo" },
+  { value: "duelo", label: "Duelo" },
 ];
 
 export function NewGamePage() {

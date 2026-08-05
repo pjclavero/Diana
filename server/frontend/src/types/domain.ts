@@ -151,14 +151,15 @@ export type GamePhase =
   | "finished"
   | "cancelled";
 
-export type GameMode =
-  | "random"
-  | "sequence"
-  | "all_vs_clock"
-  | "reaction"
-  | "memory"
-  | "no_shoot"
-  | "duel";
+/**
+ * Claves reales de `readonly key = ` en `src/domain/game/strategies/*.ts`
+ * (backend). El panel llegó a ofrecer siete modos con vocabulario propio
+ * (`all_vs_clock`, `duel`, y dos que no existen: `memory`, `no_shoot`);
+ * contra el backend real los cuatro se rechazaban con «Modo de juego
+ * desconocido» (auditoría 2026-08-05 §4, G2). Este tipo usa ahora las
+ * claves reales del motor directamente: no hay traducción que mantener.
+ */
+export type GameMode = "random" | "sequence" | "all_against_clock" | "reaction" | "duelo";
 
 export interface ActiveTarget {
   module_id: Identifier;
@@ -207,23 +208,34 @@ export interface GameEvent {
 }
 
 export type SystemState =
-  | "boot"
+  | "idle"
+  | "configuring"
   | "ready"
+  | "game_running"
   | "degraded"
-  | "conflict"
-  | "game_active"
-  | "maintenance"
-  | "error";
+  | "maintenance";
+
+/**
+ * Claves declaradas en `contracts/mqtt/system-status.schema.json` (v1
+ * congelado). `dual_principal` y `duplicate_position` son las únicas que el
+ * backend detecta hoy; `no_principal`, `schema_mismatch` y
+ * `firmware_mismatch` están en el enum pero NADIE las comprueba todavía
+ * (decisión deliberada del backend, documentada por el carril E). No borrar
+ * lo no detectado del tipo: hace falta para poder decir «no se comprueba»
+ * en vez de fingir que no existe.
+ */
+export type ConflictKind = "dual_principal" | "duplicate_position" | "no_principal" | "schema_mismatch" | "firmware_mismatch";
 
 export interface SystemStatus {
-  system_id: Identifier;
+  id: Identifier;
+  slug: string;
+  name: string;
   state: SystemState;
   coordinator_module_id: Identifier | null;
   modules_expected: number;
   modules_online: number;
-  conflicts: string[];
+  conflicts: ConflictKind[];
   active_game_id: string | null;
-  backend_time_ms: number;
 }
 
 export interface ModuleDiagnosticEvent {
@@ -335,11 +347,4 @@ export interface UserAccount {
   username: string;
   role: "admin" | "operator" | "viewer";
   active: boolean;
-}
-
-export interface BackupInfo {
-  id: string;
-  created_at: string;
-  size_bytes: number;
-  kind: "auto" | "manual";
 }
