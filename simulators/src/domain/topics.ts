@@ -11,6 +11,7 @@ export const topics = {
   moduleConfigDesired: (moduleId: string) => `targets/v1/module/${moduleId}/config/desired`,
   moduleConfigReported: (moduleId: string) => `targets/v1/module/${moduleId}/config/reported`,
   moduleCommand: (moduleId: string) => `targets/v1/module/${moduleId}/command`,
+  moduleMaintenanceCommand: (moduleId: string) => `targets/v1/module/${moduleId}/maintenance/command`,
   moduleHit: (moduleId: string) => `targets/v1/module/${moduleId}/hit`,
   moduleDiagnostic: (moduleId: string) => `targets/v1/module/${moduleId}/diagnostic`,
   moduleOta: (moduleId: string) => `targets/v1/module/${moduleId}/ota`,

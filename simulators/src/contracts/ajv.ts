@@ -90,6 +90,7 @@ export type SchemaName =
   | 'module-presence.schema.json'
   | 'module-telemetry.schema.json'
   | 'module-command.schema.json'
+  | 'module-maintenance-command.schema.json'
   | 'module-config.schema.json'
   | 'module-diagnostic.schema.json'
   | 'game-state.schema.json'

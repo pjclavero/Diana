@@ -21,7 +21,11 @@ periódica, genera impactos opcionales y responde a los comandos de
 diagnóstico. Se configura por variables de entorno:
 
   DIANA_MQTT_URL          mqtt://host:puerto     (por defecto mqtt://127.0.0.1:1883)
-  DIANA_MQTT_USERNAME     usuario Mosquitto      (p. ej. module-m1)
+  DIANA_MQTT_USERNAME     usuario Mosquitto = module_id, SIN prefijo (p. ej. module-01).
+                          El broker tiene use_username_as_clientid activo: sobrescribe
+                          el client_id con este usuario antes de evaluar el ACL, así que
+                          un desajuste usuario/client_id no protege nada (F-02: así se
+                          podía suplantar cualquier módulo con credenciales de otro).
   DIANA_MQTT_PASSWORD     contraseña
   DIANA_MODULE_ID         module_id = client_id  (por defecto module-01)
   DIANA_SYSTEM_ID         (por defecto system-a)

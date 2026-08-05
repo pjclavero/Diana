@@ -168,8 +168,8 @@ node dist/cli.js live
 | Variable | Por defecto | Qué hace |
 |---|---|---|
 | `DIANA_MQTT_URL` | `mqtt://127.0.0.1:1883` | Broker |
-| `DIANA_MQTT_USERNAME` / `DIANA_MQTT_PASSWORD` | — | Credenciales del módulo |
-| `DIANA_MODULE_ID` | `module-01` | `module_id` **y** `client_id` (el ACL lo exige igual) |
+| `DIANA_MQTT_USERNAME` / `DIANA_MQTT_PASSWORD` | — | Usuario = `module_id` exacto, **sin prefijo** (post-F-02; ver §4 más abajo) |
+| `DIANA_MODULE_ID` | `module-01` | `module_id` **y** `client_id` (el ACL lo exige igual; el broker además sobrescribe `client_id` con el usuario autenticado) |
 | `DIANA_SYSTEM_ID` | `system-a` | Sistema |
 | `DIANA_MODULE_SELECTOR` | `SATELITE` | `SATELITE` o `PRINCIPAL` |
 | `DIANA_MODULE_POSITION` | — | `"x,y"` con x,y ∈ {-1,0,1} |
@@ -288,17 +288,27 @@ base sólo existe el módulo `demo-diana-01` y `hit_events = 0`.
 3. **Crear las 9 dianas del módulo.** Ver limitación en la sección 6: hoy no hay
    ninguna ruta que las cree.
 4. **Credenciales MQTT.** Debe existir un usuario para el módulo
-   (`infrastructure/mosquitto/generate-users.sh`) y el `client_id` **debe** ser
-   igual al `module_id`, o el ACL (`%c`) denegará todo. Ojo a la nomenclatura: en
-   la VM los usuarios se llaman `module-01`…`module-09`, mientras el contrato §8
-   pide `module-{module_id}`; si el `module_id` fuera `sim-01`, el usuario debe
-   ser `module-sim-01`.
+   (`infrastructure/mosquitto/generate-users.sh`) y el usuario MQTT **debe ser
+   exactamente igual al `module_id`, sin prefijo** (p. ej. `module_id=sim-01` →
+   usuario `sim-01`, NO `module-sim-01`). Esto cambió con el cierre de F-02: el
+   ACL autorizaba antes por `client_id`, que elegía el propio cliente, así que
+   unas credenciales cualesquiera de módulo bastaban para suplantar a
+   cualquier otro. El broker corregido tiene `use_username_as_clientid true`:
+   **sobrescribe** el `client_id` que mande el cliente con el usuario ya
+   autenticado antes de evaluar permisos, así que el `client_id` que pase el
+   simulador es irrelevante para el ACL — sólo cuenta el usuario. Si alguien
+   reintroduce un prefijo (`module-{module_id}`) aquí, vuelve a abrir el mismo
+   agujero de suplantación que F-02 cerró, sin que nada lo avise en caliente.
+   **Ojo con conexiones simultáneas**: dos clientes con el mismo usuario
+   colisionan y el broker desconecta al primero («ya conectado, cierro la
+   conexión anterior») — no publiques y observes con las mismas credenciales
+   a la vez.
 5. **Lanzar el módulo** desde una máquina de la red (no hace falta que sea la VM):
 
    ```bash
    cd simulators && npm ci && npm run build
    DIANA_MQTT_URL=mqtt://192.168.1.209:1883 \
-   DIANA_MQTT_USERNAME=module-sim-01 DIANA_MQTT_PASSWORD='…' \
+   DIANA_MQTT_USERNAME=sim-01 DIANA_MQTT_PASSWORD='…' \
    DIANA_MODULE_ID=sim-01 DIANA_SYSTEM_ID=sim-panel \
    DIANA_TELEMETRY_MS=1000 DIANA_HIT_EVERY_MS=0 \
    node dist/cli.js live
