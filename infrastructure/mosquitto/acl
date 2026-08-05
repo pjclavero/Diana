@@ -8,14 +8,29 @@
 # canal ota, que deben ser sólo-lectura para el módulo).
 #
 #   - Mosquitto sin acceso anónimo (ver mosquitto.conf: allow_anonymous false).
-#   - Un usuario por módulo (`module-{module_id}`), generado con
-#     ./generate-users.sh (mosquitto_passwd, sin contraseñas embebidas aquí).
-#   - El client_id MQTT de un módulo DEBE ser igual a su module_id, sin
-#     prefijo (exigido por el contrato, sección 8). La ACL se apoya en esa
-#     igualdad mediante el patrón %c para acotar cada módulo a su propio
-#     subárbol sin necesidad de un usuario/ACL distinto por módulo.
+#   - Un usuario por módulo, cuyo nombre es EXACTAMENTE el module_id (sin
+#     prefijo "module-"), generado con ./generate-users.sh (mosquitto_passwd,
+#     sin contraseñas embebidas aquí).
+#     *** F-02 (crítico, cerrado aquí): antes el usuario llevaba el prefijo
+#     "module-{module_id}" mientras el client_id (sin prefijo) era el que
+#     usaba la ACL vía %c, y el client_id lo elige libremente el cliente —
+#     con las credenciales de un módulo cualquiera y client_id ajeno se
+#     suplantaba a otro módulo (confirmado en vivo el 2026-07-21, ver
+#     docs/security/findings.md). La corrección alinea usuario = client_id =
+#     module_id y mosquitto.conf activa `use_username_as_clientid true`, que
+#     hace que el broker REESCRIBA el client_id del cliente con su usuario
+#     autenticado antes de evaluar la ACL: el cliente ya no puede elegir un
+#     client_id distinto del suyo, así que %c vuelve a ser tan fiable como
+#     %u sin tener que tocar ni un patrón de tópico de este fichero. ***
+#   - El client_id MQTT de un módulo, tras la reescritura de arriba, es
+#     siempre igual a su module_id. La ACL se apoya en esa igualdad mediante
+#     el patrón %c para acotar cada módulo a su propio subárbol sin
+#     necesidad de un usuario/ACL distinto por módulo.
 #   - El backend es el ÚNICO con permiso de escritura sobre system/#,
-#     .../config/desired y .../ota.
+#     .../config/desired, .../ota y .../maintenance/command (canal de
+#     mantenimiento, separado del canal de juego module/+/command — ver
+#     bloque "Backend" más abajo. El backend NUNCA tiene, ni tendrá, permiso
+#     de escritura sobre module/+/command).
 #   - El coordinador (el módulo con rol PRINCIPAL) puede además escribir
 #     module/+/command y system/…/game/* — ver bloque "Coordinador" más abajo,
 #     que requiere una entrada específica por module_id (rol dinámico, no
@@ -24,6 +39,13 @@
 # Requisito operativo: "backend", "system" y "healthcheck" quedan reservados
 # y no deben usarse como module_id de un módulo real (evita colisión de
 # patrón/usuario).
+#
+# NOTA para el carril de contratos: contracts/mqtt/README.md sección 8 sigue
+# describiendo el usuario como "module-{module_id}" (con prefijo). Este
+# fichero ya no lo cumple literalmente en el nombre de usuario porque ese
+# prefijo es justo lo que impedía cerrar F-02 (ver más arriba y
+# docs/security/evidence/mqtt-acl.md). Pendiente de que el carril de
+# contratos actualice esa frase; no se ha tocado contracts/** desde aquí.
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
@@ -37,12 +59,26 @@ topic read #
 topic write targets/v1/system/#
 topic write targets/v1/module/+/config/desired
 topic write targets/v1/module/+/ota
+# Canal de mantenimiento (separación de autoridad por dominio, no por
+# disponibilidad — decisión de arquitectura del operador): el backend puede
+# ordenar mantenimiento (reboot, set_maintenance, start_calibration...) sobre
+# CUALQUIER módulo, pero NUNCA sobre module/+/command (el canal de juego, que
+# el §8 asigna en exclusiva al coordinador). No existe ni existirá un puente
+# que dé al backend permiso de escritura sobre module/+/command: darle ese
+# permiso equivaldría a darle autoridad para cualquier orden de juego, porque
+# el broker no puede mirar el contenido del mensaje, sólo el tópico. La
+# lectura de targets/v1/module/+/diagnostic ya la cubre "topic read #" de
+# arriba; no hace falta una línea aparte.
+topic write targets/v1/module/+/maintenance/command
 
 # ------------------------------------------------------------------------------
 # Módulos: reglas genéricas aplicadas a CUALQUIER cliente autenticado, usando
-# el patrón %c (client_id de la conexión MQTT, que debe coincidir con el
-# module_id). No se listan usuarios individuales aquí: cada módulo nuevo sólo
-# necesita usuario+contraseña vía generate-users.sh, la ACL ya le aplica.
+# el patrón %c (client_id de la conexión MQTT). Con `use_username_as_clientid
+# true` en mosquitto.conf el broker fuerza client_id = usuario autenticado,
+# así que %c aquí equivale de hecho a %u — pero sin tener que reescribir los
+# patrones, porque el usuario ya se llama igual que el module_id (F-02). No
+# se listan usuarios individuales aquí: cada módulo nuevo sólo necesita
+# usuario+contraseña vía generate-users.sh, la ACL ya le aplica.
 #
 # Escritura: únicamente los 6 tópicos que el módulo tiene permiso de publicar
 # (contracts/mqtt/README.md sección 8, tabla). NO se concede un comodín sobre
@@ -60,6 +96,7 @@ pattern write targets/v1/module/%c/config/reported
 # backend, ver arriba); un módulo nunca tiene permiso de escritura sobre
 # ellos, ni siquiera sobre su propia copia.
 pattern read targets/v1/module/%c/command
+pattern read targets/v1/module/%c/maintenance/command
 pattern read targets/v1/module/%c/config/desired
 pattern read targets/v1/module/%c/ota
 pattern read targets/v1/system/+/game/state

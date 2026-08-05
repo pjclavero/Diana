@@ -67,7 +67,7 @@ else
 fi
 
 if LC_ALL="$TEST_LOCALE" LANG="$TEST_LOCALE" "$TMP_SCRIPT" "$VALID_ID" >/tmp/locale-test-sc-valid.out 2>&1; then
-  if grep -qF "user module-${VALID_ID}" "$TMP_ACL"; then
+  if grep -qF "user ${VALID_ID}" "$TMP_ACL"; then
     log_pass "set-coordinator.sh sigue aceptando un module_id ASCII válido bajo $TEST_LOCALE"
   else
     log_fail "set-coordinator.sh dijo éxito pero no escribió el bloque esperado"
@@ -78,22 +78,33 @@ fi
 
 rm -f "$TMP_ACL" "$TMP_SCRIPT"
 
-# --- generate-users.sh: no requiere mosquitto_passwd para llegar a la validación.
+# --- generate-users.sh: se ejecuta sobre una COPIA en un directorio temporal,
+# nunca sobre el propio SCRIPT_DIR (el repositorio): el caso VALID_ID pasa la
+# validación y llega a invocar mosquitto_passwd de verdad, que escribiría un
+# "passwd" real junto al script si se ejecutara in situ. Aunque ese fichero
+# está cubierto por .gitignore, no debe generarse dentro del árbol del repo
+# (regla del carril ACL/F-02: ninguna credencial se genera en el árbol).
+TMP_GU_DIR="$(mktemp -d)"
+cp "${SCRIPT_DIR}/generate-users.sh" "$TMP_GU_DIR/generate-users.sh"
+chmod +x "$TMP_GU_DIR/generate-users.sh"
+
 echo "=== generate-users.sh bajo LC_ALL=$TEST_LOCALE LANG=$TEST_LOCALE ==="
-OUT="$(LC_ALL="$TEST_LOCALE" LANG="$TEST_LOCALE" "${SCRIPT_DIR}/generate-users.sh" "module-${ACCENTED_ID}" 2>&1)"
+OUT="$(LC_ALL="$TEST_LOCALE" LANG="$TEST_LOCALE" "$TMP_GU_DIR/generate-users.sh" "${ACCENTED_ID}" 2>&1)"
 RC=$?
 if [[ $RC -ne 0 ]] && echo "$OUT" | grep -q "no cumple\|ERROR"; then
-  log_pass "generate-users.sh rechazó 'module-${ACCENTED_ID}' bajo $TEST_LOCALE"
+  log_pass "generate-users.sh rechazó '${ACCENTED_ID}' bajo $TEST_LOCALE"
 else
-  log_fail "generate-users.sh NO rechazó 'module-${ACCENTED_ID}' bajo $TEST_LOCALE (salida: $OUT)"
+  log_fail "generate-users.sh NO rechazó '${ACCENTED_ID}' bajo $TEST_LOCALE (salida: $OUT)"
 fi
 
-OUT2="$(LC_ALL="$TEST_LOCALE" LANG="$TEST_LOCALE" "${SCRIPT_DIR}/generate-users.sh" "module-${VALID_ID}" 2>&1)"
+OUT2="$(LC_ALL="$TEST_LOCALE" LANG="$TEST_LOCALE" "$TMP_GU_DIR/generate-users.sh" "${VALID_ID}" 2>&1)"
 if echo "$OUT2" | grep -q "no cumple"; then
   log_fail "generate-users.sh rechazó un module_id ASCII válido bajo $TEST_LOCALE (salida: $OUT2)"
 else
   log_pass "generate-users.sh sigue aceptando un module_id ASCII válido bajo $TEST_LOCALE (pasó la validación)"
 fi
+
+rm -rf "$TMP_GU_DIR"
 
 echo ""
 echo "=== Resumen: ${PASS} correctos, ${FAIL} fallos ==="

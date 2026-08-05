@@ -103,12 +103,21 @@ es el compromiso de *todo* el sistema. Cerrar F-02 (una línea en `mosquitto.con
 cadena y convierte el robo de un módulo en la pérdida de *ese* módulo, que es un riesgo
 acotado y asumible. Aceptar R-03 con F-02 abierto no lo es.
 
+**Actualización (2026-08-05, carril ACL/F-02): F-02 se ha cerrado** —
+`use_username_as_clientid true` en `mosquitto.conf` + usuario mosquitto de módulo igual a su
+`module_id`, verificado contra un broker real (12/12 pruebas de `test-acl.sh`, incluida la
+reproducción exacta del ataque del 2026-07-21, que ahora falla — ver
+`evidence/mqtt-acl.md`, apartado "2026-08-05"). Se levanta la condición 1 de abajo. La
+condición 2 y la decisión de firma siguen siendo de WP-04 y el propietario; este carril no
+la toma por ellos.
+
 **Condición bajo la que deja de ser aceptable.**
-1. F-02 sigue abierto (bloqueante para la firma de R-03).
+1. ~~F-02 sigue abierto (bloqueante para la firma de R-03).~~ Cerrado el 2026-08-05 (ver arriba).
 2. Los módulos se despliegan fuera de custodia: competición pública, transporte por terceros,
    almacenaje sin control de acceso.
 
-**Quién acepta.** WP-04 y el propietario, conjuntamente, y sólo después de F-02.
+**Quién acepta.** WP-04 y el propietario, conjuntamente. La precondición de F-02 ya está
+satisfecha; queda su firma sobre la condición 2 y el resto de matices de este documento.
 
 ---
 
@@ -173,8 +182,8 @@ Para que no haya confusión entre "aceptado" y "pendiente de corregir", se deja 
 expresa de que **ninguno** de los siguientes está aceptado; todos van a corrección:
 
 - **F-01** (`.gitignore`): el arreglo es una línea; no hay nada que aceptar.
-- **F-02** (ACL por `client_id`): crítico, y además bloqueante para R-03. Corrección
-  obligatoria.
+- **F-02** (ACL por `client_id`): crítico, y además bloqueante para R-03. **Cerrado el
+  2026-08-05** (ver actualización en R-03 más arriba y `evidence/mqtt-acl.md`).
 - **F-04** (`JWT_SECRET` y contrato de entorno roto): rompe el arranque hoy y esconde una
   puerta trasera para mañana. Corrección obligatoria.
 - **F-05** (WebSocket sin autenticar): corrección.

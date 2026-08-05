@@ -7,10 +7,10 @@
 # `passwd` está en .gitignore (ver /.gitignore, patrón `mosquitto/passwd`).
 #
 # Uso:
-#   ./generate-users.sh backend                 # crea/rota el usuario del backend
-#   ./generate-users.sh module-m1               # crea/rota un usuario de módulo
-#   ./generate-users.sh module-m1 --print-only   # genera contraseña y la imprime
-#                                                 # una sola vez, sin guardar eco
+#   ./generate-users.sh backend               # crea/rota el usuario del backend
+#   ./generate-users.sh m1                    # crea/rota un usuario de módulo (module_id=m1)
+#   ./generate-users.sh m1 --print-only        # genera contraseña y la imprime
+#                                               # una sola vez, sin guardar eco
 #
 # Requisitos: el paquete `mosquitto-clients` (que trae mosquitto_passwd) debe
 # estar disponible en el host o dentro del contenedor mosquitto:
@@ -18,11 +18,18 @@
 # Este script intenta usar el binario local si existe y, si no, delega en el
 # contenedor mosquitto vía `docker compose exec`.
 #
-# Recuerda: el client_id MQTT que use el módulo en tiempo de ejecución debe
-# ser EXACTAMENTE su module_id (sin el prefijo "module-"), porque la ACL
-# (infrastructure/mosquitto/acl) usa el patrón %c para restringir el acceso
-# al subárbol propio. El nombre de usuario mosquitto sí lleva el prefijo
-# "module-{module_id}" tal como exige contracts/mqtt/README.md sección 8.
+# *** F-02 (crítico, cerrado): el usuario mosquitto de un módulo YA NO lleva
+# el prefijo "module-"; se llama EXACTAMENTE igual que su module_id. Antes
+# el usuario era "module-{module_id}" y el client_id (sin prefijo) era el
+# que usaba la ACL vía %c — como el client_id lo elige libremente el
+# cliente, unas credenciales de un módulo cualquiera con client_id ajeno
+# suplantaban a otro módulo (confirmado en vivo el 2026-07-21). Con
+# `use_username_as_clientid true` en mosquitto.conf el broker fuerza
+# client_id = usuario autenticado, así que ahora usuario = client_id =
+# module_id, los tres iguales y ninguno elegible por el cliente. Pendiente:
+# contracts/mqtt/README.md sección 8 aún describe el usuario como
+# "module-{module_id}" con prefijo; ese texto está desactualizado (fuera de
+# mi territorio, no se toca contracts/** desde aquí). ***
 # ==============================================================================
 set -euo pipefail
 
@@ -39,7 +46,8 @@ PASSWD_FILE="${SCRIPT_DIR}/passwd"
 
 usage() {
   echo "Uso: $0 <usuario> [--print-only]" >&2
-  echo "  usuario: 'backend', 'healthcheck' o 'module-{module_id}' (p.ej. module-m1)" >&2
+  echo "  usuario: 'backend', 'healthcheck' o '{module_id}' (p.ej. m1) — el usuario de" >&2
+  echo "  un módulo es EXACTAMENTE su module_id, sin prefijo (F-02)." >&2
   exit 1
 }
 
@@ -48,9 +56,15 @@ USERNAME="$1"
 PRINT_ONLY="${2:-}"
 
 if [[ "$USERNAME" != "backend" && "$USERNAME" != "healthcheck" \
-      && ! "$USERNAME" =~ ^module-[a-z0-9][a-z0-9-]{2,62}$ ]]; then
-  echo "ERROR: el usuario debe ser 'backend', 'healthcheck' o 'module-{module_id}' con" \
-       "module_id conforme a ^[a-z0-9][a-z0-9-]{2,62}\$ (contracts/mqtt/README.md sección 1)." >&2
+      && ! "$USERNAME" =~ ^[a-z0-9][a-z0-9-]{2,62}$ ]]; then
+  echo "ERROR: el usuario debe ser 'backend', 'healthcheck' o un module_id conforme a" \
+       "^[a-z0-9][a-z0-9-]{2,62}\$ (contracts/mqtt/README.md sección 1)." >&2
+  exit 1
+fi
+
+if [[ "$USERNAME" == "system" ]]; then
+  echo "ERROR: 'system' es un module_id reservado (infrastructure/mosquitto/acl), no puede" \
+       "usarse como usuario de módulo." >&2
   exit 1
 fi
 
@@ -84,7 +98,11 @@ fi
 
 if [[ "$USERNAME" == "backend" ]]; then
   echo "Recuerda actualizar MQTT_BACKEND_PASSWORD en tu .env (no en .env.example)." >&2
+elif [[ "$USERNAME" == "healthcheck" ]]; then
+  : # sin recordatorio adicional: healthcheck no tiene module_id ni client_id relevante
 else
-  echo "Recuerda: el firmware/simulador debe conectar con client_id = '${USERNAME#module-}'" \
-       "(module_id sin el prefijo 'module-') para que la ACL por patrón funcione." >&2
+  echo "Recuerda (F-02): con use_username_as_clientid true el broker fuerza el" \
+       "client_id al usuario autenticado ('${USERNAME}'), así que el firmware/simulador" \
+       "puede conectar con cualquier client_id — el broker lo sobrescribirá con" \
+       "'${USERNAME}' de todas formas. Da igual qué client_id declare el cliente." >&2
 fi

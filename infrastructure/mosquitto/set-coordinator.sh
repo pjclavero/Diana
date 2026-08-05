@@ -30,8 +30,15 @@
 # sin desconectar clientes) o `docker compose restart mosquitto`.
 #
 # module_id debe cumplir ^[a-z0-9][a-z0-9-]{2,62}$ (contracts/mqtt/README.md
-# sección 1), igual que exige generate-users.sh para el nombre de usuario
-# (module-{module_id}) y el client_id.
+# sección 1), igual que exige generate-users.sh para el nombre de usuario.
+#
+# F-02 (crítico, cerrado): el usuario del bloque de coordinador ya NO lleva
+# el prefijo "module-" — es EXACTAMENTE el module_id, igual que cualquier
+# otro usuario de módulo (ver generate-users.sh y mosquitto.conf,
+# use_username_as_clientid). Antes de este cambio ya autorizaba por usuario
+# (no por %c), así que este bloque nunca fue vulnerable a F-02; el ajuste es
+# sólo de nomenclatura, para que el usuario de coordinador siga existiendo
+# de verdad en el passwd generado por generate-users.sh.
 # ==============================================================================
 set -euo pipefail
 
@@ -70,7 +77,7 @@ current_block() {
 }
 
 if [[ "$ARG" == "--show" ]]; then
-  CUR="$(current_block | grep -E '^user module-' | sed -E 's/^user module-//' || true)"
+  CUR="$(current_block | grep -E '^user ' | sed -E 's/^user //' || true)"
   if [[ -z "$CUR" ]]; then
     echo "ninguno (coordinador inactivo)"
   else
@@ -93,11 +100,11 @@ else
     echo "ERROR: '$MODULE_ID' es un module_id reservado, no puede ser coordinador." >&2
     exit 1
   fi
-  NEW_BODY="user module-${MODULE_ID}
+  NEW_BODY="user ${MODULE_ID}
 topic write targets/v1/module/+/command
 topic write targets/v1/system/+/game/state
 topic write targets/v1/system/+/game/event"
-  DESC="activado para module_id='${MODULE_ID}' (usuario module-${MODULE_ID})"
+  DESC="activado para module_id='${MODULE_ID}' (usuario ${MODULE_ID})"
 fi
 
 TMP="$(mktemp)"

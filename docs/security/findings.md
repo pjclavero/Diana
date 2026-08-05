@@ -15,6 +15,20 @@ paquete propietario. Fecha: 2026-07-21. Rama `develop`, commit `e459f7d`.
 > 2. **Lo crítico no ha cambiado:** F-02 (ACL por `client_id`, suplantación **confirmada en
 >    vivo**), F-07 (sin TLS en ninguna capa) y F-17 (23 vulnerabilidades npm en el backend,
 >    medidas el 2026-07-20 y **sin volver a medir**) siguen **abiertos y sin remediar**.
+>
+> **Nota de vigencia (2026-08-05, añadida por el carril ACL/F-02, no por seguridad).**
+> **F-02 se ha cerrado.** `infrastructure/mosquitto/mosquitto.conf` ya lleva
+> `use_username_as_clientid true`, y el usuario mosquitto de cada módulo es EXACTAMENTE su
+> `module_id` (se quitó el prefijo `module-` que lo impedía — ver
+> `evidence/mqtt-acl.md`, apartado añadido con la reproducción del ataque original
+> **fallando** contra un broker real montado para la ocasión: 12/12 comprobaciones de
+> `test-acl.sh` en verde, incluida la que reproduce exactamente el ataque del 2026-07-21
+> (credenciales de un módulo, `client_id` de otro). Detalle completo, incluido el efecto
+> colateral de la directiva (colisión de `client_id` entre conexiones simultáneas del mismo
+> usuario) en `evidence/mqtt-acl.md`. **Pendiente:** `contracts/mqtt/README.md` sección 8
+> todavía describe el usuario como `module-{module_id}` con prefijo — desactualizado, fuera
+> del territorio de este carril (`contracts/**`), a corregir por el carril de contratos. F-07
+> y F-17 siguen abiertos, sin relación con este cierre.
 
 Contexto en [`threat-model.md`](threat-model.md); salida literal de los comandos en
 [`evidence/`](evidence/); riesgos asumidos a propósito en

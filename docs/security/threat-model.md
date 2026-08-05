@@ -77,6 +77,14 @@ Si además el rol de coordinador está activado para ese `module_id`, el suplant
 **Qué lo impide hoy:** nada. El firmware sí comprueba `module_id` en los comandos que
 recibe (`command.c`), pero el broker no comprueba nada al publicar. → **F-02**.
 
+> **Nota (2026-08-05, carril ACL/F-02):** F-02 se ha cerrado —
+> `use_username_as_clientid true` + usuario mosquitto igual al `module_id` (sin prefijo),
+> verificado contra un broker real (`docs/security/evidence/mqtt-acl.md`, apartado
+> "2026-08-05"). T3 tal como se describe arriba ya no es posible: la reproducción exacta del
+> ataque (credenciales de un módulo, `client_id` de otro) se repitió contra el broker de
+> prueba y el broker la rechazó. Este documento no se reescribe por respeto a la foto fija
+> del 2026-07-21; queda esta nota como referencia de vigencia.
+
 ### T4 · Un operador malicioso (usuario legítimo del panel)
 
 **Qué consigue:** lo que su rol permita. El RBAC por permisos es real y se aplica como guard
