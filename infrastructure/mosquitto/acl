@@ -73,17 +73,17 @@ pattern read targets/v1/system/+/game/state
 # de coordinador es una asignación de despliegue (puede recaer en cualquier
 # módulo físico y puede cambiar), no una propiedad derivable del client_id.
 #
-# Para activarlo: duplica y descomenta este bloque sustituyendo
-# <coordinator_module_id> por el module_id real configurado como PRINCIPAL,
-# y recarga mosquitto (o reinicia el contenedor) tras el cambio. Si el rol de
-# coordinador se reasigna a otro módulo, retira el bloque del module_id
-# anterior y añade el del nuevo, o el módulo saliente conservará permisos que
-# ya no le corresponden.
-#
-# user module-<coordinator_module_id>
-# topic write targets/v1/module/+/command
-# topic write targets/v1/system/+/game/state
-# topic write targets/v1/system/+/game/event
+# NO EDITAR ESTE BLOQUE A MANO. Se activa/reasigna/desactiva con
+# ./set-coordinator.sh (ver docs/deployment/procedimiento.md, sección
+# "Rol de coordinador"), que reescribe exactamente el contenido entre los
+# marcadores COORDINATOR-BLOCK de abajo y no toca el resto del fichero.
+# Estado por defecto (el de este repositorio en git): SIN coordinador activo,
+# que es el estado seguro — ningún módulo tiene permiso de escribir
+# game/state/game/event/module/+/command hasta que un despliegue concreto
+# ejecute el script para su module_id PRINCIPAL.
+# >>> COORDINATOR-BLOCK (generado por set-coordinator.sh; no editar a mano)
+# (inactivo: ejecuta ./set-coordinator.sh <module_id> para activarlo)
+# <<< COORDINATOR-BLOCK
 # ------------------------------------------------------------------------------
 
 # ------------------------------------------------------------------------------

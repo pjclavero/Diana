@@ -1,5 +1,36 @@
 import mqtt, { type MqttClient } from 'mqtt';
-import type { MessageHandler, PublishOptions, Transport, WillMessage } from './types.js';
+import { topicMatches } from './topicMatch.js';
+import type {
+  IncomingMessage,
+  MessageHandler,
+  PublishOptions,
+  Transport,
+  WillMessage,
+} from './types.js';
+
+/**
+ * Entrega un mensaje SÓLO a los manejadores cuyo filtro casa con su tópico.
+ *
+ * mqtt.js entrega todos los mensajes por un único evento 'message', así que el
+ * encaminamiento por filtro es responsabilidad de este transporte (el broker en
+ * memoria ya lo hacía con `topicMatches`). Antes se llamaba a TODOS los
+ * manejadores con TODOS los mensajes: contra un broker real eso metía el
+ * `system/{id}/game/state` por el manejador de `module/{id}/command`, que leía
+ * un `command_id` inexistente y tumbaba el proceso al publicar un `status`
+ * inválido contra el contrato. Es la razón por la que la ingesta nunca se pudo
+ * verificar de extremo a extremo (X-18-INGESTA).
+ *
+ * Exportada aparte para poder probarla sin un broker delante.
+ */
+export function dispatchByFilter(
+  handlers: ReadonlyMap<string, MessageHandler[]>,
+  msg: IncomingMessage,
+): void {
+  for (const [filter, hs] of handlers) {
+    if (!topicMatches(filter, msg.topic)) continue;
+    for (const h of hs) void h(msg);
+  }
+}
 
 export interface MqttJsTransportOptions {
   url: string; // p.ej. mqtt://192.168.1.209:1883
@@ -36,6 +67,7 @@ export class MqttJsTransport implements Transport {
   private readonly opts: MqttJsTransportOptions;
   private client: MqttClient | null = null;
   private readonly handlers = new Map<string, MessageHandler[]>();
+  private readonly pendingFilters = new Set<string>();
 
   constructor(clientId: string, opts: MqttJsTransportOptions) {
     this.clientId = clientId;
@@ -68,14 +100,13 @@ export class MqttJsTransport implements Transport {
           payload = payloadBuf.toString('utf-8');
         }
         const msg = { topic, payload, qos: packet.qos as 0 | 1 | 2, retain: packet.retain };
-        for (const [filter, hs] of this.handlers) {
-          void filter;
-          for (const h of hs) h(msg);
-        }
+        dispatchByFilter(this.handlers, msg);
       });
 
       client.once('connect', () => {
         this.client = client;
+        for (const filter of this.pendingFilters) client.subscribe(filter, { qos: 1 });
+        this.pendingFilters.clear();
         resolve();
       });
       client.once('error', (err) => reject(err));
@@ -117,7 +148,14 @@ export class MqttJsTransport implements Transport {
     const list = this.handlers.get(topicFilter) ?? [];
     list.push(handler);
     this.handlers.set(topicFilter, list);
-    this.client?.subscribe(topicFilter, { qos: 1 });
+    if (this.client) {
+      this.client.subscribe(topicFilter, { qos: 1 });
+    } else {
+      // Suscripción pedida antes de connect(): se aplica al conectar. Antes se
+      // perdía en silencio (`this.client?.subscribe`) y el cliente se quedaba
+      // sordo sin que nada lo dijera.
+      this.pendingFilters.add(topicFilter);
+    }
   }
 
   unsubscribe(topicFilter: string): void {

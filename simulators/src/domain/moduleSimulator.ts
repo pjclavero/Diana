@@ -677,7 +677,9 @@ export class ModuleSimulator {
     });
   }
 
-  private async publishStatus(): Promise<void> {
+  // Público: el modo «módulo vivo» (live.ts) reemite el estado periódicamente,
+  // igual que un módulo real.
+  async publishStatus(): Promise<void> {
     const payload: ModuleStatusPayload = {
       schema_version: 1,
       module_id: this.moduleId,

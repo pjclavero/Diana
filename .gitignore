@@ -51,3 +51,7 @@ server/backend/data/exports/
 .idea/
 .vscode/
 *.log
+
+# Credenciales del broker: NUNCA al repositorio (la regla anterior estaba
+# anclada a la raiz y no cubria infrastructure/mosquitto/passwd).
+infrastructure/mosquitto/passwd
