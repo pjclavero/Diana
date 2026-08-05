@@ -1,6 +1,10 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { connect, MqttClient } from 'mqtt';
-import { CommandBuilder } from '../../contracts/command-builder';
+import {
+  CommandBuilder,
+  MaintenanceCommandType,
+  MaintenanceRequestedBy,
+} from '../../contracts/command-builder';
 import { ContractValidator } from '../../contracts/contract-validator';
 import { BACKEND_SUBSCRIPTIONS, parseTopic, topics } from '../../contracts/topics';
 import { AppConfig, CONFIG, PUBLISH_ACK_TIMEOUT_MS_DEFAULT } from '../../config/configuration';
@@ -229,18 +233,54 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** Comando a un módulo (contrato §6). */
-  async sendModuleCommand(
+  /*
+   * RETIRADO: `sendModuleCommand()` — publicaba en `topics.moduleCommand()`,
+   * es decir en `targets/v1/module/{id}/command`, el canal de JUEGO.
+   *
+   * Era el ÚNICO camino por el que el backend podía escribir en ese tópico, y
+   * seguía vivo y autenticado a través de `POST /mqtt/modules/:id/command`
+   * (permiso `commands:publish`, que tienen de serie `operador`, `gestor` y
+   * `mantenimiento`). Lo único que lo frenaba era la ACL del broker: defensa
+   * de segunda línea que una errata de despliegue, un reinicio con la
+   * configuración vieja o una migración de broker convierten en nada, sin
+   * tocar una línea de código.
+   *
+   * Se ha valorado dejarlo apagado tras una comprobación en el propio backend
+   * y reorientarlo al canal de mantenimiento. Ambas se descartan: la orden
+   * del operador prohíbe el puente «ni siquiera apagado», y los repertorios
+   * de `action` (juego) y `command_type` (mantenimiento) son disjuntos por
+   * diseño, así que reorientarlo sería inventar traducciones que el contrato
+   * no define. `operator-cli` sigue siendo emisor legítimo de este canal,
+   * pero publica con SUS credenciales contra el broker (ver
+   * `simulators/src/domain/coordinator.ts`); no necesitaba, ni usaba, este
+   * relé del backend.
+   *
+   * No lo reintroduzcas: `test/mqtt/no-backend-writes-game-command.spec.ts`
+   * recorre el AST de todo `src/` y falla con fichero y línea.
+   */
+
+  /**
+   * Orden de MANTENIMIENTO (ampliación v1.1). Publica EXCLUSIVAMENTE en
+   * `module/{id}/maintenance/command` — jamás en `module/{id}/command`
+   * (`topics.moduleCommand`), que es del coordinador y ni siquiera aparece
+   * mencionado en este método. No añadas aquí, ni en ningún sitio de este
+   * servicio, un camino que reescriba en ese tópico: es la orden expresa del
+   * operador (decisión de autoridad por dominio, README §0/§2.1) y la prueba
+   * `test/mqtt/no-backend-writes-game-command.spec.ts` la fija.
+   */
+  async sendModuleMaintenanceCommand(
     moduleId: string,
-    action: string,
+    commandType: MaintenanceCommandType,
+    requestedBy: MaintenanceRequestedBy,
     params?: Record<string, unknown>,
     expiresInMs?: number,
+    requestId?: string,
   ): Promise<Record<string, unknown>> {
-    const command = this.commands.moduleCommand(moduleId, action, params, { expiresInMs });
-    // `delivered`/`denied` importan: mqtt.js ENCOLA cuando no hay conexión en
-    // vez de fallar, y el broker deniega por ACL sin cerrar el socket. Sin
-    // ambos datos «he publicado» se confundía con «ha llegado» y «lo aceptó».
-    const result = await this.publish(topics.moduleCommand(moduleId), command);
+    const command = this.commands.maintenanceCommand(moduleId, commandType, requestedBy, params, {
+      expiresInMs,
+      requestId,
+    });
+    const result = await this.publish(topics.moduleMaintenanceCommand(moduleId), command);
     return { ...command, delivered: result.delivered, denied: result.denied };
   }
 

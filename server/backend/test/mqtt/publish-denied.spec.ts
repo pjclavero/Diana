@@ -172,7 +172,7 @@ describe('MqttService.publish · denegación de ACL detectable (PUBACK reasonCod
   });
 });
 
-describe('MqttService.sendSystemCommand / sendModuleCommand · propagan `denied`', () => {
+describe('MqttService.sendSystemCommand / sendModuleMaintenanceCommand · propagan `denied`', () => {
   beforeEach(() => {
     client.connected = true;
     client.nextPublishResult = {};
@@ -191,29 +191,39 @@ describe('MqttService.sendSystemCommand / sendModuleCommand · propagan `denied`
     expect((command as { denied: boolean }).denied).toBe(true);
   });
 
-  it('sendModuleCommand: ACL denegada ⇒ denied=true llega al llamador', async () => {
-    // Sin esta prueba, cambiar `denied: result.denied` por `denied: false` en
-    // `sendModuleCommand` sobrevivía: el comando a MÓDULO es justo el que la
-    // ACL de producción deniega (`targets/v1/module/{id}/command`), así que
-    // era el propagador que MÁS falta hacía fijar.
+  /*
+   * `sendModuleCommand` ya NO EXISTE: era el único publicador del backend en
+   * el canal de juego `module/{id}/command` y se ha retirado. Sus dos pruebas
+   * de propagación de `denied` se trasladan al método que hoy SÍ publica
+   * órdenes a un módulo, `sendModuleMaintenanceCommand`, para no perder la
+   * cobertura del propagador (era el que más falta hacía fijar: el comando a
+   * módulo es justo el que una ACL puede denegar).
+   */
+  const REQUESTED_BY = { actor_type: 'operator' as const, actor_id: 'u-1' };
+
+  it('sendModuleMaintenanceCommand: ACL denegada ⇒ denied=true llega al llamador', async () => {
     const { service } = build();
     await service.onModuleInit();
     client.nextPublishResult = {
       error: Object.assign(new Error('Publish error: Not authorized'), { code: 135 }),
     };
 
-    const command = await service.sendModuleCommand('mod-a', 'set_maintenance', { enabled: true });
+    const command = await service.sendModuleMaintenanceCommand('mod-a', 'identify', REQUESTED_BY, {
+      duration_ms: 1000,
+    });
 
     expect((command as { delivered: boolean }).delivered).toBe(false);
     expect((command as { denied: boolean }).denied).toBe(true);
   });
 
-  it('sendModuleCommand: aceptado ⇒ delivered=true, denied=false', async () => {
+  it('sendModuleMaintenanceCommand: aceptado ⇒ delivered=true, denied=false', async () => {
     const { service } = build();
     await service.onModuleInit();
     client.nextPublishResult = { packet: { reasonCode: 0 } };
 
-    const command = await service.sendModuleCommand('mod-a', 'identify', { duration_ms: 1000 });
+    const command = await service.sendModuleMaintenanceCommand('mod-a', 'identify', REQUESTED_BY, {
+      duration_ms: 1000,
+    });
 
     expect((command as { delivered: boolean }).delivered).toBe(true);
     expect((command as { denied: boolean }).denied).toBe(false);

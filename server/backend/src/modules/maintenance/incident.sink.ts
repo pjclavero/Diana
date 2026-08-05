@@ -41,6 +41,7 @@ export class PrismaIncidentSink implements IncidentSinkPort {
           // módulo aparece después con el mismo identificador MQTT.
           moduleSlug: incident.moduleSlug ?? null,
           eventId: incident.eventId ?? null,
+          requestId: incident.requestId ?? null,
           message: incident.message.slice(0, 1024),
           detail: (incident.detail ?? undefined) as never,
           occurredAt: incident.receivedAt,

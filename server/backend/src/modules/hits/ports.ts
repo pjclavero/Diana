@@ -34,6 +34,8 @@ export interface IncidentInput {
   source: string;
   moduleSlug?: string | null;
   eventId?: string | null;
+  /** Ampliación v1.1: correlaciona con la orden de mantenimiento que lo originó. */
+  requestId?: string | null;
   message: string;
   detail?: unknown;
   /** T3: instante exacto en que el backend recibió el mensaje. */

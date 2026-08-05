@@ -18,6 +18,7 @@ export type TopicKind =
   | 'module-config-desired'
   | 'module-config-reported'
   | 'module-command'
+  | 'module-maintenance-command'
   | 'module-hit'
   | 'module-diagnostic'
   | 'module-ota';
@@ -34,6 +35,7 @@ export const TOPIC_SCHEMA: Record<TopicKind, string> = {
   'module-config-desired': 'module-config.schema.json',
   'module-config-reported': 'module-config.schema.json',
   'module-command': 'module-command.schema.json',
+  'module-maintenance-command': 'module-maintenance-command.schema.json',
   'module-hit': 'hit-event.schema.json',
   'module-diagnostic': 'module-diagnostic.schema.json',
   'module-ota': 'ota-command.schema.json',
@@ -97,6 +99,7 @@ export function parseTopic(topic: string): ParsedTopic | null {
     else if (tail === 'config/desired') kind = 'module-config-desired';
     else if (tail === 'config/reported') kind = 'module-config-reported';
     else if (tail === 'command') kind = 'module-command';
+    else if (tail === 'maintenance/command') kind = 'module-maintenance-command';
     else if (tail === 'hit') kind = 'module-hit';
     else if (tail === 'diagnostic') kind = 'module-diagnostic';
     else if (tail === 'ota') kind = 'module-ota';
@@ -124,6 +127,13 @@ export const topics = {
   moduleConfigDesired: (moduleId: string) => `${TOPIC_ROOT}/module/${moduleId}/config/desired`,
   moduleConfigReported: (moduleId: string) => `${TOPIC_ROOT}/module/${moduleId}/config/reported`,
   moduleCommand: (moduleId: string) => `${TOPIC_ROOT}/module/${moduleId}/command`,
+  /**
+   * Canal EXCLUSIVO del backend (ampliación v1.1, README §0/§2.1). El
+   * coordinador nunca publica aquí y el backend nunca publica en
+   * `moduleCommand`: la autoridad se reparte por dominio, no por
+   * disponibilidad. Ver `module-diagnostics.service.ts`.
+   */
+  moduleMaintenanceCommand: (moduleId: string) => `${TOPIC_ROOT}/module/${moduleId}/maintenance/command`,
   moduleHit: (moduleId: string) => `${TOPIC_ROOT}/module/${moduleId}/hit`,
   moduleDiagnostic: (moduleId: string) => `${TOPIC_ROOT}/module/${moduleId}/diagnostic`,
   moduleOta: (moduleId: string) => `${TOPIC_ROOT}/module/${moduleId}/ota`,

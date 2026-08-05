@@ -1,4 +1,4 @@
-import { Controller, Get, Global, Module, Post, Body, Param } from '@nestjs/common';
+import { Controller, Get, Global, Module } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ContractValidator, getContractValidator } from '../../contracts/contract-validator';
 import { AppConfig, CONFIG } from '../../config/configuration';
@@ -30,15 +30,32 @@ export class MqttController {
     };
   }
 
-  @Post('modules/:moduleId/command')
-  @RequirePermissions('commands:publish')
-  @ApiOperation({ summary: 'Publica un comando a un módulo (contrato §6)' })
-  sendCommand(
-    @Param('moduleId') moduleId: string,
-    @Body() body: { action: string; params?: Record<string, unknown>; expires_in_ms?: number },
-  ) {
-    return this.mqtt.sendModuleCommand(moduleId, body.action, body.params, body.expires_in_ms);
-  }
+  /*
+   * RETIRADA: `POST /mqtt/modules/:moduleId/command`.
+   *
+   * Era un paso genérico al canal de JUEGO `module/{id}/command`: autenticado,
+   * protegido sólo por `commands:publish` —permiso que `operador`, `gestor` y
+   * `mantenimiento` tienen de serie, o sea el mismo personal técnico que usa
+   * F6— y frenado únicamente por la ACL del broker. La orden del operador es
+   * que no exista ningún puente del backend hacia ese tópico, «ni siquiera
+   * apagado»; además el contrato v1.1 retiró `"backend"` del enum `issuer` de
+   * `module-command.schema.json`, así que esta ruta construía un mensaje que
+   * el propio contrato declara inválido.
+   *
+   * No se ha migrado a `maintenance/command` porque los repertorios son
+   * disjuntos (`action` de juego vs `command_type` de mantenimiento) y las
+   * operaciones legítimas de mantenimiento ya tienen sus rutas propias en
+   * F6 (`/modules/:id/identify`, `self-test`, `led-test`, `calibrate`…).
+   * No se ha encontrado ningún consumidor: ni `server/frontend/src` (sólo
+   * aparece en `schema.d.ts`, que es espejo generado del OpenAPI), ni
+   * `simulators/` —`operator-cli` publica en el canal de juego con sus
+   * propias credenciales contra el broker, no a través del backend—.
+   *
+   * NOTA de divergencia: `contracts/api/openapi.json` y el
+   * `server/frontend/src/api/generated/schema.d.ts` derivado siguen listando
+   * esta ruta. Están fuera del territorio de este carril; hay que
+   * regenerarlos (`src/scripts/export-openapi.ts`).
+   */
 }
 
 @Global()

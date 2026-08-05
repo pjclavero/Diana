@@ -217,6 +217,8 @@ export class IngestService {
         message: string;
         detail?: unknown;
         firmware_version?: string;
+        /** Ampliación v1.1: presente cuando responde a una orden de mantenimiento. */
+        request_id?: string;
         device: {
           boot_id: string;
           event_us: number;
@@ -230,6 +232,7 @@ export class IngestService {
           source: 'diagnostic',
           moduleSlug: d.module_id,
           eventId: d.event_id,
+          requestId: d.request_id ?? null,
           message: d.message,
           // La versión va DEBAJO: si el módulo manda su propio
           // `firmware_version` en el detalle, manda el suyo.

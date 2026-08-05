@@ -1,57 +1,110 @@
+import { ConflictException } from '@nestjs/common';
 import { MaintenanceController } from '../../src/modules/maintenance/maintenance.module';
 
 /**
- * El defecto que cierra esta prueba: `sendModuleCommand` pasó a `async` (lee el
- * reasonCode del PUBACK de MQTT5) y esta llamada se quedó SIN `await`. El
- * endpoint devolvía una Promise sin resolver en `command`: `JSON.stringify` la
- * serializa como `{}`, así que la respuesta perdía `delivered` y `denied` —
- * justo en el endpoint que publica en `targets/v1/module/{id}/command`, el
- * tópico que la ACL de producción deniega. Y una promesa rechazada sin `await`
- * ni `.catch()` tumba el proceso de Node.
+ * `MaintenanceController` publicaba `self_test` e `identify` en
+ * `targets/v1/module/{id}/command` (canal de JUEGO) vía `sendModuleCommand`.
+ * Ampliación v1.1: el contrato quitó `"backend"` del enum `issuer` de ese
+ * tópico y F-02 (ACL real) le deniega la escritura — doblemente prohibido.
+ * Ahora usa `sendModuleMaintenanceCommand` sobre `module/{id}/maintenance/command`,
+ * el mismo patrón que F6. `set_maintenance` no tiene `command_type` en el
+ * esquema nuevo: se guarda en base pero NO se publica nada (no se inventa un
+ * `command_type` ni se cuela por el canal de juego).
  */
-function build(sendModuleCommand: jest.Mock) {
+const ADMIN = { userId: 'u-admin', role: 'administrador' };
+
+function build(
+  over: {
+    sendModuleMaintenanceCommand?: jest.Mock;
+    isPanelOccupied?: jest.Mock;
+    moduleFindUnique?: jest.Mock;
+  } = {},
+) {
+  const sendModuleMaintenanceCommand =
+    over.sendModuleMaintenanceCommand ??
+    jest.fn().mockResolvedValue({ request_id: 'r1', delivered: true, denied: false });
   const prisma = {
-    module: { update: jest.fn().mockResolvedValue({ id: 'm1', slug: 'mod-a' }) },
+    module: {
+      update: jest.fn().mockResolvedValue({ id: 'm1', slug: 'mod-a' }),
+      findUnique: over.moduleFindUnique ?? jest.fn().mockResolvedValue({ targetSystemId: 'panel-1' }),
+    },
   } as never;
-  const mqtt = { sendModuleCommand } as never;
+  const mqtt = { sendModuleMaintenanceCommand } as never;
   const audit = { record: jest.fn().mockResolvedValue({}) } as never;
-  return new MaintenanceController(prisma, mqtt, audit);
+  const isPanelOccupied = over.isPanelOccupied ?? jest.fn().mockResolvedValue(false);
+  const games = { isPanelOccupied } as never;
+  return {
+    controller: new MaintenanceController(prisma, mqtt, audit, games),
+    sendModuleMaintenanceCommand,
+    prisma,
+    isPanelOccupied,
+  };
 }
 
-describe('MaintenanceController.setMaintenance · espera de verdad al broker', () => {
-  it('la respuesta lleva el comando RESUELTO, no una promesa', async () => {
-    const controller = build(
-      jest.fn().mockResolvedValue({ command_id: 'c1', delivered: true, denied: false }),
-    );
-
-    const res = await controller.setMaintenance('mod-a', { enabled: true }, {});
-
-    expect(res.command).not.toBeInstanceOf(Promise);
-    expect(res.command).toMatchObject({ command_id: 'c1', delivered: true, denied: false });
-    // Lo que se serializa al cliente: una promesa daría `{}`.
-    expect(JSON.parse(JSON.stringify(res)).command.command_id).toBe('c1');
-  });
-
-  it('ACL denegada: `denied` LLEGA a la respuesta (era lo que se perdía)', async () => {
-    const controller = build(
-      jest.fn().mockResolvedValue({ command_id: 'c1', delivered: false, denied: true }),
-    );
-
-    const res = await controller.setMaintenance('mod-a', { enabled: false }, {});
-
-    expect(JSON.parse(JSON.stringify(res)).command).toMatchObject({
-      delivered: false,
-      denied: true,
+describe('MaintenanceController · self-test / identify publican en el canal de MANTENIMIENTO', () => {
+  it('self-test manda command_type "self_test" con requested_by', async () => {
+    const { controller, sendModuleMaintenanceCommand } = build();
+    await controller.selfTest('mod-a', { user: ADMIN } as never);
+    expect(sendModuleMaintenanceCommand).toHaveBeenCalledWith('mod-a', 'self_test', {
+      actor_type: 'operator',
+      actor_id: 'u-admin',
     });
   });
 
-  it('si la publicación RECHAZA, el rechazo sale por el endpoint y no queda suelto', async () => {
-    // Sin `await` esto era un unhandled rejection: no lo veía el cliente (que
-    // recibía un 200 con `command: {}`) y tumbaba el proceso de Node.
-    const controller = build(jest.fn().mockRejectedValue(new Error('Tópico fuera del contrato v1')));
-
-    await expect(controller.setMaintenance('mod-a', { enabled: true }, {})).rejects.toThrow(
-      /contrato v1/,
+  it('identify manda command_type "identify" con duration_ms', async () => {
+    const { controller, sendModuleMaintenanceCommand } = build();
+    await controller.identify('mod-a', { duration_ms: 7000 }, { user: ADMIN } as never);
+    expect(sendModuleMaintenanceCommand).toHaveBeenCalledWith(
+      'mod-a',
+      'identify',
+      { actor_type: 'operator', actor_id: 'u-admin' },
+      { duration_ms: 7000 },
     );
+  });
+
+  it('identify sin body usa 4000ms por defecto', async () => {
+    const { controller, sendModuleMaintenanceCommand } = build();
+    await controller.identify('mod-a', undefined, { user: ADMIN } as never);
+    expect(sendModuleMaintenanceCommand.mock.calls[0][3]).toEqual({ duration_ms: 4000 });
+  });
+
+  it('self-test se bloquea con partida activa sobre el panel (game_in_progress)', async () => {
+    const { controller, sendModuleMaintenanceCommand } = build({
+      isPanelOccupied: jest.fn().mockResolvedValue(true),
+    });
+    await expect(controller.selfTest('mod-a', { user: ADMIN } as never)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(sendModuleMaintenanceCommand).not.toHaveBeenCalled();
+  });
+
+  it('identify SIGUE PERMITIDO con partida activa (categoría "leer")', async () => {
+    const { controller, sendModuleMaintenanceCommand } = build({
+      isPanelOccupied: jest.fn().mockResolvedValue(true),
+    });
+    await controller.identify('mod-a', { duration_ms: 1000 }, { user: ADMIN } as never);
+    expect(sendModuleMaintenanceCommand).toHaveBeenCalled();
+  });
+
+  it('un módulo sin panel asignado no bloquea self-test (nada que ocupar)', async () => {
+    const { controller, sendModuleMaintenanceCommand, isPanelOccupied } = build({
+      moduleFindUnique: jest.fn().mockResolvedValue({ targetSystemId: null }),
+    });
+    await controller.selfTest('mod-a', { user: ADMIN } as never);
+    expect(isPanelOccupied).not.toHaveBeenCalled();
+    expect(sendModuleMaintenanceCommand).toHaveBeenCalled();
+  });
+});
+
+describe('MaintenanceController.setMaintenance · sin command_type, sin bridge al canal de juego', () => {
+  it('guarda el modo en base y NO publica nada por MQTT', async () => {
+    const { controller, sendModuleMaintenanceCommand } = build();
+
+    const res = await controller.setMaintenance('mod-a', { enabled: true }, { user: ADMIN } as never);
+
+    expect(res.module).toMatchObject({ id: 'm1', slug: 'mod-a' });
+    expect(res.command).toBeNull();
+    expect(res.note).toMatch(/no está en el repertorio/);
+    expect(sendModuleMaintenanceCommand).not.toHaveBeenCalled();
   });
 });

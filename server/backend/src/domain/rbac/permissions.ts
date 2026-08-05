@@ -97,6 +97,22 @@ const MAINTENANCE_EXTRA: string[] = [
   'commands:publish',
 ];
 
+/**
+ * SIMULACIÓN — permiso propio, no un rol.
+ *
+ * La consola de simulación fabrica presencia, impactos, averías y respuestas de
+ * diagnóstico como si fueran de un módulo real. Eso NO es una capacidad de
+ * mantenimiento: un técnico sabe de dianas, pero no tiene por qué poder crear
+ * disparos que nunca ocurrieron. Colgarlo del rol `mantenimiento` se lo habría
+ * dado a todos los técnicos de campo.
+ *
+ * Por eso va como permiso suelto, que un administrador concede a la cuenta de
+ * pruebas y a nadie más. NINGÚN rol lo trae de serie —ni siquiera el gestor—;
+ * el administrador lo tiene por su comodín `*`.
+ */
+export const SIMULATION_READ = 'simulation:read';
+export const SIMULATION_WRITE = 'simulation:write';
+
 // El jugador ve SÓLO lo suyo. No recibe lecturas amplias (`games:read`,
 // `statistics:read` globales): los endpoints «/me/*» se auto-acotan por el
 // usuario autenticado. `profile:read` habilita esa vista propia.

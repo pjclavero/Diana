@@ -58,35 +58,6 @@
         ]
       }
     },
-    "/api/mqtt/modules/{moduleId}/command": {
-      "post": {
-        "operationId": "MqttController_sendCommand",
-        "parameters": [
-          {
-            "name": "moduleId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Publica un comando a un módulo (contrato §6)",
-        "tags": [
-          "mqtt"
-        ]
-      }
-    },
     "/api/auth/login": {
       "post": {
         "operationId": "AuthController_login",
@@ -1255,6 +1226,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestIdDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -1292,6 +1273,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestIdDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -1321,6 +1312,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestIdDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -1331,7 +1332,7 @@
             "bearer": []
           }
         ],
-        "summary": "Aborta la calibración en curso",
+        "summary": "Aborta la calibración en curso (categoría \"seguridad\": se acepta siempre)",
         "tags": [
           "modules"
         ]
@@ -1537,6 +1538,460 @@
         "summary": "Elimina module",
         "tags": [
           "modules"
+        ]
+      }
+    },
+    "/api/games/{id}/join-code": {
+      "post": {
+        "operationId": "GameJoinController_code",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Genera (o regenera con ?regenerate=1) el código de unión de la partida",
+        "tags": [
+          "games"
+        ]
+      }
+    },
+    "/api/games/join/{code}": {
+      "get": {
+        "operationId": "GameJoinController_byCode",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Información pública de una partida por su código de unión",
+        "tags": [
+          "games"
+        ]
+      }
+    },
+    "/api/games/join/{code}/guest": {
+      "post": {
+        "operationId": "GameJoinController_joinGuest",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinGuestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Se une a la partida como jugador temporal (público; el código autoriza)",
+        "tags": [
+          "games"
+        ]
+      }
+    },
+    "/api/games/modes": {
+      "get": {
+        "operationId": "GamesController_modes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Modos de juego disponibles en el motor",
+        "tags": [
+          "games"
+        ]
+      }
+    },
+    "/api/games": {
+      "get": {
+        "operationId": "GamesController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "games"
+        ]
+      },
+      "post": {
+        "operationId": "GamesController_create",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Crea una partida",
+        "tags": [
+          "games"
+        ]
+      }
+    },
+    "/api/games/panel-occupancy": {
+      "get": {
+        "operationId": "GamesController_panelOccupancy",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Paneles ocupados ahora mismo por partidas activas (G-H)",
+        "tags": [
+          "games"
+        ]
+      }
+    },
+    "/api/games/{id}": {
+      "get": {
+        "operationId": "GamesController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "games"
+        ]
+      }
+    },
+    "/api/games/{id}/rounds": {
+      "post": {
+        "operationId": "GamesController_addRound",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Añade una ronda y calcula su plan determinista",
+        "tags": [
+          "games"
+        ]
+      }
+    },
+    "/api/games/{id}/rounds/{roundId}/start": {
+      "post": {
+        "operationId": "GamesController_start",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "roundId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Autoriza el comienzo de la ronda (el cronómetro lo lleva el coordinador)",
+        "tags": [
+          "games"
+        ]
+      }
+    },
+    "/api/games/{id}/control/{action}": {
+      "post": {
+        "operationId": "GamesController_control",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "pause_game · resume_game · abort_game · end_game",
+        "tags": [
+          "games"
+        ]
+      }
+    },
+    "/api/participants": {
+      "get": {
+        "operationId": "ParticipantsController_list",
+        "parameters": [
+          {
+            "name": "gameId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Lista los participantes de una partida (?gameId=)",
+        "tags": [
+          "participants"
+        ]
+      },
+      "post": {
+        "operationId": "ParticipantsController_add",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddParticipantDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Añade un participante: registrado/plantilla (player_id) o temporal (guest_name)",
+        "tags": [
+          "participants"
+        ]
+      }
+    },
+    "/api/participants/{id}/panel": {
+      "patch": {
+        "operationId": "ParticipantsController_setPanel",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetParticipantPanelDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Asigna el panel en el que juega (permite atribuir sus impactos)",
+        "tags": [
+          "participants"
+        ]
+      }
+    },
+    "/api/participants/{id}/team": {
+      "patch": {
+        "operationId": "ParticipantsController_setTeam",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetParticipantTeamDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Reasigna el equipo de un participante (team_id null = sin equipo)",
+        "tags": [
+          "participants"
+        ]
+      }
+    },
+    "/api/participants/{id}": {
+      "delete": {
+        "operationId": "ParticipantsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Quita un participante de la partida",
+        "tags": [
+          "participants"
         ]
       }
     },
@@ -2460,460 +2915,6 @@
         "summary": "Borra un preset propio (admin: cualquiera)",
         "tags": [
           "presets"
-        ]
-      }
-    },
-    "/api/games/{id}/join-code": {
-      "post": {
-        "operationId": "GameJoinController_code",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "summary": "Genera (o regenera con ?regenerate=1) el código de unión de la partida",
-        "tags": [
-          "games"
-        ]
-      }
-    },
-    "/api/games/join/{code}": {
-      "get": {
-        "operationId": "GameJoinController_byCode",
-        "parameters": [
-          {
-            "name": "code",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Información pública de una partida por su código de unión",
-        "tags": [
-          "games"
-        ]
-      }
-    },
-    "/api/games/join/{code}/guest": {
-      "post": {
-        "operationId": "GameJoinController_joinGuest",
-        "parameters": [
-          {
-            "name": "code",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/JoinGuestDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "summary": "Se une a la partida como jugador temporal (público; el código autoriza)",
-        "tags": [
-          "games"
-        ]
-      }
-    },
-    "/api/games/modes": {
-      "get": {
-        "operationId": "GamesController_modes",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Modos de juego disponibles en el motor",
-        "tags": [
-          "games"
-        ]
-      }
-    },
-    "/api/games": {
-      "get": {
-        "operationId": "GamesController_list",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "tags": [
-          "games"
-        ]
-      },
-      "post": {
-        "operationId": "GamesController_create",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Crea una partida",
-        "tags": [
-          "games"
-        ]
-      }
-    },
-    "/api/games/panel-occupancy": {
-      "get": {
-        "operationId": "GamesController_panelOccupancy",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Paneles ocupados ahora mismo por partidas activas (G-H)",
-        "tags": [
-          "games"
-        ]
-      }
-    },
-    "/api/games/{id}": {
-      "get": {
-        "operationId": "GamesController_get",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "tags": [
-          "games"
-        ]
-      }
-    },
-    "/api/games/{id}/rounds": {
-      "post": {
-        "operationId": "GamesController_addRound",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Añade una ronda y calcula su plan determinista",
-        "tags": [
-          "games"
-        ]
-      }
-    },
-    "/api/games/{id}/rounds/{roundId}/start": {
-      "post": {
-        "operationId": "GamesController_start",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "roundId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Autoriza el comienzo de la ronda (el cronómetro lo lleva el coordinador)",
-        "tags": [
-          "games"
-        ]
-      }
-    },
-    "/api/games/{id}/control/{action}": {
-      "post": {
-        "operationId": "GamesController_control",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "action",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "pause_game · resume_game · abort_game · end_game",
-        "tags": [
-          "games"
-        ]
-      }
-    },
-    "/api/participants": {
-      "get": {
-        "operationId": "ParticipantsController_list",
-        "parameters": [
-          {
-            "name": "gameId",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Lista los participantes de una partida (?gameId=)",
-        "tags": [
-          "participants"
-        ]
-      },
-      "post": {
-        "operationId": "ParticipantsController_add",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AddParticipantDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Añade un participante: registrado/plantilla (player_id) o temporal (guest_name)",
-        "tags": [
-          "participants"
-        ]
-      }
-    },
-    "/api/participants/{id}/panel": {
-      "patch": {
-        "operationId": "ParticipantsController_setPanel",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetParticipantPanelDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Asigna el panel en el que juega (permite atribuir sus impactos)",
-        "tags": [
-          "participants"
-        ]
-      }
-    },
-    "/api/participants/{id}/team": {
-      "patch": {
-        "operationId": "ParticipantsController_setTeam",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetParticipantTeamDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Reasigna el equipo de un participante (team_id null = sin equipo)",
-        "tags": [
-          "participants"
-        ]
-      }
-    },
-    "/api/participants/{id}": {
-      "delete": {
-        "operationId": "ParticipantsController_remove",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Quita un participante de la partida",
-        "tags": [
-          "participants"
         ]
       }
     },
@@ -5194,15 +5195,7 @@
         "type": "object",
         "properties": {}
       },
-      "SavePanelDto": {
-        "type": "object",
-        "properties": {}
-      },
-      "CreatePresetDto": {
-        "type": "object",
-        "properties": {}
-      },
-      "UpdatePresetDto": {
+      "RequestIdDto": {
         "type": "object",
         "properties": {}
       },
@@ -5219,6 +5212,18 @@
         "properties": {}
       },
       "SetParticipantTeamDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "SavePanelDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreatePresetDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdatePresetDto": {
         "type": "object",
         "properties": {}
       },

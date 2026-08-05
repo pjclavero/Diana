@@ -38,23 +38,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/mqtt/modules/{moduleId}/command": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Publica un comando a un módulo (contrato §6) */
-        post: operations["MqttController_sendCommand"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/auth/login": {
         parameters: {
             query?: never;
@@ -549,7 +532,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Aborta la calibración en curso */
+        /** Aborta la calibración en curso (categoría "seguridad": se acepta siempre) */
         post: operations["ModuleDiagnosticsController_abortCalibration"];
         delete?: never;
         options?: never;
@@ -609,226 +592,6 @@ export interface paths {
         head?: never;
         /** Modifica module */
         patch: operations["ModulesController_update"];
-        trace?: never;
-    };
-    "/api/targets": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Lista target */
-        get: operations["TargetsController_list"];
-        put?: never;
-        /** Crea target */
-        post: operations["TargetsController_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/targets/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Obtiene target por identificador */
-        get: operations["TargetsController_get"];
-        put?: never;
-        post?: never;
-        /** Elimina target */
-        delete: operations["TargetsController_remove"];
-        options?: never;
-        head?: never;
-        /** Modifica target */
-        patch: operations["TargetsController_update"];
-        trace?: never;
-    };
-    "/api/topology/panels": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Paneles disponibles para el editor de matrices */
-        get: operations["TopologyPanelsController_list"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/topology/panels/{idOrSlug}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Matriz 3×3 real de un panel + módulos sin colocar */
-        get: operations["TopologyPanelsController_get"];
-        /** Guarda la matriz del panel (reemplazo completo) */
-        put: operations["TopologyPanelsController_save"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/topology": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Lista modulePosition */
-        get: operations["TopologyController_list"];
-        put?: never;
-        /** Crea modulePosition */
-        post: operations["TopologyController_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/topology/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Obtiene modulePosition por identificador */
-        get: operations["TopologyController_get"];
-        put?: never;
-        post?: never;
-        /** Elimina modulePosition */
-        delete: operations["TopologyController_remove"];
-        options?: never;
-        head?: never;
-        /** Modifica modulePosition */
-        patch: operations["TopologyController_update"];
-        trace?: never;
-    };
-    "/api/calibration": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Lista sensorCalibration */
-        get: operations["CalibrationController_list"];
-        put?: never;
-        /** Crea sensorCalibration */
-        post: operations["CalibrationController_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/calibration/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Obtiene sensorCalibration por identificador */
-        get: operations["CalibrationController_get"];
-        put?: never;
-        post?: never;
-        /** Elimina sensorCalibration */
-        delete: operations["CalibrationController_remove"];
-        options?: never;
-        head?: never;
-        /** Modifica sensorCalibration */
-        patch: operations["CalibrationController_update"];
-        trace?: never;
-    };
-    "/api/game-modes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Lista gameMode */
-        get: operations["GameModesController_list"];
-        put?: never;
-        /** Crea gameMode */
-        post: operations["GameModesController_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/game-modes/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Obtiene gameMode por identificador */
-        get: operations["GameModesController_get"];
-        put?: never;
-        post?: never;
-        /** Elimina gameMode */
-        delete: operations["GameModesController_remove"];
-        options?: never;
-        head?: never;
-        /** Modifica gameMode */
-        patch: operations["GameModesController_update"];
-        trace?: never;
-    };
-    "/api/presets": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Presets visibles (propios + de muestra) y el uso del límite */
-        get: operations["PresetsController_list"];
-        put?: never;
-        /** Crea un preset (gestor: propio con límite de 5; admin: de muestra) */
-        post: operations["PresetsController_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/presets/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Obtiene un preset visible por id */
-        get: operations["PresetsController_get"];
-        put?: never;
-        post?: never;
-        /** Borra un preset propio (admin: cualquiera) */
-        delete: operations["PresetsController_remove"];
-        options?: never;
-        head?: never;
-        /** Edita un preset propio (admin: cualquiera) */
-        patch: operations["PresetsController_update"];
         trace?: never;
     };
     "/api/games/{id}/join-code": {
@@ -1067,6 +830,226 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Lista target */
+        get: operations["TargetsController_list"];
+        put?: never;
+        /** Crea target */
+        post: operations["TargetsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/targets/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Obtiene target por identificador */
+        get: operations["TargetsController_get"];
+        put?: never;
+        post?: never;
+        /** Elimina target */
+        delete: operations["TargetsController_remove"];
+        options?: never;
+        head?: never;
+        /** Modifica target */
+        patch: operations["TargetsController_update"];
+        trace?: never;
+    };
+    "/api/topology/panels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Paneles disponibles para el editor de matrices */
+        get: operations["TopologyPanelsController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/topology/panels/{idOrSlug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Matriz 3×3 real de un panel + módulos sin colocar */
+        get: operations["TopologyPanelsController_get"];
+        /** Guarda la matriz del panel (reemplazo completo) */
+        put: operations["TopologyPanelsController_save"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/topology": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Lista modulePosition */
+        get: operations["TopologyController_list"];
+        put?: never;
+        /** Crea modulePosition */
+        post: operations["TopologyController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/topology/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Obtiene modulePosition por identificador */
+        get: operations["TopologyController_get"];
+        put?: never;
+        post?: never;
+        /** Elimina modulePosition */
+        delete: operations["TopologyController_remove"];
+        options?: never;
+        head?: never;
+        /** Modifica modulePosition */
+        patch: operations["TopologyController_update"];
+        trace?: never;
+    };
+    "/api/calibration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Lista sensorCalibration */
+        get: operations["CalibrationController_list"];
+        put?: never;
+        /** Crea sensorCalibration */
+        post: operations["CalibrationController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calibration/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Obtiene sensorCalibration por identificador */
+        get: operations["CalibrationController_get"];
+        put?: never;
+        post?: never;
+        /** Elimina sensorCalibration */
+        delete: operations["CalibrationController_remove"];
+        options?: never;
+        head?: never;
+        /** Modifica sensorCalibration */
+        patch: operations["CalibrationController_update"];
+        trace?: never;
+    };
+    "/api/game-modes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Lista gameMode */
+        get: operations["GameModesController_list"];
+        put?: never;
+        /** Crea gameMode */
+        post: operations["GameModesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/game-modes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Obtiene gameMode por identificador */
+        get: operations["GameModesController_get"];
+        put?: never;
+        post?: never;
+        /** Elimina gameMode */
+        delete: operations["GameModesController_remove"];
+        options?: never;
+        head?: never;
+        /** Modifica gameMode */
+        patch: operations["GameModesController_update"];
+        trace?: never;
+    };
+    "/api/presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Presets visibles (propios + de muestra) y el uso del límite */
+        get: operations["PresetsController_list"];
+        put?: never;
+        /** Crea un preset (gestor: propio con límite de 5; admin: de muestra) */
+        post: operations["PresetsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/presets/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Obtiene un preset visible por id */
+        get: operations["PresetsController_get"];
+        put?: never;
+        post?: never;
+        /** Borra un preset propio (admin: cualquiera) */
+        delete: operations["PresetsController_remove"];
+        options?: never;
+        head?: never;
+        /** Edita un preset propio (admin: cualquiera) */
+        patch: operations["PresetsController_update"];
         trace?: never;
     };
     "/api/rounds": {
@@ -1990,13 +1973,14 @@ export interface components {
         };
         IdentifyDto: Record<string, never>;
         LedTestDto: Record<string, never>;
-        SavePanelDto: Record<string, never>;
-        CreatePresetDto: Record<string, never>;
-        UpdatePresetDto: Record<string, never>;
+        RequestIdDto: Record<string, never>;
         JoinGuestDto: Record<string, never>;
         AddParticipantDto: Record<string, never>;
         SetParticipantPanelDto: Record<string, never>;
         SetParticipantTeamDto: Record<string, never>;
+        SavePanelDto: Record<string, never>;
+        CreatePresetDto: Record<string, never>;
+        UpdatePresetDto: Record<string, never>;
         ActivateDto: Record<string, never>;
         CreateInvitationDto: Record<string, never>;
         AcceptInvitationDto: Record<string, never>;
@@ -2067,25 +2051,6 @@ export interface operations {
         requestBody?: never;
         responses: {
             200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    MqttController_sendCommand: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                moduleId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2864,7 +2829,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequestIdDto"];
+            };
+        };
         responses: {
             201: {
                 headers: {
@@ -2884,7 +2853,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequestIdDto"];
+            };
+        };
         responses: {
             201: {
                 headers: {
@@ -2903,7 +2876,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequestIdDto"];
+            };
+        };
         responses: {
             201: {
                 headers: {
@@ -3027,6 +3004,318 @@ export interface operations {
                 "application/json": Record<string, never>;
             };
         };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    GameJoinController_code: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    GameJoinController_byCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    GameJoinController_joinGuest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JoinGuestDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    GamesController_modes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    GamesController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    GamesController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    GamesController_panelOccupancy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    GamesController_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    GamesController_addRound: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    GamesController_start: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                roundId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    GamesController_control: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                action: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ParticipantsController_list: {
+        parameters: {
+            query: {
+                gameId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ParticipantsController_add: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddParticipantDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ParticipantsController_setPanel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetParticipantPanelDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ParticipantsController_setTeam: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetParticipantTeamDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ParticipantsController_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             200: {
                 headers: {
@@ -3601,318 +3890,6 @@ export interface operations {
                 "application/json": components["schemas"]["UpdatePresetDto"];
             };
         };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    GameJoinController_code: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    GameJoinController_byCode: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                code: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    GameJoinController_joinGuest: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                code: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["JoinGuestDto"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    GamesController_modes: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    GamesController_list: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    GamesController_create: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    GamesController_panelOccupancy: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    GamesController_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    GamesController_addRound: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    GamesController_start: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-                roundId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    GamesController_control: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-                action: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    ParticipantsController_list: {
-        parameters: {
-            query: {
-                gameId: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    ParticipantsController_add: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AddParticipantDto"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    ParticipantsController_setPanel: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SetParticipantPanelDto"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    ParticipantsController_setTeam: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SetParticipantTeamDto"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    ParticipantsController_remove: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
         responses: {
             200: {
                 headers: {

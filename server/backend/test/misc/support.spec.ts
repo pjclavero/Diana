@@ -58,20 +58,73 @@ describe('Comandos (contrato §6, dosier 23.3)', () => {
     expect(afterRestart).toBeGreaterThan(before);
   });
 
-  it('un comando de módulo cumple su esquema', () => {
-    const command = new CommandBuilder().moduleCommand('module-03', 'identify', {
-      duration_ms: 4000,
-    });
+  it('un comando de módulo cumple su esquema (emitido por el coordinador, no por el backend)', () => {
+    // Ampliación v1.1: `module/{id}/command` es el canal de JUEGO, exclusivo
+    // del coordinador (README §2.1) y el enum `issuer` de este esquema ya NO
+    // admite `"backend"` — se retiró explícitamente. Ya NO existe ningún
+    // camino de publicación del backend hacia ese canal: se retiraron
+    // `MqttService.sendModuleCommand` y `POST /mqtt/modules/:id/command`.
+    // `CommandBuilder.moduleCommand` sobrevive sólo como constructor de
+    // sobres para validar conformidad (construir no es publicar) y por eso
+    // exige `issuer` EXPLÍCITO: heredar el `defaultIssuer` de la clase
+    // (`'backend'`, que sigue siendo válido para
+    // `system-command`/`ota-command.schema.json`, ver más abajo) fabricaba en
+    // silencio un mensaje inválido para ESTE esquema.
+    const command = new CommandBuilder().moduleCommand(
+      'module-03',
+      'identify',
+      { duration_ms: 4000 },
+      { issuer: 'operator-cli' },
+    );
     const outcome = validator.validate('module-command.schema.json', command);
     expect(outcome.ok).toBe(true);
   });
 
+  /**
+   * Esta es la prueba que el operador pidió que quedara en verde por
+   * MIGRACIÓN, no por relajar nada: fija, de forma explícita y positiva, que
+   * el backend NUNCA puede declararse `issuer: 'backend'` en un comando de
+   * `module-command.schema.json` — es la mitad "documento" de la misma
+   * decisión cuya mitad "código" fijan `no-backend-writes-game-command.spec.ts`
+   * y `maintenance-command-topic.spec.ts`.
+   */
+  it('`issuer: "backend"` está PROHIBIDO en module-command.schema.json (ampliación v1.1)', () => {
+    const command = new CommandBuilder().moduleCommand(
+      'module-03',
+      'identify',
+      { duration_ms: 4000 },
+      { issuer: 'backend' },
+    );
+    const outcome = validator.validate('module-command.schema.json', command);
+    expect(outcome.ok).toBe(false);
+  });
+
+  it('el `defaultIssuer` de CommandBuilder SIGUE siendo backend, y sigue siendo válido para system-command', () => {
+    // Control negativo del cambio anterior: si alguien "arreglara" esto
+    // cambiando el `defaultIssuer` de la clase entera a otra cosa, esta
+    // prueba lo detectaría — `system-command`/`ota-command.schema.json` SÍ
+    // admiten `backend` (sólo `module-command` lo prohíbe).
+    const command = new CommandBuilder().systemCommand('system-a', 'all_safe');
+    expect(command.issuer).toBe('backend');
+    expect(validator.validate('system-command.schema.json', command).ok).toBe(true);
+  });
+
   it('todo comando lleva caducidad dentro del rango del contrato', () => {
-    const command = new CommandBuilder().moduleCommand('module-03', 'reboot');
+    const command = new CommandBuilder().moduleCommand('module-03', 'reboot', undefined, {
+      issuer: 'coordinator',
+    });
     expect(command.expires_in_ms).toBe(5000);
-    expect(() => new CommandBuilder().moduleCommand('module-03', 'reboot', {}, { expiresInMs: 50 })).toThrow();
     expect(() =>
-      new CommandBuilder().moduleCommand('module-03', 'reboot', {}, { expiresInMs: 999999 }),
+      new CommandBuilder().moduleCommand('module-03', 'reboot', {}, {
+        issuer: 'coordinator',
+        expiresInMs: 50,
+      }),
+    ).toThrow();
+    expect(() =>
+      new CommandBuilder().moduleCommand('module-03', 'reboot', {}, {
+        issuer: 'coordinator',
+        expiresInMs: 999999,
+      }),
     ).toThrow();
   });
 

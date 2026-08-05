@@ -258,6 +258,30 @@ export class GamesService {
     return { items, total: items.length };
   }
 
+  /**
+   * ¿Hay una partida activa ocupando este panel AHORA MISMO? Mismo criterio
+   * de ocupación que `assertPanelsFree`/`panelOccupancy` (armed|running|paused,
+   * panel propio o compartido por vista) pero sin excluir ninguna partida por
+   * id: aquí no se está comprobando un conflicto de una partida NUEVA contra
+   * las demás, se está respondiendo "¿está ocupado este panel, por la razón
+   * que sea?" para un llamador externo (F6: el backend no puede saber si
+   * `game_in_progress` se cumple sin preguntar esto antes de publicar una
+   * orden de mantenimiento que ACTÚA sobre el hardware).
+   */
+  async isPanelOccupied(targetSystemId: string): Promise<boolean> {
+    const conflict = await this.prisma.game.findFirst({
+      where: {
+        status: { in: ACTIVE_GAME_STATUSES },
+        OR: [
+          { targetSystemId },
+          { view: { panels: { some: { targetSystemId } } } },
+        ],
+      },
+      select: { id: true },
+    });
+    return conflict !== null;
+  }
+
   async create(input: CreateGameInput) {
     if (!this.registry.has(input.mode)) {
       throw new BadRequestException(

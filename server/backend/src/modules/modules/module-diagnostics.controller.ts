@@ -1,10 +1,10 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/roles.decorator';
-import { ModuleDiagnosticsService, TARGET_STATES } from './module-diagnostics.service';
+import { ModuleDiagnosticsService } from './module-diagnostics.service';
 
 class IdentifyDto {
   @IsOptional()
@@ -12,11 +12,35 @@ class IdentifyDto {
   @Min(500)
   @Max(60_000)
   duration_ms?: number;
+
+  /** Ampliación v1.1: idempotencia opcional a petición del llamador. */
+  @IsOptional()
+  @IsUUID()
+  request_id?: string;
 }
 
 class LedTestDto {
-  @IsIn(TARGET_STATES as unknown as string[])
-  state!: string;
+  /**
+   * `module-maintenance-command.schema.json` prueba el LED por DURACIÓN, no
+   * por `state` (ese campo era del tópico de juego, `module-command`, que
+   * este controlador ya no escribe). Pedir `state` aquí colaría un campo que
+   * el esquema nuevo no admite.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(60_000)
+  duration_ms?: number;
+
+  @IsOptional()
+  @IsUUID()
+  request_id?: string;
+}
+
+class RequestIdDto {
+  @IsOptional()
+  @IsUUID()
+  request_id?: string;
 }
 
 class ResultsQueryDto {
@@ -28,15 +52,17 @@ class ResultsQueryDto {
 }
 
 /**
- * Diagnóstico de módulo y diana (F6).
+ * Diagnóstico de módulo y diana (F6), ampliación v1.1.
  *
- * Las rutas son las que el panel ya llamaba y el backend no servía: hasta ahora
- * la pantalla de diagnóstico funcionaba contra el adaptador de demostración, de
- * modo que «probar un LED» no encendía ningún LED.
+ * Estas rutas publican EXCLUSIVAMENTE en `module/{id}/maintenance/command`
+ * (canal nuevo, exclusivo del backend). Nunca en `module/{id}/command` —ese
+ * tópico es del coordinador y de las órdenes de JUEGO— por decisión expresa
+ * del operador: la autoridad se separa por dominio, no por disponibilidad.
+ * Ver `module-diagnostics.service.ts` para el razonamiento completo.
  *
- * Ninguna de estas llamadas devuelve el RESULTADO de la prueba: los comandos van
- * por MQTT y el módulo responde cuando puede. El resultado se lee en
- * `GET .../diagnostics`.
+ * Ninguna de estas llamadas devuelve el RESULTADO de la prueba: los comandos
+ * van por MQTT y el módulo responde cuando puede, por `module/{id}/diagnostic`,
+ * correlado por `request_id`. El resultado se lee en `GET .../diagnostics`.
  */
 @ApiTags('modules')
 @ApiBearerAuth()
@@ -63,6 +89,7 @@ export class ModuleDiagnosticsController {
       idOrSlug,
       dto.duration_ms ?? 4000,
       this.actor(req),
+      dto.request_id,
     );
     await this.audit.record({
       user: req.user,
@@ -86,8 +113,9 @@ export class ModuleDiagnosticsController {
     const result = await this.diagnostics.testLed(
       idOrSlug,
       targetIndex,
-      dto.state,
       this.actor(req),
+      dto.duration_ms,
+      dto.request_id,
     );
     await this.audit.record({
       user: req.user,
@@ -105,9 +133,15 @@ export class ModuleDiagnosticsController {
   async testSensor(
     @Param('idOrSlug') idOrSlug: string,
     @Param('targetIndex', ParseIntPipe) targetIndex: number,
+    @Body() dto: RequestIdDto,
     @Req() req: { user?: AuthenticatedUser },
   ) {
-    const result = await this.diagnostics.testSensor(idOrSlug, targetIndex, this.actor(req));
+    const result = await this.diagnostics.testSensor(
+      idOrSlug,
+      targetIndex,
+      this.actor(req),
+      dto.request_id,
+    );
     await this.audit.record({
       user: req.user,
       action: 'module.test_sensor',
@@ -124,9 +158,15 @@ export class ModuleDiagnosticsController {
   async calibrate(
     @Param('idOrSlug') idOrSlug: string,
     @Param('targetIndex', ParseIntPipe) targetIndex: number,
+    @Body() dto: RequestIdDto,
     @Req() req: { user?: AuthenticatedUser },
   ) {
-    const result = await this.diagnostics.calibrate(idOrSlug, targetIndex, this.actor(req));
+    const result = await this.diagnostics.calibrate(
+      idOrSlug,
+      targetIndex,
+      this.actor(req),
+      dto.request_id,
+    );
     await this.audit.record({
       user: req.user,
       action: 'module.calibrate',
@@ -139,12 +179,13 @@ export class ModuleDiagnosticsController {
 
   @Post(':idOrSlug/commands/abort-calibration')
   @RequirePermissions('calibration:write')
-  @ApiOperation({ summary: 'Aborta la calibración en curso' })
+  @ApiOperation({ summary: 'Aborta la calibración en curso (categoría "seguridad": se acepta siempre)' })
   async abortCalibration(
     @Param('idOrSlug') idOrSlug: string,
+    @Body() dto: RequestIdDto,
     @Req() req: { user?: AuthenticatedUser },
   ) {
-    const result = await this.diagnostics.abortCalibration(idOrSlug, this.actor(req));
+    const result = await this.diagnostics.abortCalibration(idOrSlug, this.actor(req), dto.request_id);
     await this.audit.record({
       user: req.user,
       action: 'module.abort_calibration',

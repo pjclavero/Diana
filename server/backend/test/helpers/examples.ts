@@ -39,6 +39,8 @@ function topicFor(schema: string, payload: Record<string, unknown>): string {
       return topics.moduleConfigReported(moduleId);
     case 'module-command.schema.json':
       return topics.moduleCommand(moduleId);
+    case 'module-maintenance-command.schema.json':
+      return topics.moduleMaintenanceCommand(moduleId);
     case 'module-diagnostic.schema.json':
       return topics.moduleDiagnostic(moduleId);
     case 'ota-command.schema.json':

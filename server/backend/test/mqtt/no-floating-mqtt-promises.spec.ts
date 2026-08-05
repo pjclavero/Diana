@@ -31,6 +31,7 @@ import * as ts from 'typescript';
 const METODOS_ASINCRONOS = new Set([
   'publish',
   'sendModuleCommand',
+  'sendModuleMaintenanceCommand',
   'sendSystemCommand',
   'sendOtaCommand',
   'publishSystemStatus',
