@@ -1,7 +1,6 @@
-import { Route, Routes, useLocation } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 import { AppShell } from "./components/layout/AppShell";
 import { HomePage } from "./pages/home/HomePage";
-import { SystemStatusPage } from "./pages/system/SystemStatusPage";
 import { ModulesPage } from "./pages/modules/ModulesPage";
 import { ModuleDetailPage } from "./pages/module-detail/ModuleDetailPage";
 import { CalibrationPage } from "./pages/calibration/CalibrationPage";
@@ -14,7 +13,6 @@ import { NewGamePage } from "./pages/new-game/NewGamePage";
 import { CountdownPage } from "./pages/countdown/CountdownPage";
 import { LiveGamePage } from "./pages/live/LiveGamePage";
 import { ScoreboardPage } from "./pages/scoreboard/ScoreboardPage";
-import { ResultsPage } from "./pages/results/ResultsPage";
 import { StatisticsPage } from "./pages/stats/StatisticsPage";
 import { PresetsPage } from "./pages/presets/PresetsPage";
 import { DemoPage } from "./pages/demo/DemoPage";
@@ -23,7 +21,6 @@ import { ParticipantsPage } from "./pages/participants/ParticipantsPage";
 import { FirmwarePage } from "./pages/firmware/FirmwarePage";
 import { IncidentsPage } from "./pages/incidents/IncidentsPage";
 import { UsersPage } from "./pages/users/UsersPage";
-import { BackupsPage } from "./pages/backups/BackupsPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { ModuleOwnershipPage } from "./pages/modules-ownership/ModuleOwnershipPage";
 import { ViewsPage } from "./pages/views/ViewsPage";
@@ -34,6 +31,18 @@ import { InvitationAcceptPage } from "./pages/invitations/InvitationAcceptPage";
 import { InvitationsPage } from "./pages/invitations/InvitationsPage";
 import { ManagerActivationPage } from "./pages/invitations/ManagerActivationPage";
 import { useAuth } from "./auth/AuthContext";
+
+/**
+ * `results` se retiró (auditoría 2026-08-05 §4, decisión del operador):
+ * pintaba datos de demostración con el mismo contrato que `marcador` ya
+ * sirve con datos reales y con el tratamiento correcto de «no calculable».
+ * Los enlaces y marcadores antiguos a `/resultados` siguen llevando a algún
+ * sitio útil en vez de a un 404.
+ */
+function ResultsRedirect() {
+  const { gameId } = useParams();
+  return <Navigate to={gameId ? `/marcador/${gameId}` : "/marcador"} replace />;
+}
 
 export function App() {
   const { user, loading } = useAuth();
@@ -62,7 +71,9 @@ export function App() {
     <Routes>
       <Route element={<AppShell />}>
         <Route path="/" element={<HomePage />} />
-        <Route path="/sistema" element={<SystemStatusPage />} />
+        {/* `system` se fusionó con Inicio (auditoría 2026-08-05 §4): el
+            enlace antiguo sigue llevando al panel, no a un 404. */}
+        <Route path="/sistema" element={<Navigate to="/" replace />} />
         <Route path="/modulos" element={<ModulesPage />} />
         <Route path="/modulos-propiedad" element={<ModuleOwnershipPage />} />
         <Route path="/modulos/:moduleId" element={<ModuleDetailPage />} />
@@ -76,8 +87,8 @@ export function App() {
         <Route path="/partidas/nueva" element={<NewGamePage />} />
         <Route path="/partidas/:gameId/cuenta-atras" element={<CountdownPage />} />
         <Route path="/partidas/:gameId/directo" element={<LiveGamePage />} />
-        <Route path="/resultados" element={<ResultsPage />} />
-        <Route path="/resultados/:gameId" element={<ResultsPage />} />
+        <Route path="/resultados" element={<ResultsRedirect />} />
+        <Route path="/resultados/:gameId" element={<ResultsRedirect />} />
         <Route path="/marcador" element={<ScoreboardPage />} />
         <Route path="/marcador/:gameId" element={<ScoreboardPage />} />
         <Route path="/estadisticas" element={<StatisticsPage />} />
@@ -90,7 +101,6 @@ export function App() {
         <Route path="/firmware" element={<FirmwarePage />} />
         <Route path="/incidencias" element={<IncidentsPage />} />
         <Route path="/usuarios" element={<UsersPage />} />
-        <Route path="/copias" element={<BackupsPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

@@ -1,13 +1,16 @@
-import { ApiError } from "./client";
-import { getToken } from "../auth/tokenStore";
+import { apiRequestAs } from "./typedRequest";
 
 /**
  * API REAL de módulos y propiedad (F2). Igual que la autenticación, habla con el
  * backend de verdad (no depende de VITE_API_MODE): es el primer dominio que sale
  * de los datos de demostración. Contra `/api/modules` (CRUD) + endpoints de
  * propiedad `/modules/:id/link|unlink` y `/modules/mine`.
+ *
+ * MUESTRA REPRESENTATIVA de la puerta B (docs/coordination/AUDITORIA-PANTALLAS-2026-08-05.md
+ * §3.3): las peticiones pasan por `apiRequest`, tipado contra el contrato
+ * generado (`./generated/schema.d.ts`). Una ruta que el backend no expone, o
+ * que cambia de forma, deja de compilar aquí.
  */
-const BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 export interface ModuleOwner {
   id: string;
@@ -28,50 +31,32 @@ export interface ModuleEntity {
   owner?: ModuleOwner | null;
 }
 
-async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getToken();
-  let res: Response;
-  try {
-    res = await fetch(`${BASE}${path}`, {
-      ...init,
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(init?.headers as Record<string, string>),
-      },
-    });
-  } catch {
-    throw new ApiError("No se puede contactar con el servidor.");
-  }
-  if (res.status === 401 || res.status === 403) throw new ApiError("No tiene permiso para esta acción.");
-  if (!res.ok) {
-    let detail = "";
-    try {
-      detail = ((await res.json()) as { message?: string }).message ?? "";
-    } catch {
-      /* sin cuerpo */
-    }
-    throw new ApiError(detail || "El servidor no ha podido completar la operación.");
-  }
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
-}
-
 export async function listModules(): Promise<ModuleEntity[]> {
-  const page = await req<{ items: ModuleEntity[] }>("/modules?take=500&orderBy=slug&order=asc");
+  const page = await apiRequestAs<{ items: ModuleEntity[] }>()(
+    "/api/modules",
+    "/api/modules?take=500&orderBy=slug&order=asc",
+  );
   return page.items;
 }
 
 export function listMyModules(): Promise<ModuleEntity[]> {
-  return req<ModuleEntity[]>("/modules/mine");
+  return apiRequestAs<ModuleEntity[]>()("/api/modules/mine", "/api/modules/mine");
 }
 
 export function linkModule(moduleId: string, userId: string): Promise<ModuleEntity> {
-  return req<ModuleEntity>(`/modules/${moduleId}/link`, { method: "POST", body: JSON.stringify({ user_id: userId }) });
+  return apiRequestAs<ModuleEntity>()<"/api/modules/{id}/link", "post">(
+    "/api/modules/{id}/link",
+    `/api/modules/${moduleId}/link`,
+    { method: "POST", body: JSON.stringify({ user_id: userId }) },
+  );
 }
 
 export function unlinkModule(moduleId: string): Promise<ModuleEntity> {
-  return req<ModuleEntity>(`/modules/${moduleId}/unlink`, { method: "POST" });
+  return apiRequestAs<ModuleEntity>()<"/api/modules/{id}/unlink", "post">(
+    "/api/modules/{id}/unlink",
+    `/api/modules/${moduleId}/unlink`,
+    { method: "POST" },
+  );
 }
 
 export interface UserOption {
@@ -81,7 +66,7 @@ export interface UserOption {
 }
 
 export async function listUsers(): Promise<UserOption[]> {
-  const page = await req<{ items: UserOption[] }>("/users?take=500");
+  const page = await apiRequestAs<{ items: UserOption[] }>()("/api/users", "/api/users?take=500");
   return page.items;
 }
 
@@ -109,5 +94,5 @@ export interface ModulesOverview {
 
 /** Resumen de módulos para el dashboard (admin: todos; gestor: los suyos). */
 export function modulesOverview(): Promise<ModulesOverview> {
-  return req<ModulesOverview>("/modules/overview");
+  return apiRequestAs<ModulesOverview>()("/api/modules/overview", "/api/modules/overview");
 }

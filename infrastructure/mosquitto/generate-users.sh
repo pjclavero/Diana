@@ -26,6 +26,14 @@
 # ==============================================================================
 set -euo pipefail
 
+# Fuerza colación ASCII estricta para las comparaciones de abajo (=~, [a-z0-9]).
+# Bajo un locale distinto de C (p. ej. es_ES.UTF-8) el rango [a-z] deja de ser
+# sólo a-z y una vocal acentuada u otro carácter no-ASCII puede colar como
+# válido: la regex "parece validar" pero no lo hace. Fijarlo aquí, antes de
+# cualquier comparación, es lo único que lo hace determinista con independencia
+# del entorno de quien ejecute el script.
+export LC_ALL=C
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PASSWD_FILE="${SCRIPT_DIR}/passwd"
 

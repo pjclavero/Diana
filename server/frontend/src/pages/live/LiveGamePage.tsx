@@ -165,7 +165,7 @@ export function LiveGamePage() {
       {isFinished && (
         <Card title="Partida finalizada">
           <p>La partida ha terminado.</p>
-          <Link to={`/resultados/${gameId}`}>Ver resultados completos</Link>
+          <Link to={`/marcador/${gameId}`}>Ver resultados completos</Link>
         </Card>
       )}
     </div>

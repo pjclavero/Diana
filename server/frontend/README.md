@@ -100,16 +100,24 @@ El panel **nunca** deriva `shots_fired` de la munición inicial cuando la restan
 - `state.phase` sigue el ciclo `idle → prepare → countdown → running → (paused ↔ running) → finished | cancelled`.
 - El cliente reconecta solo con backoff exponencial (`src/api/realGameSocket.ts`) y expone `degraded` tras 2 reintentos fallidos; el backend no necesita reenviar el histórico salvo el `state` actual al reconectar.
 
-### Diagnóstico, firmware, incidencias, usuarios, copias
+### Sistema (fusionado con Inicio)
+
+- `GET /systems/{id}/status` → `SystemStatus` (`id, slug, name, state, coordinator_module_id, modules_expected, modules_online, conflicts, active_game_id`; contrato `contracts/mqtt/system-status.schema.json` v1). `state` usa el enum real del servidor (`idle|configuring|ready|game_running|degraded|maintenance`); `conflicts` es una lista de claves (`dual_principal|duplicate_position|no_principal|schema_mismatch|firmware_mismatch`), no de texto. `src/api/systemStatusLabels.ts` traduce ambas cosas al lenguaje del operador **en la frontera**, igual que `liveContract.ts` hace para el WebSocket (X-06): sólo `dual_principal` y `duplicate_position` se detectan hoy; las otras tres claves están declaradas pero nadie las comprueba todavía, así que la tarjeta de Conflictos nunca dice «sin conflictos detectados» a secas — dice qué se comprueba de verdad (auditoría 2026-08-05 §4, G4).
+
+### Diagnóstico, firmware, incidencias, usuarios
 
 - `GET /firmware` → `FirmwareRelease[]`
 - `GET /incidents` → `Incident[]`
 - `POST /incidents/{id}/resolve` → `Incident`
 - `GET /users` → `UserAccount[]`
-- `GET /backups` → `BackupInfo[]`
-- `POST /backups` → `BackupInfo`
 
 Todos los tipos citados están en `src/types/domain.ts` (dominio, derivado de los esquemas MQTT) y `src/api/client.ts` (`Topology`, `Incident`, `GamePreset`, tipos propios de la API REST que no tienen equivalente MQTT).
+
+### Copias de seguridad: NO hay pantalla, y es intencionado
+
+La pantalla `backups` (`/copias`) se retiró del menú y de las rutas el 2026-08-05 (auditoría §4, G1): prometía «Copia de seguridad iniciada» sin que existiera ningún endpoint HTTP detrás, el riesgo más peligroso del panel porque sólo se descubre el día que hace falta restaurar.
+
+**Matiz importante: las copias sí existen**, sólo que no expuestas por HTTP. El mecanismo real vive en `infrastructure/backups/` (`backup.sh`, `restore.sh`, contenedor `backup` con cron `BACKUP_CRON`, retención diaria/semanal/mensual — ver `infrastructure/backups/README.md`) y hay respaldos reales corriendo en la VM. Lo que falta para reponer la pantalla es exponer ese mecanismo por `GET/POST /backups` en el backend; hasta entonces, no hay nada que cablear en el frontend.
 
 ### Errores
 
@@ -119,8 +127,7 @@ Cualquier respuesta no-2xx debe incluir, si es posible, `{"message": "texto para
 
 | Pantalla | Ruta | Fichero |
 |---|---|---|
-| Inicio (estado general) | `/` | `src/pages/home/HomePage.tsx` |
-| Estado del sistema | `/sistema` | `src/pages/system/SystemStatusPage.tsx` |
+| Inicio (estado general + estado del sistema + conflictos) | `/` (`/sistema` redirige aquí) | `src/pages/home/HomePage.tsx` |
 | Módulos conectados | `/modulos` | `src/pages/modules/ModulesPage.tsx` |
 | Editor de matriz 3×3 | `/topologia` | `src/pages/topology/TopologyPage.tsx` |
 | Estado de las 9 dianas de un módulo | `/modulos/:id` | `src/pages/module-detail/ModuleDetailPage.tsx` |
@@ -132,12 +139,13 @@ Cualquier respuesta no-2xx debe incluir, si es posible, `{"message": "texto para
 | Creación de partida | `/partidas/nueva` | `src/pages/new-game/NewGamePage.tsx` |
 | Cuenta atrás | `/partidas/:id/cuenta-atras` | `src/pages/countdown/CountdownPage.tsx` |
 | Vista en directo | `/partidas/:id/directo` | `src/pages/live/LiveGamePage.tsx` |
-| Resultados | `/resultados`, `/resultados/:id` | `src/pages/results/ResultsPage.tsx` |
+| Marcador (resultados, con datos reales) | `/marcador`, `/marcador/:id` (`/resultados`, `/resultados/:id` redirigen aquí) | `src/pages/scoreboard/ScoreboardPage.tsx` |
 | Estadísticas | `/estadisticas` | `src/pages/stats/StatisticsPage.tsx` |
 | Firmware | `/firmware` | `src/pages/firmware/FirmwarePage.tsx` |
 | Incidencias | `/incidencias` | `src/pages/incidents/IncidentsPage.tsx` |
 | Usuarios y permisos | `/usuarios` | `src/pages/users/UsersPage.tsx` |
-| Copias y estado del sistema | `/copias` | `src/pages/backups/BackupsPage.tsx` |
+
+Retiradas el 2026-08-05 (auditoría §4): `backups` (`/copias`, G1 — ver arriba, el mecanismo real sigue en `infrastructure/backups/`) y `results` (`/resultados`, ahora redirige a `marcador`, que ya sirve lo mismo con datos reales). `system` (`/sistema`) no se retiró: se fusionó con Inicio (G4).
 
 ## Accesibilidad del estado de una diana (requisito duro)
 

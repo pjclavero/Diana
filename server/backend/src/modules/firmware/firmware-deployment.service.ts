@@ -163,7 +163,21 @@ export class FirmwareDeploymentService {
     };
 
     try {
-      const command = this.mqtt.sendOtaCommand(module.slug, 'update', firmwareBlock);
+      const command = await this.mqtt.sendOtaCommand(module.slug, 'update', firmwareBlock);
+      const denied = (command as { denied?: boolean }).denied === true;
+      if (denied) {
+        // El broker RECHAZÓ la orden por ACL: el módulo no la ha recibido, así
+        // que el despliegue no puede quedar como «sent» (eso diría que salió).
+        return this.prisma.deployment.update({
+          where: { id: deployment.id },
+          data: {
+            status: 'failed',
+            error: 'El broker MQTT denegó la orden OTA (ACL). Ver incidencia mqtt_publish_denied.',
+            finishedAt: new Date(),
+          },
+          include: { firmwareVersion: true },
+        });
+      }
       return this.prisma.deployment.update({
         where: { id: deployment.id },
         data: { status: 'sent', commandId: String(command.command_id) },

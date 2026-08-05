@@ -60,6 +60,136 @@ cd /opt/diana/infrastructure/mosquitto
 El `client_id` MQTT de cada módulo debe ser su `module_id` **sin** el prefijo
 `module-` (la ACL usa el patrón `%c`).
 
+### 2.1 Rol de coordinador (módulo PRINCIPAL) — activación y reasignación
+
+> Verificado en laboratorio local el 2026-08-05 (Mosquitto 2.0.21, sin Docker
+> disponible: broker y `mosquitto_passwd` extraídos del `.deb` oficial y
+> ejecutados directamente). **No ejecutado contra la VM 109.**
+
+El dosier (requisitos 11/12) define el coordinador como **uno de los módulos**,
+elegido por selector físico — no es hardware aparte. Ese módulo necesita, además
+de los permisos genéricos de cualquier módulo, escritura sobre
+`targets/v1/module/+/command`, `targets/v1/system/+/game/state` y
+`targets/v1/system/+/game/event` (ver `infrastructure/mosquitto/acl`, bloque
+"Coordinador"). El patrón `%c` genérico no puede expresarlo porque el rol es una
+asignación de despliegue, no una propiedad del `client_id`.
+
+**Causa 1 documentada en `docs/testing/simulador-contra-mqtt-real.md` §1**: hasta
+ahora ese bloque vivía comentado en el `acl` del repositorio, como plantilla de
+texto para "duplicar y descomentar a mano". Eso es justo lo que se ha eliminado:
+el bloque está delimitado por marcadores máquina-legibles
+
+```
+# >>> COORDINATOR-BLOCK (generado por set-coordinator.sh; no editar a mano)
+...
+# <<< COORDINATOR-BLOCK
+```
+
+y se gestiona **exclusivamente** con el script `set-coordinator.sh`, que
+reescribe ese contenido de forma idempotente (nunca acumula bloques ni deja
+restos del módulo saliente):
+
+```bash
+cd /opt/diana/infrastructure/mosquitto
+
+./set-coordinator.sh --show            # module_id activo, o "ninguno"
+./set-coordinator.sh <module_id>       # activa/reasigna el coordinador a ese módulo
+./set-coordinator.sh --none            # desactiva (estado seguro; es el estado
+                                        # con el que el repositorio está en git)
+
+# Tras cualquier cambio, recargar mosquitto para que relea la ACL:
+docker compose kill -s HUP mosquitto   # recarga en caliente, sin desconectar clientes
+# o, si se prefiere reinicio completo:
+docker compose restart mosquitto
+```
+
+**Reasignación** (el módulo PRINCIPAL cambia, p. ej. tras un fallo o un cambio de
+selector físico): una sola invocación de `./set-coordinator.sh <module_id_nuevo>`
+sustituye el bloque entero — el módulo saliente pierde el permiso de escritura
+sobre `game/state`/`game/event`/`module/+/command` en la misma operación en que
+el entrante lo gana, porque sólo puede existir un bloque activo a la vez (el
+script verifica esto tras escribir: `grep -c` del marcador de inicio debe dar
+exactamente 1). No hace falta "retirar el bloque viejo y añadir el nuevo": eso
+era precisamente el paso manual que se quería eliminar.
+
+**Verificado con un Mosquitto real** (broker real en `127.0.0.1:18831` de
+laboratorio, ACL y `mosquitto.conf` del repositorio, usuarios `module-sim-01` /
+`module-sim-02` / `backend` generados con `generate-users.sh`), con el `client_id`
+de cada módulo igual a su `module_id` (`sim-01`, `sim-02`), como exige el patrón
+`%c`:
+
+```
+=== coordinador inactivo (estado del repo) ===
+$ mosquitto_pub -u module-sim-01 -t targets/v1/system/system-a/game/state ...
+1785937640: Denied PUBLISH from sim-01 (... 'targets/v1/system/system-a/game/state', ...)
+1785937640: Sending PUBACK to sim-01 (m1, rc135)      # 135 = Not authorized (MQTT5)
+$ mosquitto_pub -u module-sim-01 -t targets/v1/module/sim-02/command ...
+1785937644: Denied PUBLISH from sim-01 (... 'targets/v1/module/sim-02/command', ...)
+1785937644: Sending PUBACK to sim-01 (m1, rc135)
+
+=== ./set-coordinator.sh sim-01 && docker compose kill -s HUP mosquitto ===
+$ mosquitto_pub -u module-sim-01 -t targets/v1/system/system-a/game/state -m '{"phase":"active"}'
+# el backend (suscrito con "topic read #") SÍ recibe: {"phase":"active"}
+$ mosquitto_pub -u module-sim-01 -t targets/v1/module/sim-02/command -m '{"cmd":"identify"}'
+# el backend SÍ recibe: {"cmd":"identify"}
+
+=== ./set-coordinator.sh sim-02  (reasignación) && kill -HUP ===
+$ mosquitto_pub -u module-sim-02 -t targets/v1/system/system-a/game/event -m '{"type":"hit"}'
+# el backend SÍ recibe: {"type":"hit"}          ← el nuevo coordinador ya puede
+$ mosquitto_pub -u module-sim-01 -t targets/v1/system/system-a/game/state -m '{"phase":"active"}'
+1785937701: Denied PUBLISH from sim-01 (... 'targets/v1/system/system-a/game/state', ...)
+1785937701: Sending PUBACK to sim-01 (m1, rc135)      ← el saliente ya NO puede
+```
+
+Las denegaciones de ACL son **silenciosas para el publicador**: `mosquitto_pub`
+no informa de ningún error (recibe `PUBACK` igual, con `rc135` sólo visible en el
+log del broker o para un cliente MQTT5 que inspeccione el *reason code*). Para
+diagnosticar en la VM, mirar siempre `docker compose logs mosquitto | grep -i
+denied`, nunca el resultado de un publicador aislado.
+
+**Comprobado también**: tras `./set-coordinator.sh --none`, `infrastructure/mosquitto/acl`
+queda **byte a byte idéntico** al que trae el repositorio en git (`diff` vacío) —
+no deja restos de la activación.
+
+**Sin verificar**: el efecto de `kill -s HUP` sobre conexiones ya establecidas de
+módulos que en ese instante tuvieran un `PUBLISH` en vuelo (sólo se probó con
+publicaciones posteriores a la recarga); el comportamiento contra la VM 109 (el
+laboratorio es local, sin Docker disponible en esta máquina — se ejecutó el
+broker `mosquitto` extraído directamente del `.deb`, no `docker compose`).
+
+**Corregido tras revisión (fallo de colación regional)**: `set-coordinator.sh` y
+`generate-users.sh` validaban el `module_id` con `[[ "$id" =~ ^[a-z0-9][a-z0-9-]{2,62}$ ]]`
+sin fijar el locale. Bajo una configuración regional distinta de `C` (p. ej.
+`es_ES.UTF-8`, la de esta máquina), el rango `[a-z]` deja de ser estrictamente
+ASCII y una vocal acentuada puede colar como válida — el script "decía que
+todo bien" y dejaba un bloque de coordinador con un `module_id` que ningún
+`client_id` real podrá igualar nunca: el mismo síntoma de partida rota, pero
+sin ningún error visible. Corregido con `export LC_ALL=C` al principio de
+ambos scripts, antes de cualquier comparación. Fijado con
+`infrastructure/mosquitto/test-locale-validation.sh`, que reproduce el fallo
+bajo `es_ES.UTF-8`/`es_ES.utf8` (si la máquina no tiene ese locale instalado,
+la prueba lo dice y aborta en vez de dar un falso verde) y comprueba que:
+(a) el `module_id` acentuado se rechaza y no toca el `acl`, y (b) un
+`module_id` ASCII válido se sigue aceptando bajo el mismo locale. Ejecutado en
+esta máquina: 4/4 correcto tras el arreglo; la misma prueba contra una copia
+sin `export LC_ALL=C` falla como se esperaba (detecta el defecto que corrige).
+
+**Límites conocidos, señalados en revisión y aceptados como no bloqueantes**:
+
+- `set-coordinator.sh --show` no distingue un bloque generado por el script de
+  uno editado a mano entre los mismos marcadores con contenido arbitrario (p.
+  ej. un permiso más amplio que el que el script genera). No hay detección de
+  manipulación: si alguien edita el `acl` a mano dejando un único bloque entre
+  `COORDINATOR-BLOCK`, el script se lo cree. Se corrige solo la próxima vez que
+  alguien invoque el script (activar, reasignar o `--none` reescribe siempre
+  el bloque entero). El requisito que se pedía resolver —eliminar el olvido al
+  reasignar— sí queda cubierto; esto es un límite distinto, de integridad del
+  fichero, que queda anotado y sin resolver.
+- El script no ofrece ninguna protección si `infrastructure/mosquitto/acl` se
+  pone en sólo lectura a nivel de fichero: `mktemp` + `mv` escribe igual
+  mientras el **directorio** sea escribible, con independencia del permiso del
+  fichero. No hay que asumir que un `chmod 444 acl` impide la reescritura.
+
 ## 3. Imágenes (multi-stage, usuario no root)
 
 Cuatro imágenes de aplicación. `backend` y `worker` los aporta WP-08

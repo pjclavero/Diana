@@ -131,6 +131,11 @@ describe('GamesService · el guardarraíl está cableado de verdad', () => {
       game: { findFirst: jest.fn().mockResolvedValue(null), update: jest.fn().mockResolvedValue({}) },
       round: { update: jest.fn().mockResolvedValue({}) },
       viewPanel: { findMany: jest.fn().mockResolvedValue([]) },
+      // La recomprobación de conflictos (dosier 11/12) vive DENTRO de la
+      // transacción, con el mismo patrón que `assertPanelsFree`: por eso
+      // `module`/`incident` cuelgan de `tx`, no del cliente de fuera.
+      module: { findMany: jest.fn().mockResolvedValue([]) },
+      incident: { create: jest.fn().mockResolvedValue({}) },
       ...over.tx,
     };
     const prisma = {
@@ -156,6 +161,107 @@ describe('GamesService · el guardarraíl está cableado de verdad', () => {
   }
 
   const mqttStub = { sendSystemCommand: jest.fn().mockReturnValue({ command_id: 'c1' }) } as any;
+
+  it('start() bloquea dos módulos EN LÍNEA forzados como PRINCIPAL (dosier 11/12), DENTRO de la transacción', async () => {
+    const prisma = gamePrisma({
+      tx: {
+        module: {
+          findMany: jest.fn().mockResolvedValue([
+            { slug: 'mod-a', role: 'principal', online: true, position: null },
+            { slug: 'mod-b', role: 'principal', online: true, position: null },
+          ]),
+        },
+      },
+    });
+    const mqtt = { sendSystemCommand: jest.fn() } as any;
+    await expect(new GamesService(prisma, mqtt).start('g1', 'r1')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    await expect(new GamesService(prisma, mqtt).start('g1', 'r1')).rejects.toThrow(
+      /mod-a, mod-b/,
+    );
+    // Se detecta DENTRO de la transacción (bajo el mismo cerrojo de panel que
+    // `assertPanelsFree`): no se marca la partida ni sale nada al coordinador.
+    expect(prisma.$transaction).toHaveBeenCalled();
+    expect(prisma.__tx.game.update).not.toHaveBeenCalled();
+    expect(prisma.__tx.round.update).not.toHaveBeenCalled();
+    expect(mqtt.sendSystemCommand).not.toHaveBeenCalled();
+  });
+
+  it('start() deja la incidencia consultable del bloqueo (no sólo un log)', async () => {
+    const prisma = gamePrisma({
+      tx: {
+        module: {
+          findMany: jest.fn().mockResolvedValue([
+            { slug: 'mod-a', role: 'principal', online: true, position: null },
+            { slug: 'mod-b', role: 'principal', online: true, position: null },
+          ]),
+        },
+      },
+    });
+    const mqtt = { sendSystemCommand: jest.fn() } as any;
+    await expect(new GamesService(prisma, mqtt).start('g1', 'r1')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(prisma.__tx.incident.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          kind: 'dual_principal',
+          severity: 'critical',
+          targetSystemId: 's1',
+        }),
+      }),
+    );
+  });
+
+  it('start() NO bloquea si sólo hay UN módulo principal en línea (control negativo)', async () => {
+    const prisma = gamePrisma({
+      tx: {
+        module: {
+          findMany: jest.fn().mockResolvedValue([
+            { slug: 'mod-a', role: 'principal', online: true, position: null },
+            { slug: 'mod-b', role: 'satellite', online: true, position: null },
+          ]),
+        },
+      },
+    });
+    await new GamesService(prisma, mqttStub).start('g1', 'r1');
+    expect(prisma.__tx.incident.create).not.toHaveBeenCalled();
+    expect(mqttStub.sendSystemCommand).toHaveBeenCalled();
+  });
+
+  it('start() lee los módulos DESPUÉS de tomar el cerrojo de panel, no antes de entrar en la transacción', async () => {
+    // Fija el ORDEN, no sólo que se llame: si alguien vuelve a sacar la
+    // comprobación fuera de la transacción (o la pone antes del cerrojo), el
+    // orden de llamadas deja de coincidir y esta prueba muere.
+    const calls: string[] = [];
+    const prisma = gamePrisma({
+      tx: {
+        $executeRaw: jest.fn().mockImplementation(() => {
+          calls.push('lock');
+          return Promise.resolve(1);
+        }),
+        module: {
+          findMany: jest.fn().mockImplementation(() => {
+            calls.push('conflicts');
+            return Promise.resolve([]);
+          }),
+        },
+        game: {
+          findFirst: jest.fn().mockImplementation(() => {
+            calls.push('panel-free');
+            return Promise.resolve(null);
+          }),
+          update: jest.fn().mockImplementation(() => {
+            calls.push('game-update');
+            return Promise.resolve({});
+          }),
+        },
+      },
+    });
+    await new GamesService(prisma, mqttStub).start('g1', 'r1');
+    expect(calls).toEqual(['lock', 'conflicts', 'panel-free', 'game-update']);
+  });
 
   it('start() rechaza empezar sobre un panel ocupado y NO manda nada al coordinador', async () => {
     const prisma = gamePrisma({

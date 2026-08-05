@@ -83,4 +83,14 @@ describe("AppShell (navegación responsive)", () => {
     renderShell(JUGADOR);
     expect(screen.getByRole("link", { name: /acceso de gestor/i })).toBeInTheDocument();
   });
+
+  it("no ofrece enlaces a pantallas retiradas o fusionadas (auditoría 2026-08-05 §4)", () => {
+    renderShell(ADMIN);
+    // G1: `backups` retirada del menú.
+    expect(screen.queryByRole("link", { name: /copias/i })).not.toBeInTheDocument();
+    // `results` retirada: redirige a Marcador, no tiene entrada propia.
+    expect(screen.queryByRole("link", { name: "Resultados" })).not.toBeInTheDocument();
+    // G4: `system` se fusionó con Inicio, no tiene entrada propia.
+    expect(screen.queryByRole("link", { name: /estado del sistema/i })).not.toBeInTheDocument();
+  });
 });
