@@ -500,9 +500,11 @@ export class ResilienceService implements PresenceSinkPort, OnApplicationBootstr
     let delivered = false;
     let failure: string | null = null;
     try {
-      const command = this.mqtt.sendSystemCommand(game.targetSystem.slug, 'pause_game', {}, 10000);
+      const command = await this.mqtt.sendSystemCommand(game.targetSystem.slug, 'pause_game', {}, 10000);
       delivered = (command as { delivered?: boolean }).delivered === true;
-      if (!delivered) failure = 'El broker MQTT no ha recibido la orden (sin conexión).';
+      const denied = (command as { denied?: boolean }).denied === true;
+      if (denied) failure = 'El broker MQTT DENEGÓ la orden (ACL): el coordinador no la ha recibido.';
+      else if (!delivered) failure = 'El broker MQTT no ha recibido la orden (sin conexión).';
     } catch (error) {
       failure = (error as Error).message;
     }
@@ -760,13 +762,14 @@ export class ResilienceService implements PresenceSinkPort, OnApplicationBootstr
       await this.assertPanelsFreeForResume(game);
     }
 
-    const command = this.mqtt.sendSystemCommand(
+    const command = await this.mqtt.sendSystemCommand(
       game.targetSystem.slug,
       action === 'abort' ? 'abort_game' : 'resume_game',
       {},
       10000,
     );
     const delivered = (command as { delivered?: boolean }).delivered === true;
+    const denied = (command as { denied?: boolean }).denied === true;
 
     await this.prisma.$transaction([
       this.prisma.game.update({
@@ -799,6 +802,7 @@ export class ResilienceService implements PresenceSinkPort, OnApplicationBootstr
             missing: status.missingModules.map((m) => m.slug),
             decided_by: actor ?? null,
             command_delivered: delivered,
+            command_denied: denied,
           } as never,
         },
       }),
@@ -808,8 +812,13 @@ export class ResilienceService implements PresenceSinkPort, OnApplicationBootstr
       action,
       command,
       delivered,
+      denied,
       missing: status.missingModules.map((m) => m.slug),
-      note: delivered ? null : 'La orden no llegó al broker MQTT: el hardware puede no haberla recibido.',
+      note: denied
+        ? 'ATENCIÓN: el broker DENEGÓ la orden (ACL). Hay incidencia registrada.'
+        : delivered
+          ? null
+          : 'La orden no llegó al broker MQTT: el hardware puede no haberla recibido.',
     };
   }
 }

@@ -53,7 +53,14 @@ export class MaintenanceController {
       where: { slug },
       data: { maintenance: body.enabled },
     });
-    const command = this.mqtt.sendModuleCommand(slug, 'set_maintenance', {
+    // `await` OBLIGATORIO: `sendModuleCommand` es asíncrono desde que el
+    // backend lee el reasonCode del PUBACK de MQTT5. Sin esperarla, `command`
+    // era una Promise sin resolver: se serializaba como `{}` y la respuesta
+    // perdía `delivered` y `denied` — justo en el endpoint que publica en
+    // `targets/v1/module/{id}/command`, que es el tópico que la ACL de
+    // producción deniega. Además, una promesa rechazada sin `await` ni
+    // `.catch()` tumba el proceso de Node (unhandled rejection).
+    const command = await this.mqtt.sendModuleCommand(slug, 'set_maintenance', {
       enabled: body.enabled,
     });
     await this.audit.record({

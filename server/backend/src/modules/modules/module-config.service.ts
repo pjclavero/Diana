@@ -108,14 +108,21 @@ export class ModuleConfigService {
       throw new BadRequestException('Una configuración de red estática necesita una IP.');
     }
     const payload = await this.build(moduleId, network);
-    this.mqtt.publishModuleConfig(payload.module_id, payload as unknown as Record<string, unknown>);
+    const result = await this.mqtt.publishModuleConfig(
+      payload.module_id,
+      payload as unknown as Record<string, unknown>,
+    );
     await this.prisma.module.update({
       where: { id: moduleId },
       data: { configVersion: payload.config_version },
     });
     return {
       published: payload,
-      note: 'Configuración deseada publicada. La aplicación real la confirma el módulo en config/reported.',
+      delivered: result.delivered,
+      denied: result.denied,
+      note: result.denied
+        ? 'ATENCIÓN: el broker DENEGÓ esta publicación (ACL). El módulo NO tiene esta configuración.'
+        : 'Configuración deseada publicada. La aplicación real la confirma el módulo en config/reported.',
     };
   }
 }

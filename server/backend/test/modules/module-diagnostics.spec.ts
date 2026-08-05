@@ -142,11 +142,29 @@ describe('Diagnóstico · ordenar no es saber el resultado', () => {
 
   it('si el broker no acepta la orden se dice, no se da por hecha', async () => {
     const { service } = build({
-      mqtt: { sendModuleCommand: jest.fn(() => ({ command_id: 'c1', delivered: false })) },
+      mqtt: { sendModuleCommand: jest.fn(() => ({ command_id: 'c1', delivered: false, denied: false })) },
     });
     const res = await service.testLed('mod-a', 3, 'active', ADMIN);
     expect(res.delivered).toBe(false);
+    expect(res.denied).toBe(false);
     expect(res.note).toMatch(/NO llegó al broker/);
+  });
+
+  /**
+   * Éste es EXACTAMENTE el defecto de producción del encargo: F6 publica en
+   * `targets/v1/module/{id}/command`, la ACL real del backend no le concede
+   * ese permiso, y antes de este cambio la API respondía `delivered: true`
+   * (el booleano sólo miraba si había socket conectado). Ahora `denied: true`
+   * lo dice, y la nota deja de sugerir que la orden se entregó.
+   */
+  it('si el broker DENIEGA la orden por ACL, la respuesta lo dice explícitamente (no "delivered: true")', async () => {
+    const { service } = build({
+      mqtt: { sendModuleCommand: jest.fn(() => ({ command_id: 'c1', delivered: false, denied: true })) },
+    });
+    const res = await service.identify('mod-a', 4000, ADMIN);
+    expect(res.delivered).toBe(false);
+    expect(res.denied).toBe(true);
+    expect(res.note).toMatch(/DENEGÓ/);
   });
 
   it('los resultados reales se leen de las incidencias del módulo', async () => {

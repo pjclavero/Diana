@@ -116,7 +116,7 @@ export class ModuleDiagnosticsService {
   async testSensor(idOrSlug: string, targetIndex: number, actor: DiagnosticsActor) {
     const module = await this.resolve(idOrSlug, actor);
     const target = await this.resolveTarget(module.id, targetIndex);
-    const sent = this.dispatch(module.slug, 'self_test');
+    const sent = await this.dispatch(module.slug, 'self_test');
     return {
       ...sent,
       target_index: target.targetIndex,
@@ -140,7 +140,7 @@ export class ModuleDiagnosticsService {
     if (!target.enabled) {
       throw new BadRequestException(`La diana ${targetIndex} está deshabilitada: no se calibra.`);
     }
-    const sent = this.dispatch(module.slug, 'start_calibration');
+    const sent = await this.dispatch(module.slug, 'start_calibration');
     return {
       ...sent,
       target_index: target.targetIndex,
@@ -218,20 +218,24 @@ export class ModuleDiagnosticsService {
    * significa que la orden se ha encolado y el módulo NO la ha recibido: sin
    * esto, «he publicado» se confundía con «ha llegado».
    */
-  private dispatch(slug: string, action: string, params?: Record<string, unknown>) {
-    const command = this.mqtt.sendModuleCommand(slug, action as never, params) as Record<
+  private async dispatch(slug: string, action: string, params?: Record<string, unknown>) {
+    const command = (await this.mqtt.sendModuleCommand(slug, action as never, params)) as Record<
       string,
       unknown
     >;
     const delivered = command.delivered === true;
+    const denied = command.denied === true;
     return {
       module_id: slug,
       action,
       command_id: command.command_id as string,
       delivered,
-      note: delivered
-        ? 'Orden entregada al broker. El resultado lo publica el módulo en `diagnostic`.'
-        : 'ATENCIÓN: la orden NO llegó al broker (sin conexión). Queda encolada.',
+      denied,
+      note: denied
+        ? 'ATENCIÓN: el broker DENEGÓ la orden (ACL). El módulo NO la ha recibido; hay incidencia registrada.'
+        : delivered
+          ? 'Orden entregada al broker. El resultado lo publica el módulo en `diagnostic`.'
+          : 'ATENCIÓN: la orden NO llegó al broker (sin conexión). Queda encolada.',
     };
   }
 }

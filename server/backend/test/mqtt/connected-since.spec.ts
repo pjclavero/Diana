@@ -25,7 +25,8 @@ function buildService() {
   } as never;
   const validator = { validate: jest.fn(() => ({ valid: true, errors: [] })) } as never;
   const ingest = { handleMessage: jest.fn().mockResolvedValue({}) } as never;
-  return new MqttService(config, validator, ingest);
+  const prisma = { incident: { create: jest.fn().mockResolvedValue({}) } } as never;
+  return new MqttService(config, validator, ingest, prisma);
 }
 
 describe('MqttService · desde cuándo estamos oyendo (D1)', () => {

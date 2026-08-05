@@ -23,6 +23,12 @@ export interface AppConfig {
     password: string | null;
     clientId: string;
     enabled: boolean;
+    /**
+     * Plazo máximo de espera del PUBACK, en ms. mqtt.js no impone ninguno, y
+     * el arranque de partida espera esa confirmación con el cerrojo del panel
+     * tomado: sin plazo, un broker mudo bloquea el panel indefinidamente.
+     */
+    publishAckTimeoutMs: number;
   };
   ingest: {
     maxPersistLatencyMs: number;
@@ -45,6 +51,17 @@ export interface AppConfig {
 /** Tope por defecto del binario de firmware (bytes). Compartido por la config y
  *  por el límite del FileInterceptor de subida, para que sean coherentes. */
 export const FIRMWARE_MAX_BYTES_DEFAULT = 16 * 1024 * 1024;
+
+/**
+ * Plazo máximo de espera del PUBACK. mqtt.js NO tiene plazo de ACK por
+ * defecto: un broker que acepta el socket y nunca confirma (partición,
+ * sobrecarga) deja la llamada colgada para siempre. Eso era inofensivo cuando
+ * publicar era síncrono, pero `GamesService.start()` espera el PUBACK DENTRO
+ * de `$transaction` y después de `pg_advisory_xact_lock`: sin plazo, un broker
+ * mudo dejaba el cerrojo del panel tomado indefinidamente y ningún otro
+ * arranque podía usar ese panel. Este plazo acota el peor caso.
+ */
+export const PUBLISH_ACK_TIMEOUT_MS_DEFAULT = 5000;
 
 function int(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(value ?? '', 10);
@@ -86,6 +103,10 @@ export function loadConfiguration(): AppConfig {
       password: process.env.MQTT_PASSWORD || null,
       clientId: process.env.MQTT_CLIENT_ID ?? `diana-backend-${process.pid}`,
       enabled: bool(process.env.MQTT_ENABLED, true),
+      publishAckTimeoutMs: int(
+        process.env.MQTT_PUBLISH_ACK_TIMEOUT_MS,
+        PUBLISH_ACK_TIMEOUT_MS_DEFAULT,
+      ),
     },
     ingest: {
       maxPersistLatencyMs: int(process.env.INGEST_MAX_PERSIST_LATENCY_MS, 5000),
