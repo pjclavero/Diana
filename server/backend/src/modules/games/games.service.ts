@@ -8,6 +8,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { GameEngine } from '../../domain/game/engine';
 import { createDefaultRegistry, GameModeRegistry } from '../../domain/game/registry';
 import { RoundConfig, TargetRef } from '../../domain/game/types';
+import { detectSystemConflicts } from '../../domain/systems/conflicts';
 import { MqttService } from '../mqtt/mqtt.service';
 
 export interface CreateGameInput {
@@ -43,11 +44,19 @@ type TransactionClient = {
   game: { findFirst: PrismaService['game']['findFirst']; update: PrismaService['game']['update'] };
   round: { update: PrismaService['round']['update'] };
   viewPanel: { findMany: PrismaService['viewPanel']['findMany'] };
+  module: { findMany: PrismaService['module']['findMany'] };
+  incident: { create: PrismaService['incident']['create'] };
 };
 
 type PrismaLike = {
   game: { findFirst: PrismaService['game']['findFirst'] };
   viewPanel: { findMany: PrismaService['viewPanel']['findMany'] };
+};
+
+/** Subconjunto de Prisma que exige la recomprobación de conflictos: sirve tanto el cliente normal como el de una transacción interactiva. */
+type ConflictsPrismaLike = {
+  module: { findMany: PrismaService['module']['findMany'] };
+  incident: { create: PrismaService['incident']['create'] };
 };
 
 /** Estados que ocupan hardware: mientras la partida esté en uno de ellos, el panel no está libre. */
@@ -146,6 +155,65 @@ export class GamesService {
           'Finalízala o abórtala antes de empezar otra.',
       );
     }
+  }
+
+  /**
+   * Guardarraíl del dosier 11/12: no se autoriza el comienzo si el sistema
+   * tiene `dual_principal` (dos módulos EN LÍNEA declarados principal a la
+   * vez). La detección es lógica pura (`detectSystemConflicts`); aquí sólo se
+   * leen los módulos del panel y se deja constancia en una incidencia
+   * consultable — no sólo en el log — de que un arranque quedó bloqueado.
+   *
+   * SE LLAMA DENTRO DE LA TRANSACCIÓN de `start()`, con el mismo patrón de
+   * recomprobación que `assertPanelsFree`: leer fuera de la transacción deja
+   * una ventana (adquirir el cerrojo, marcar la partida, publicar la orden —
+   * esto último ahora asíncrono) en la que el rol de un módulo puede pasar a
+   * `principal` por el camino de presencia MQTT y la partida arrancaría
+   * igual con dos principales, justo lo que el dosier prohíbe (revisión de
+   * F4: el mismo defecto, con el estado de la partida leído fuera de la
+   * transacción). Se acepta el mismo límite que tiene `assertPanelsFree` hoy:
+   * la lectura no toma cerrojo sobre `Module`, así que no es SERIALIZABLE
+   * frente a una escritura de presencia que llegue en el mismo instante; lo
+   * que sí logra es reducir la ventana de "antes de la transacción entera" a
+   * "el resto de esta transacción", igual que ya asume el guardarraíl de panel.
+   */
+  private async assertNoStartBlockingConflicts(
+    targetSystemId: string,
+    tx: ConflictsPrismaLike = this.prisma,
+  ): Promise<void> {
+    const modules = await tx.module.findMany({
+      where: { targetSystemId },
+      include: { position: true },
+    });
+    const { conflicts, detail } = detectSystemConflicts(
+      modules.map((m) => ({
+        slug: m.slug,
+        role: m.role,
+        online: m.online,
+        position: m.position ? { x: m.position.x, y: m.position.y } : null,
+      })),
+    );
+    if (!conflicts.includes('dual_principal')) return;
+
+    const modulesInvolved = detail.dual_principal;
+    await tx.incident.create({
+      data: {
+        kind: 'dual_principal',
+        severity: 'critical',
+        source: 'games',
+        targetSystemId,
+        message:
+          `Inicio de partida bloqueado: ${modulesInvolved.length} módulos declaran ser ` +
+          `PRINCIPAL a la vez (${modulesInvolved.join(', ')}). El dosier prohíbe empezar hasta ` +
+          'que el selector físico deje uno solo.',
+        detail: { modules: modulesInvolved } as never,
+      },
+    });
+
+    throw new ConflictException(
+      `No se puede empezar: dos o más módulos están forzados como PRINCIPAL a la vez ` +
+        `(${modulesInvolved.join(', ')}). Corrige el selector físico antes de arrancar.`,
+    );
   }
 
   /**
@@ -315,13 +383,36 @@ export class GamesService {
     );
 
     // Guardarraíl G-H, atómico: cerrojo por panel, comprobación de ocupación,
-    // marcado y ORDEN al coordinador dentro de la misma transacción. Si publicar
-    // LANZA, la transacción revierte. Ojo: sin conexión con el broker, mqtt.js
-    // encola en vez de lanzar; ese caso no revierte y se informa con
-    // `delivered: false` para que el panel no dé por hecho que la orden salió.
-    let command!: ReturnType<MqttService['sendSystemCommand']>;
+    // comprobación de conflictos (dosier 11/12), marcado y ORDEN al
+    // coordinador dentro de la misma transacción. Si publicar LANZA, la
+    // transacción revierte. Ojo: sin conexión con el broker, mqtt.js encola en
+    // vez de lanzar; ese caso no revierte y se informa con `delivered: false`
+    // para que el panel no dé por hecho que la orden salió.
+    //
+    // La publicación SIGUE DENTRO de la transacción a propósito: sacarla fuera
+    // fue el defecto N-D2 de G-H (se ordenaba arrancar sin que el marcado
+    // hubiera confirmado, o se ordenaba tras revertir). Lo que sí cambia es
+    // que ahora la publicación ESPERA el PUBACK, y esa espera no puede ser
+    // ilimitada: el cerrojo `pg_advisory_xact_lock` del panel se mantiene
+    // mientras dure. El plazo lo impone `MqttService.publish`
+    // (`MQTT_PUBLISH_ACK_TIMEOUT_MS`, 5 s por defecto), así que el peor caso
+    // de retención del cerrojo está ACOTADO por ese plazo y un broker mudo ya
+    // no puede dejar el panel bloqueado para siempre. Un ACK que no llega a
+    // tiempo NO revierte: se resuelve como `delivered: false` — la misma
+    // semántica de incertidumbre que ya se usaba para el encolado, porque el
+    // mensaje puede acabar entregándose y revertir crearía la divergencia
+    // contraria (partida no marcada, coordinador arrancado).
+    let command!: Awaited<ReturnType<MqttService['sendSystemCommand']>>;
     await this.prisma.$transaction(async (tx) => {
       await this.lockPanels(tx as unknown as TransactionClient, game);
+      // Dosier 11/12: «El sistema no permitirá iniciar una partida si detecta
+      // dos módulos forzados como principal». Se recomprueba AQUÍ DENTRO, no
+      // antes de la transacción: leer fuera dejaba una ventana entre la
+      // lectura y el commit en la que el rol de un módulo podía pasar a
+      // `principal` por presencia MQTT y la partida arrancaba igual con dos
+      // principales (mismo patrón que `assertPanelsFree`, mismo defecto que
+      // F4 con el estado de la partida leído fuera de la transacción).
+      await this.assertNoStartBlockingConflicts(game.targetSystemId, tx as unknown as ConflictsPrismaLike);
       await this.assertPanelsFree(game, tx as unknown as PrismaLike);
       await tx.game.update({
         where: { id: gameId },
@@ -331,7 +422,7 @@ export class GamesService {
         where: { id: roundId },
         data: { phase: 'countdown', startedAt: new Date() },
       });
-      command = this.mqtt.sendSystemCommand(
+      command = await this.mqtt.sendSystemCommand(
         game.targetSystem.slug,
         'start_game',
         {
@@ -356,11 +447,15 @@ export class GamesService {
       );
     });
 
+    const startDelivered = (command as { delivered?: boolean }).delivered === true;
+    const startDenied = (command as { denied?: boolean }).denied === true;
     return {
       command,
-      delivered: (command as { delivered?: boolean }).delivered === true,
-      note:
-        (command as { delivered?: boolean }).delivered === true
+      delivered: startDelivered,
+      denied: startDenied,
+      note: startDenied
+        ? 'ATENCIÓN: el broker DENEGÓ la orden al coordinador (ACL). Hay incidencia registrada.'
+        : startDelivered
           ? null
           : 'La orden no llegó al broker MQTT: el coordinador puede no haberla recibido.',
     };
@@ -394,7 +489,7 @@ export class GamesService {
       await this.assertPanelsFree(game);
     }
 
-    const command = this.mqtt.sendSystemCommand(game.targetSystem.slug, action, {}, 10000);
+    const command = await this.mqtt.sendSystemCommand(game.targetSystem.slug, action, {}, 10000);
 
     const status =
       action === 'pause_game'
@@ -413,13 +508,17 @@ export class GamesService {
       },
     });
     const delivered = (command as { delivered?: boolean }).delivered === true;
+    const denied = (command as { denied?: boolean }).denied === true;
     return {
       command,
       status,
       delivered,
-      note: delivered
-        ? null
-        : 'La orden no llegó al broker MQTT: el coordinador puede no haberla recibido.',
+      denied,
+      note: denied
+        ? 'ATENCIÓN: el broker DENEGÓ la orden al coordinador (ACL). Hay incidencia registrada.'
+        : delivered
+          ? null
+          : 'La orden no llegó al broker MQTT: el coordinador puede no haberla recibido.',
     };
   }
 }
