@@ -7,5 +7,6 @@
   "nonce": 42,
   "issuer": "coordinator",
   "module_id": "module-03",
-  "action": "identify"
+  "action": "identify",
+  "params": { "duration_ms": 3000 }
 }

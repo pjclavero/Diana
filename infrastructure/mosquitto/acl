@@ -40,12 +40,17 @@
 # y no deben usarse como module_id de un módulo real (evita colisión de
 # patrón/usuario).
 #
-# NOTA para el carril de contratos: contracts/mqtt/README.md sección 8 sigue
-# describiendo el usuario como "module-{module_id}" (con prefijo). Este
-# fichero ya no lo cumple literalmente en el nombre de usuario porque ese
-# prefijo es justo lo que impedía cerrar F-02 (ver más arriba y
-# docs/security/evidence/mqtt-acl.md). Pendiente de que el carril de
-# contratos actualice esa frase; no se ha tocado contracts/** desde aquí.
+# RESUELTO (2026-08-06): contracts/mqtt/README.md sección 8 ya describe el
+# usuario SIN prefijo, coincidiendo con lo que implementa este fichero, y
+# explica por qué usuario y client_id deben coincidir letra a letra: el broker
+# reescribe el client_id con el usuario autenticado antes de evaluar la ACL, así
+# que si dejan de coincidir la autorización vuelve a apoyarse en un valor que
+# elige el propio cliente — que era exactamente F-02. Detalle del cierre en
+# docs/security/evidence/mqtt-acl.md.
+#
+# Esta nota se conserva porque la advertencia importa más que el aviso: si
+# alguien devuelve el prefijo "module-" en un lado y no en el otro, reabre el
+# agujero sin que falle nada visible.
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
