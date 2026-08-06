@@ -5,7 +5,8 @@
   "command_id": "ad506082-af5e-4d6c-bf71-5e6f70819203",
   "issued_at_ms": 1784500000000,
   "nonce": 42,
-  "issuer": "backend",
+  "issuer": "coordinator",
   "module_id": "module-03",
-  "action": "identify"
+  "action": "identify",
+  "params": { "duration_ms": 3000 }
 }
