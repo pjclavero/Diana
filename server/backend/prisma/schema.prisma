@@ -219,12 +219,6 @@ model TargetSystem {
   name                String      @db.VarChar(128)
   description         String?     @db.VarChar(512)
   state               SystemState @default(idle)
-  /// Panel de SIMULACIÓN: sus módulos no son hardware, los fabrica la consola de
-  /// pruebas. Marcarlo en la BASE, y no confiarlo a la propiedad del usuario, es
-  /// lo que permite que la mezcla con hardware real sea IMPOSIBLE en vez de
-  /// desaconsejada — el mismo criterio que hace que un jugador temporal no pueda
-  /// acumular estadística: por construcción, no por disciplina.
-  simulated           Boolean     @default(false)
   coordinatorModuleId String?     @map("coordinator_module_id") @db.Uuid
   modulesExpected     Int         @default(0) @map("modules_expected")
   createdAt           DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -291,11 +285,6 @@ model Module {
   selector         SelectorPosition?
   state            ModuleState?
   online           Boolean           @default(false)
-  /// Módulo SIMULADO: al otro lado no hay silicio, sino la consola de pruebas.
-  /// Un módulo simulado sólo puede vivir en un panel simulado, y al revés (ver
-  /// `SimulationGuard`): así los impactos inventados no pueden entrar jamás en
-  /// una partida real ni contaminar la estadística de un tirador.
-  simulated        Boolean           @default(false)
   /// UUID de arranque vigente. Cambia en cada reinicio (ADR-0003).
   bootId           String?           @map("boot_id") @db.Uuid
   queueDepth       Int               @default(0) @map("queue_depth")
