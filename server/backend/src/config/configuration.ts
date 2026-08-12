@@ -19,6 +19,8 @@ export interface AppConfig {
   };
   mqtt: {
     url: string;
+    /** PEM de la CA con la que se valida al broker. Obligatorio si la URL es TLS. */
+    caFile: string | null;
     username: string | null;
     password: string | null;
     clientId: string;
@@ -81,7 +83,20 @@ export function loadConfiguration(): AppConfig {
       email: process.env.DIANA_ADMIN_EMAIL || null,
     },
     mqtt: {
-      url: process.env.MQTT_URL ?? 'mqtt://mosquitto:1883',
+      // MEDIDO (2026-08-10): compose.yml pasaba MQTT_HOST y MQTT_PORT, pero
+      // aquí sólo se leía MQTT_URL — así que el backend usaba SIEMPRE el
+      // literal por defecto y cambiar el puerto en compose no tenía efecto
+      // ninguno. Se construye la URL a partir de las variables que el
+      // despliegue realmente define; MQTT_URL sigue mandando si se indica.
+      url:
+        process.env.MQTT_URL ??
+        `${process.env.MQTT_PROTOCOL ?? 'mqtts'}://` +
+          `${process.env.MQTT_HOST ?? 'mosquitto'}:${process.env.MQTT_PORT ?? '8883'}`,
+      // Fichero PEM de la CA que firma el certificado del broker. Es
+      // OBLIGATORIO cuando el transporte es TLS: sin él no hay nada contra lo
+      // que validar, y aceptar al broker sin validarlo deja pasar exactamente
+      // el ataque que el TLS venía a cerrar (un intermediario en la LAN).
+      caFile: process.env.MQTT_CA_FILE || null,
       username: process.env.MQTT_USERNAME || null,
       password: process.env.MQTT_PASSWORD || null,
       clientId: process.env.MQTT_CLIENT_ID ?? `diana-backend-${process.pid}`,

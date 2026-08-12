@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { readFileSync } from 'node:fs';
 import { connect, MqttClient } from 'mqtt';
 import { CommandBuilder } from '../../contracts/command-builder';
 import { ContractValidator } from '../../contracts/contract-validator';
@@ -45,6 +46,46 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
   }
   private connectedAt: Date | null = null;
 
+  /**
+   * Opciones TLS del cliente. Devuelve `{}` para una URL en claro.
+   *
+   * Tres decisiones, todas de fallar cerrado:
+   *
+   * - Si la URL es TLS y NO hay CA configurada, esto LANZA en el arranque en
+   *   lugar de conectar. Sin CA, Node validaría contra los certificados
+   *   públicos del sistema, que no firman nuestro broker: o falla igualmente,
+   *   o —peor— alguien "arregla" el síntoma desactivando la validación. Un
+   *   arranque que muere diciendo por qué es preferible a un backend vivo
+   *   hablando con un broker que no ha verificado.
+   * - `rejectUnauthorized` se deja explícito en `true` aunque sea el valor por
+   *   defecto de Node: es la línea que alguien tocaría con prisa, y quien la
+   *   toque debe ver que está escrita a propósito.
+   * - `servername` no se fija a mano: mqtt.js lo toma del host de la URL, así
+   *   que la verificación de nombre se hace contra el host al que realmente
+   *   nos conectamos. Fijarlo desactivaría de hecho esa comprobación.
+   */
+  private tlsOptions(): Record<string, unknown> {
+    const isTls = /^(mqtts|wss|ssl|tls):\/\//.test(this.config.mqtt.url);
+    if (!isTls) return {};
+
+    const caFile = this.config.mqtt.caFile;
+    if (!caFile) {
+      throw new Error(
+        `MQTT_CA_FILE es obligatorio para conectar por TLS a ${this.config.mqtt.url}: ` +
+          'sin CA no se puede validar la identidad del broker.',
+      );
+    }
+    let ca: Buffer;
+    try {
+      ca = readFileSync(caFile);
+    } catch (error) {
+      throw new Error(
+        `No se puede leer la CA de MQTT en ${caFile}: ${(error as Error).message}`,
+      );
+    }
+    return { ca: [ca], rejectUnauthorized: true };
+  }
+
   async onModuleInit(): Promise<void> {
     if (!this.config.mqtt.enabled) {
       this.logger.warn('Cliente MQTT deshabilitado (MQTT_ENABLED=false)');
@@ -57,6 +98,7 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
       clean: true,
       reconnectPeriod: 2000,
       protocolVersion: 5,
+      ...this.tlsOptions(),
     });
 
     this.client.on('connect', () => {
