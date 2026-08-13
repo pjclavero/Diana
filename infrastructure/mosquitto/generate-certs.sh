@@ -48,14 +48,32 @@ SERVER_DAYS="${SERVER_DAYS:-825}"   # límite habitual de los clientes TLS moder
 
 command -v openssl >/dev/null || { echo "[certs] ERROR: falta openssl" >&2; exit 1; }
 
+# --- Guardarraíl: la clave de la CA nunca dentro del material desplegado -------
+# Era una comprobación al final del script y se anunciaba como «pase lo que pase
+# por arriba». Era falso: la ruta idempotente sale por `exit 0` mucho antes, y
+# ésa es justamente la invocación por defecto —`./generate-certs.sh` sin FORCE—
+# que un operador usa a diario. Un guardarraíl que sólo cubre el camino menos
+# transitado no es un guardarraíl. Ahora es una función y se invoca en TODAS
+# las salidas.
+comprobar_ca_key_fuera() {
+    if [ -e "${CERT_DIR}/ca.key" ]; then
+        echo "[certs] ERROR: ha aparecido ca.key en ${CERT_DIR}. No debe estar ahí." >&2
+        echo "[certs] La clave de la CA vive en ${CA_DIR}, fuera del árbol de" >&2
+        echo "[certs] despliegue. Quítala de ${CERT_DIR} antes de continuar." >&2
+        exit 1
+    fi
+}
+
 mkdir -p "$CERT_DIR"
 chmod 755 "$CERT_DIR"
+comprobar_ca_key_fuera
 
 if [ -f "${CERT_DIR}/server.crt" ] && [ "${FORCE:-0}" != "1" ]; then
     if openssl x509 -in "${CERT_DIR}/server.crt" -checkend 0 -noout >/dev/null 2>&1; then
         echo "[certs] ya existen certificados válidos en ${CERT_DIR}; nada que hacer."
         echo "[certs] (usa FORCE=1 para rotarlos deliberadamente)"
         openssl x509 -in "${CERT_DIR}/server.crt" -noout -subject -dates -ext subjectAltName
+        comprobar_ca_key_fuera
         exit 0
     fi
     echo "[certs] el certificado de servidor existente está CADUCADO; se regenera."
@@ -71,6 +89,20 @@ fi
 if [ -f "${CA_DIR}/ca.key" ] && [ -f "${CA_DIR}/ca.crt" ]; then
     echo "[certs] reutilizando la CA existente de ${CA_DIR} (no se toca)."
 elif [ "${NEW_CA:-0}" = "1" ]; then
+    # Trampa real, armada durante el saneamiento del 2026-08-13: si en CA_DIR
+    # hay `ca.key` pero falta `ca.crt`, la puerta de reutilización de arriba no
+    # se cumple y se cae aquí. Sin esta comprobación, `openssl req -x509
+    # -keyout "${CA_DIR}/ca.key"` sobrescribía SIN AVISO la única copia de la
+    # raíz de confianza — y el propio mensaje de error del script empujaba al
+    # operador a hacerlo. Destrucción irreversible guiada por la herramienta.
+    if [ -e "${CA_DIR}/ca.key" ]; then
+        echo "[certs] ERROR: ya existe ${CA_DIR}/ca.key y NEW_CA=1 la sobrescribiría." >&2
+        echo "[certs] Eso destruiría la raíz de confianza actual sin vuelta atrás." >&2
+        echo "[certs] Si sólo falta ca.crt, DERÍVALO de la clave en vez de crear" >&2
+        echo "[certs] una CA nueva. Si de verdad quieres reemplazar la raíz, aparta" >&2
+        echo "[certs] antes la actual a un sitio seguro y vuelve a ejecutar." >&2
+        exit 1
+    fi
     echo "[certs] *** CREANDO UNA CA NUEVA en ${CA_DIR} ***"
     echo "[certs] Esto INVALIDA a todos los clientes que confían en la anterior:"
     echo "[certs] habrá que redistribuir ca.crt al backend, al simulador y al"
@@ -138,9 +170,4 @@ echo "[certs] listo en ${CERT_DIR}"
 echo "[certs] RECUERDA: ca.key NO se copia a ningún cliente, ni al repositorio,"
 echo "[certs] ni al árbol de despliegue. Vive en ${CA_DIR} y su sitio definitivo"
 echo "[certs] es almacenamiento offline fuera de esta máquina."
-# Guardarraíl final: que este script no deje nunca la clave de la CA dentro del
-# material que se despliega, pase lo que pase por arriba.
-if [ -e "${CERT_DIR}/ca.key" ]; then
-    echo "[certs] ERROR: ha aparecido ca.key en ${CERT_DIR}. No debe estar ahí." >&2
-    exit 1
-fi
+comprobar_ca_key_fuera

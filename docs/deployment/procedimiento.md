@@ -368,3 +368,37 @@ El 2026-08-13 el agente QEMU se atascó (guest-exec huérfano por exceder la
 ventana de 550 s) y la recuperación se hizo por Tailscale SSH reiniciando
 `qemu-guest-agent`. Producción no se vio afectada en ningún momento. La
 documentación anterior afirmaba que no existía acceso SSH a VM109: era falso.
+
+### Dónde vive la raíz de confianza (PKI)
+
+**La clave privada de la CA NO está en `/opt/diana`.** Desde 2026-08-13 vive en
+`/root/diana-pki` (0700, root), junto a su `ca.crt`. Su destino final es
+almacenamiento **offline fuera de VM109**: su función es emitir y rotar
+certificados, no ejecutar Diana.
+
+| ubicación | contenido | quién lo necesita |
+|---|---|---|
+| `/root/diana-pki/` | `ca.key`, `ca.crt`, `SHA256SUMS` | **sólo** la rotación de certificados |
+| `/opt/diana/infrastructure/mosquitto/certs/` | `ca.crt`, `server.crt`, `server.key` | el runtime: broker y clientes |
+
+El stack productivo **no necesita `ca.key` para arrancar**. Comprobado: ningún
+contenedor la monta y el sistema corre 7/7 con la clave ya extraída.
+
+**Rotar el certificado del broker** (`generate-certs.sh`):
+
+```bash
+cd /opt/diana/infrastructure/mosquitto
+FORCE=1 ./generate-certs.sh          # CA_DIR por defecto: /root/diana-pki
+```
+
+Reutiliza la CA existente y sólo renueva el certificado de servidor. Si la CA
+no está en `CA_DIR`, el script **aborta**: no crea una raíz nueva por su cuenta.
+
+> **`NEW_CA=1` cambia la raíz de confianza.** Invalida a TODOS los clientes que
+> confían en la anterior —backend, simulador y, cuando exista, el firmware— y
+> obliga a redistribuir `ca.crt` antes de que vuelvan a conectar. El script se
+> niega a sobrescribir una `ca.key` existente; si de verdad hay que reemplazar
+> la raíz, aparta antes la actual a un sitio seguro.
+
+Si la CA está archivada fuera de la máquina, tráela a `/root/diana-pki` (0600)
+o indica su ruta con `CA_DIR=…` antes de rotar.

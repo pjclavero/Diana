@@ -207,8 +207,12 @@ haga, esto es un procedimiento, no una verificación.
   certificado de una CA propia, y el backend valida CA y nombre de servidor. Si
   la CA falta o no se puede leer, el backend **aborta**: no existe camino que
   convierta un error de CA en una conexión sin validar. Los certificados se
-  generan con `infrastructure/mosquitto/generate-certs.sh`; `ca.key` no entra
-  en ningún contenedor.
+  generan con `infrastructure/mosquitto/generate-certs.sh`. **`ca.key` no está
+  en `/opt/diana`**: vive en `/root/diana-pki` (0700 root), fuera del árbol de
+  despliegue, y no entra en ningún contenedor. Para rotar el certificado del
+  broker y para el aviso sobre `NEW_CA=1` —que cambia la raíz de confianza e
+  invalida a todos los clientes—, ver «Dónde vive la raíz de confianza (PKI)»
+  en `deployment/procedimiento.md`.
 - El único puerto MQTT publicado al host es `8883`. **Los módulos ESP32
   físicos NO pueden usarlo todavía**: el firmware vigente tiene
   `mqtt://%s:1883` cableado (`firmware/esp32/main/app_main.c`), sin TLS ni CA.

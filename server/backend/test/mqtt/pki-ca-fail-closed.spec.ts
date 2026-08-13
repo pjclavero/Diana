@@ -100,6 +100,37 @@ describe('P0-2 · PKI: la CA no se recrea por accidente', () => {
     expect(sha(join(certDir, 'server.crt'))).not.toBe(servidorAntes);
   }, 90_000);
 
+  it('guardarraíl SIN `FORCE`: la ruta idempotente también lo comprueba', () => {
+    // El agujero que quedaba: el guardarraíl vivía al final del script y la
+    // ruta idempotente sale por `exit 0` mucho antes. Como todas las demás
+    // pruebas pasaban FORCE=1, ninguna ejercitaba la invocación por defecto
+    // —`./generate-certs.sh` a secas— que es la que usa un operador a diario.
+    // Reproducido antes de corregirlo: con `ca.key` copiada al árbol, el
+    // script terminaba en verde y la clave seguía ahí.
+    expect(ejecutar(certDir, caDir, { FORCE: '1', NEW_CA: '1' }).rc).toBe(0);
+    writeFileSync(join(certDir, 'ca.key'), readFileSync(join(caDir, 'ca.key')));
+
+    const r = ejecutar(certDir, caDir); // <- SIN FORCE, camino idempotente
+
+    expect(r.rc).not.toBe(0);
+    expect(r.salida).toMatch(/ha aparecido ca\.key/i);
+  }, 90_000);
+
+  it('`NEW_CA=1` NO sobrescribe una raíz existente', () => {
+    // Trampa real armada el 2026-08-13: con `ca.key` presente y `ca.crt`
+    // ausente, la puerta de reutilización no se cumple y el script mandaba al
+    // operador a `NEW_CA=1`… que sobrescribía la única copia de la raíz.
+    expect(ejecutar(certDir, caDir, { FORCE: '1', NEW_CA: '1' }).rc).toBe(0);
+    const antes = sha(join(caDir, 'ca.key'));
+    rmSync(join(caDir, 'ca.crt')); // el estado exacto en que quedó producción
+
+    const r = ejecutar(certDir, caDir, { FORCE: '1', NEW_CA: '1' });
+
+    expect(r.rc).not.toBe(0);
+    expect(r.salida).toMatch(/sobrescribir|sobrescribiría/i);
+    expect(sha(join(caDir, 'ca.key'))).toBe(antes); // la raíz, intacta
+  }, 90_000);
+
   it('guardarraíl final: si `ca.key` aparece en CERT_DIR, el script falla', () => {
     expect(ejecutar(certDir, caDir, { FORCE: '1', NEW_CA: '1' }).rc).toBe(0);
     // Alguien copia la clave de la CA junto al material de runtime «para que
