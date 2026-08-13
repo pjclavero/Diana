@@ -7,7 +7,16 @@
 !**/testdata/*.pem
 secrets/
 *.htpasswd
-mosquitto/passwd
+# `mosquitto/passwd` lleva barra, así que git lo anclaba a la RAÍZ del
+# repositorio y el fichero real —infrastructure/mosquitto/passwd, hashes de
+# todas las credenciales del broker— NO quedaba ignorado: un `git add -A` en la
+# VM lo habría commiteado sin una sola queja. Patrón sin barra: coincide a
+# cualquier profundidad.
+passwd
+# Material TLS de P0-2. Las claves ya las cubría `*.key`, pero el directorio
+# entero debe quedar fuera: los certificados son de una CA propia por
+# despliegue, no artefactos del repositorio.
+certs/
 
 # Node
 node_modules/

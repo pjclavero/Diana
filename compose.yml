@@ -302,8 +302,9 @@ services:
     logging: *default-logging
 
   # ----------------------------------------------------------------------------
-  # Mosquitto — sólo el puerto MQTT 1883 se publica al host (lo necesitan los
-  # módulos ESP32 físicos de la LAN). El puerto WebSocket (9001) queda interno.
+  # Mosquitto — sólo el puerto MQTT sobre TLS (8883) se publica al host (lo
+  # necesitan los módulos ESP32 físicos de la LAN). El 1883 en claro ya no se
+  # publica. El puerto WebSocket (9001) queda interno.
   # ----------------------------------------------------------------------------
   mosquitto:
     image: eclipse-mosquitto:2.0.18
