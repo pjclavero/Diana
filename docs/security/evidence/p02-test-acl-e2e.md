@@ -99,3 +99,80 @@ que la documentación previa daba por inexistente. Lecciones:
    administración — pero Tailscale es una facilidad de **esta** instalación, no
    una dependencia arquitectónica de Diana. Ver la matriz de acceso
    administrativo en `docs/deployment/procedimiento.md`.
+
+---
+
+# Etapa B · contra el broker REAL de producción (2026-08-13)
+
+Ventana controlada: `passwd.PRE` guardado como evidencia y rollback
+(`sha256 faeffe7d…`), las tres identidades añadidas con `mosquitto_passwd`
+**en modo interactivo por PTY, sin `-b`** dentro de un contenedor
+`--rm --network none` de la misma imagen, backend y worker **parados** durante
+la prueba, mosquitto reiniciado explícitamente, y las contraseñas viviendo
+únicamente en la memoria del proceso ejecutor: nunca en disco, ni en `argv`, ni
+en variables de entorno del contenedor, ni en el historial.
+
+Comprobado antes de tocar producción: los secretos no aparecen en el `argv` de
+ningún proceso del sistema, ni en `docker inspect`, ni en el fichero de hashes,
+ni en el historial de shell, ni en el log del broker.
+
+## Resultado: 10 correctos, 3 fallos, 0 errores de arnés
+
+**Los cinco controles negativos pasaron contra el broker real**, que es la
+evidencia que se buscaba:
+
+| control | resultado |
+|---|---|
+| cliente anónimo | AUTH_DENIED |
+| credencial incorrecta | AUTH_DENIED (no cuenta como prueba de ACL) |
+| **suplantación A→B** | **ACL_DENIED** |
+| **suplantación B→A** | **ACL_DENIED** |
+| escritura en `config/desired`, `command`, `ota` propios | ACL_DENIED ×3 |
+| el observador no puede publicar en espacio ajeno | ACL_DENIED ×2 |
+
+**F-02 queda verificada sobre el broker de producción bajo TLS**, en ambos
+sentidos y con identidades dedicadas.
+
+## Los tres fallos son correctos y estaban previstos
+
+Todos con la misma firma: `MESSAGE_NOT_OBSERVED` / *«publicó sin aviso pero el
+observador NO lo vio»*. Causa comprobada: la ACL **viva** de producción no
+contiene el bloque `user module-aclobserver` — ese bloque forma parte del
+hotfix y todavía no está desplegado (`grep -c module-aclobserver` sobre
+`/opt/diana/…/acl` devuelve **0**).
+
+Es decir: el observador se autentica pero no tiene permiso de lectura sobre el
+espacio de prueba, así que el canal de observación no existe todavía. El arnés
+**no dio verde**: diagnosticó la diferencia con la redacción exacta, la misma
+que produjo la mutación M-C del laboratorio. Un arnés que hubiera aprobado aquí
+habría sido el falso positivo de siempre.
+
+Consecuencia operativa: los controles positivos de la Etapa B sólo son
+observables **después** de desplegar el hotfix, porque su ACL es parte del
+hotfix. Los negativos —que son los que demuestran F-02— no dependen de eso y ya
+están probados.
+
+## Limpieza, demostrada
+
+`passwd.CLEAN` = identidades legítimas menos las cinco de prueba. Instalado,
+mosquitto reiniciado, y verificado una por una que **ninguna autentica ya**:
+
+```
+module-p02a  RECHAZADA   module-p02b  RECHAZADA
+module-acltest-a  RECHAZADA   module-acltest-b  RECHAZADA
+module-aclobserver  RECHAZADA
+```
+
+`module-p02a`/`module-p02b` eran material de ataque de las celdas 8-9 que
+seguía vivo en producción: quedan retirados también. El `passwd` vivo contiene
+ahora exactamente `backend`, `healthcheck` y `module-01…09`
+(`sha256 f2fbb190…`). Stack 7/7 `healthy` tras la ventana.
+
+## Hallazgo colateral
+
+El `passwd` de producción está en **0644**: los hashes de contraseña son
+legibles por cualquier usuario del host. Es estado preexistente —y explica por
+qué `chmod 600` tumbaba el broker: el proceso corre como uid 1883 y el fichero
+es `root:root`, así que necesita permiso de lectura para «otros»—. La solución
+correcta es `chown 1883` y `0600`, no dejarlo world-readable; queda anotado
+como deuda porque cambiarlo durante esta ventana habría añadido una variable.
