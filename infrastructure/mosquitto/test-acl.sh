@@ -18,8 +18,10 @@
 #      AUTORIZACIÓN funciona. Se distinguen, y un AUTH_DENIED donde se esperaba
 #      ACL_DENIED es un ERROR del arnés, no un acierto.
 #   2. Antes de evaluar nada, las tres identidades tienen que autenticarse
-#      (preflight). Si una falla, el script ABORTA: sin identidad válida no hay
-#      nada que medir.
+#      (preflight), con exigencia POSITIVA: sólo pasa un veredicto que
+#      demuestre diálogo con el broker Y autenticación aceptada. Comprobar
+#      «distinto de AUTH_DENIED» no vale — cualquier fallo de red o TLS caería
+#      en el `else` y se anunciaría como OK. Si una identidad falla, ABORTA.
 #
 # CÓMO SE DISTINGUEN (medido contra el broker real de VM109, MQTT 5):
 #
@@ -68,8 +70,20 @@
 #   (2) «docker compose exec mosquitto sh -c ./test-acl.sh» — el script no está
 #       montado en ese contenedor y la imagen no lleva bash (comprobado).
 #   (3) los usuarios module-m1/module-m2 no existían en el broker.
+#   (4) esta misma cabecera afirmaba «si una falla, ABORTA» cuando no abortaba:
+#       el patrón «Connection Refused» llevaba R mayúscula y no emparejaba con
+#       la cadena real, así que un broker apagado salía como tres [ OK ].
 # Las tres se escribieron sin ejecutar lo que se escribía. No corrijas este
 # encabezado sin ejecutar antes lo que vayas a poner en él.
+#
+# EFECTO SOBRE PRODUCCIÓN, declarado porque lo tiene: los controles positivos
+# PUBLICAN de verdad en `targets/v1/module/module-acltest-*/presence` del
+# broker real, con cargas útiles que no son `presence` válidos por contrato. El
+# backend lee `#` y las ingesta, así que verás errores de validación en su log
+# por cada ejecución. Es ruido esperado y acotado a un espacio de nombres que
+# ningún módulo real usa; no altera partidas ni configuración. Para limpiar los
+# retenidos que pudieran quedar:
+#   mosquitto_pub … -t targets/v1/module/module-acltest-a/presence -r -n
 #
 # CONTRASEÑAS por entorno (ACL_A_PW, ACL_B_PW, ACL_OBS_PW), no por argumento,
 # para no dejarlas en el historial ni en `ps`. Mitigación parcial y hay que
@@ -94,7 +108,17 @@ U_OBS="acl-observer"
 # de pruebas efímero y aislado, y hay que pedirla a gritos.
 TLS_ARGS=""
 if [ "${ACL_TEST_ALLOW_PLAINTEXT:-0}" = "1" ]; then
-    echo "AVISO: ACL_TEST_ALLOW_PLAINTEXT=1 — sin TLS. Sólo para un broker aislado." >&2
+    # La escotilla existe para el broker efímero del perfil `test`, y se niega
+    # a apuntar a producción: un fichero que se despliega en /opt/diana no debe
+    # poder convertir «no hay CA» en «pruebo sin TLS» contra el broker real.
+    case "$HOST" in
+        localhost|127.0.0.1|::1|mosquitto)
+            echo "ERROR: ACL_TEST_ALLOW_PLAINTEXT=1 apuntando a '$HOST', que es el" >&2
+            echo "       broker de producción. La escotilla es para un broker de" >&2
+            echo "       pruebas aislado; indica su host explícitamente." >&2
+            exit 2 ;;
+    esac
+    echo "AVISO: ACL_TEST_ALLOW_PLAINTEXT=1 — sin TLS contra '$HOST'." >&2
 elif [ -r "$CAFILE" ]; then
     TLS_ARGS="--cafile $CAFILE"
 else
@@ -136,13 +160,25 @@ msub() { mosquitto_sub -h "$HOST" -p "$PORT" $TLS_ARGS -V 5 "$@"; }
 
 # --- Clasificador -------------------------------------------------------------
 # Imprime exactamente uno de: AUTH_OK_ACL_ALLOWED | AUTH_OK_ACL_DENIED |
-# AUTH_DENIED | ERROR. La distinción entre los dos primeros y AUTH_DENIED es
-# la razón de ser de este script.
+# AUTH_DENIED | SIN_TRANSPORTE | ERROR.
+#
+# SIN_TRANSPORTE es la categoría que faltaba y que convertía «broker apagado»
+# en «todo correcto»: sin ella, un fallo de red o de TLS caía en ERROR y el
+# preflight —que sólo comprobaba «distinto de AUTH_DENIED»— lo anunciaba como
+# identidad autenticada. Con el broker caído el script llegaba a imprimir tres
+# [ OK ] y un [PASS]. Medido, no supuesto.
 classify_publish() {
     cp_user="$1"; cp_pw="$2"; cp_topic="$3"; cp_payload="$4"
     cp_out="$(mpub -u "$cp_user" -P "$cp_pw" -t "$cp_topic" -m "$cp_payload" -q 1 2>&1)"
+    # ORDEN IMPORTANTE: los fallos de TRANSPORTE se descartan ANTES que nada.
+    # La version anterior tenia `*"Connection Refused"*` con R mayúscula, que no
+    # empareja nunca con la cadena real («Connection refused»), así que un
+    # broker caído caía en ERROR… y el preflight lo daba por bueno.
     case "$cp_out" in
-        *"Connection error"*|*"Connection Refused"*) echo "AUTH_DENIED" ;;
+        *"onnection refused"*|*"Unable to connect"*|*"No route to host"*|\
+        *"Name or service not known"*|*"A TLS error occurred"*|*"timed out"*)
+            echo "SIN_TRANSPORTE" ;;
+        *"Connection error"*|*"onnection Refused"*) echo "AUTH_DENIED" ;;
         *"failed: Not authorized"*|*"failed: Not Authorized"*) echo "AUTH_OK_ACL_DENIED" ;;
         "") echo "AUTH_OK_ACL_ALLOWED" ;;
         *) echo "ERROR" ;;
@@ -157,6 +193,7 @@ expect_denied() {
         AUTH_OK_ACL_DENIED)  log_pass "$ed_desc · ACL_DENIED (autenticado, denegado)" ;;
         AUTH_OK_ACL_ALLOWED) log_fail "$ed_desc · ACL_ALLOWED — la ACL NO bloquea" ;;
         AUTH_DENIED)         log_error "$ed_desc · AUTH_DENIED — el control no alcanzó la ACL; NO cuenta como prueba" ;;
+        SIN_TRANSPORTE)      log_error "$ed_desc · SIN_TRANSPORTE — no se llegó al broker; NO cuenta como prueba" ;;
         *)                   log_error "$ed_desc · resultado inclasificable" ;;
     esac
 }
@@ -167,6 +204,7 @@ expect_allowed() {
         AUTH_OK_ACL_ALLOWED) log_pass "$ea_desc · ACL_ALLOWED" ;;
         AUTH_OK_ACL_DENIED)  log_fail "$ea_desc · ACL_DENIED — permiso legítimo roto" ;;
         AUTH_DENIED)         log_error "$ea_desc · AUTH_DENIED — credencial inválida, no es un resultado de ACL" ;;
+        SIN_TRANSPORTE)      log_error "$ea_desc · SIN_TRANSPORTE — no se llegó al broker" ;;
         *)                   log_error "$ea_desc · resultado inclasificable" ;;
     esac
 }
@@ -174,24 +212,46 @@ expect_allowed() {
 echo "=== PREFLIGHT · las tres identidades deben AUTENTICARSE ==="
 # Sin esto, todo lo demás es el falso positivo de D-1 otra vez.
 preflight_fail=0
+# Exigencia POSITIVA: el preflight sólo pasa con un veredicto que DEMUESTRA
+# que hubo diálogo con el broker y autenticación aceptada. Comprobar
+# «distinto de AUTH_DENIED» era el mismo error que este script denuncia:
+# cualquier fallo de red, DNS o TLS caía en el `else` y se anunciaba como OK.
 for u_p in "$U_A|$A_PW" "$U_B|$B_PW"; do
     u="${u_p%%|*}"; p="${u_p#*|}"
-    if [ "$(classify_publish "$u" "$p" "targets/v1/module/$u/presence" "preflight-$$")" = "AUTH_DENIED" ]; then
-        echo "  [ERROR] $u NO se autentica. ¿Existe en passwd? ./generate-users.sh $u" >&2
-        preflight_fail=1
-    else
-        echo "  [ OK  ] $u autentica (AUTH_OK)"
-    fi
+    veredicto="$(classify_publish "$u" "$p" "targets/v1/module/$u/presence" "preflight-$$")"
+    case "$veredicto" in
+        AUTH_OK_ACL_ALLOWED|AUTH_OK_ACL_DENIED)
+            echo "  [ OK  ] $u autentica ($veredicto)" ;;
+        AUTH_DENIED)
+            echo "  [ERROR] $u NO se autentica. ¿Existe en passwd? ./generate-users.sh $u" >&2
+            preflight_fail=1 ;;
+        SIN_TRANSPORTE)
+            echo "  [ERROR] $u: no se alcanzó el broker en $HOST:$PORT (transporte/TLS)." >&2
+            preflight_fail=1 ;;
+        *)
+            echo "  [ERROR] $u: veredicto inclasificable ($veredicto)." >&2
+            preflight_fail=1 ;;
+    esac
 done
 # El observador se valida leyendo, que es lo único que se le permite. Hay que
 # separar «se conectó y no había mensajes» de «no se pudo autenticar»: sólo lo
 # segundo es fatal, y -W devuelve código != 0 en ambos casos.
-obs_out="$(msub -u "$U_OBS" -P "$OBS_PW" -t "targets/v1/module/$U_A/presence" -C 1 -W 1 2>&1)"
-case "$obs_out" in
-    *"Connection error"*|*"Connection Refused"*)
+# El observador se valida por lo único que puede hacer: publicar debe salirle
+# DENEGADO, y una denegación de ACL sólo se produce tras autenticarse. Así el
+# preflight del observador también es una exigencia positiva.
+obs_veredicto="$(classify_publish "$U_OBS" "$OBS_PW" "targets/v1/module/$U_A/presence" "preflight-$$")"
+case "$obs_veredicto" in
+    AUTH_OK_ACL_DENIED)
+        echo "  [ OK  ] $U_OBS autentica y NO puede publicar (AUTH_OK_ACL_DENIED)" ;;
+    AUTH_OK_ACL_ALLOWED)
+        echo "  [ERROR] $U_OBS PUDO PUBLICAR: no es un observador de sólo lectura." >&2
+        preflight_fail=1 ;;
+    AUTH_DENIED)
         echo "  [ERROR] $U_OBS NO se autentica. ./generate-users.sh $U_OBS" >&2
         preflight_fail=1 ;;
-    *)  echo "  [ OK  ] $U_OBS autentica (AUTH_OK)" ;;
+    *)
+        echo "  [ERROR] $U_OBS: no se alcanzó el broker ($obs_veredicto)." >&2
+        preflight_fail=1 ;;
 esac
 if [ "$preflight_fail" -ne 0 ]; then
     echo "" >&2
@@ -201,12 +261,17 @@ fi
 
 echo ""
 echo "=== 1. Cliente anónimo no debe poder conectar ==="
-if timeout "$WAIT_SECS" mosquitto_pub -h "$HOST" -p "$PORT" $TLS_ARGS -V 5 \
-    -t "targets/v1/module/$U_A/presence" -m '{}' >/dev/null 2>&1; then
-    log_fail "el cliente anónimo pudo publicar (allow_anonymous debería ser false)"
-else
-    log_pass "el cliente anónimo no pudo conectar (AUTH_DENIED, que aquí SÍ es lo correcto)"
-fi
+# Se CLASIFICA, no se mira «¿falló el comando?». Esa condición se cumplía sin
+# broker, sin CA y sin red: era un [PASS] que no medía nada.
+anon_out="$(mpub -t "targets/v1/module/$U_A/presence" -m '{}' 2>&1)"
+case "$anon_out" in
+    *"onnection refused"*|*"Unable to connect"*|*"A TLS error occurred"*|*"timed out"*)
+        log_error "anónimo · SIN_TRANSPORTE — no se llegó al broker; NO demuestra nada" ;;
+    *"Connection error"*|*"onnection Refused"*)
+        log_pass "el cliente anónimo no pudo conectar (AUTH_DENIED, aquí sí es lo correcto)" ;;
+    "") log_fail "el cliente anónimo PUBLICÓ (allow_anonymous debería ser false)" ;;
+    *)  log_error "anónimo · resultado inclasificable" ;;
+esac
 
 echo "=== 2. Credencial incorrecta muere en autenticación, y no cuenta como ACL ==="
 r="$(classify_publish "$U_A" "contrasena-incorrecta-a-proposito" \
@@ -251,6 +316,17 @@ rm -f "$OBS_OUT"
 echo "=== 7. El observador NO puede publicar ==="
 expect_denied "$U_OBS publica en el espacio de prueba" "$U_OBS" "$OBS_PW" \
     "targets/v1/module/$U_A/presence"
+
+echo "=== 8. El observador queda confinado a su propio subárbol inerte ==="
+# No se afirma que el observador «no pueda publicar en ningún sitio»: sería
+# falso. Los `pattern` de la ACL son globales, así que acl-observer recibe
+# escritura sobre targets/v1/module/acl-observer/* como cualquier cliente
+# autenticado. Lo que importa —y lo que se fija aquí— es que ese subárbol es
+# inerte y que no alcanza el espacio de ninguna otra identidad.
+expect_allowed "$U_OBS escribe en SU subárbol (inerte, esperado por el patrón global)" \
+    "$U_OBS" "$OBS_PW" "targets/v1/module/$U_OBS/presence"
+expect_denied  "$U_OBS escribe en el subárbol de $U_B" \
+    "$U_OBS" "$OBS_PW" "targets/v1/module/$U_B/presence"
 
 echo ""
 echo "=== Resumen: ${PASS} correctos, ${FAIL} fallos, ${ERROR} errores de arnés ==="

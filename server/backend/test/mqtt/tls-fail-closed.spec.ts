@@ -28,7 +28,11 @@ class FakeClient extends EventEmitter {
 }
 
 const client = new FakeClient();
-const connectSpy = jest.fn(() => client);
+// Tipado explícito de los argumentos: sin esto, `mock.calls` queda inferido
+// como tupla vacía y todo acceso a `calls[0][1]` es un error de tipos. La
+// suite pasaba igual (jest no typechequea), pero `npm run typecheck` —que CI
+// SÍ ejecuta— se ponía roja. Un test que rompe el pipeline no es un test.
+const connectSpy = jest.fn((..._args: unknown[]) => client);
 jest.mock('mqtt', () => ({ connect: (...args: unknown[]) => connectSpy(...(args as [])) }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -40,8 +44,10 @@ function buildService(url: string, caFile: string | null) {
   } as never;
   const validator = { validate: jest.fn(() => ({ valid: true, errors: [] })) } as never;
   const ingest = { handleMessage: jest.fn().mockResolvedValue({}) } as never;
-  const prisma = { incident: { create: jest.fn().mockResolvedValue({}) } } as never;
-  return new MqttService(config, validator, ingest, prisma);
+  // MqttService toma TRES dependencias en esta base (6da16d4). Aquí se pasaba
+  // una cuarta (`prisma`) que no existe en su constructor: resto de una
+  // versión posterior, invisible para jest y roja para tsc.
+  return new MqttService(config, validator, ingest);
 }
 
 describe('MqttService · TLS que falla cerrado (P0-2)', () => {

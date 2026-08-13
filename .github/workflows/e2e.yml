@@ -115,6 +115,9 @@ jobs:
         working-directory: tests/e2e
         env:
           DIANA_BASE_URL: http://localhost:8080
+          # TEST AISLADO (P0-2): broker efímero de CI, sin datos ni credenciales
+          # reales, destruido al acabar el job. No toca producción y no procede
+          # "alinearlo" con el 8883: no hay CA que distribuir a un broker efímero.
           MQTT_URL: mqtt://localhost:1883
         run: npm test
 

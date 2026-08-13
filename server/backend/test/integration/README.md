@@ -26,6 +26,7 @@ npm run test:integration
 Para las que además tocan MQTT:
 
 ```bash
+# TEST AISLADO (P0-2): broker efímero local, nunca el de producción.
 export MQTT_URL="mqtt://localhost:1883"
 export MQTT_USERNAME=... MQTT_PASSWORD=...
 export DIANA_TEST_MQTT=1

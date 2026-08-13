@@ -1,5 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+// js-yaml, declarado en devDependencies: parser de verdad en vez de una regex
+// por línea. Se carga con require para no depender de @types/js-yaml.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { load: parseYaml } = require('js-yaml') as { load: (s: string) => unknown };
 
 /**
  * P0-2 · Regresión: el broker de producción no escucha en claro EN NINGÚN
@@ -59,12 +63,54 @@ describe('P0-2: el broker no tiene ningún camino en claro', () => {
     expect(lineasVivas(CONF).filter((l) => l.includes('1883'))).toEqual([]);
   });
 
+  /**
+   * Puertos publicados al host, resueltos con un parser YAML DE VERDAD.
+   *
+   * La versión anterior de esta prueba usaba una expresión regular por línea y
+   * era esquivable con sintaxis de compose plenamente válida:
+   *
+   *   ports:
+   *     - target: 1883
+   *       published: 1883
+   *
+   * Publicaba el 1883 al host y la suite seguía en verde — mientras
+   * `mosquitto.conf` afirmaba por escrito que esta prueba se pondría roja.
+   * Vigilar una propiedad con una regex de línea es vigilar una forma de
+   * escribirla, no la propiedad.
+   */
+  function puertosPublicados(ruta: string): number[] {
+    const doc = parseYaml(readFileSync(ruta, 'utf8')) as {
+      services?: Record<string, { ports?: Array<string | { target?: number; published?: number | string }> }>;
+    };
+    const puertos: number[] = [];
+    for (const servicio of Object.values(doc.services ?? {})) {
+      for (const entrada of servicio.ports ?? []) {
+        if (typeof entrada === 'string') {
+          // [IP:][HOST:]CONTENEDOR — el interpolado ${VAR:-8883} contiene ':',
+          // así que se toman los dos últimos campos tras quitar el valor por
+          // defecto de la interpolación.
+          const limpio = entrada.replace(/\$\{[^}]*:-([^}]*)\}/g, '$1');
+          const campos = limpio.split(':');
+          puertos.push(Number(campos[campos.length - 1]));
+          if (campos.length >= 2) puertos.push(Number(campos[campos.length - 2]));
+        } else {
+          if (entrada.target !== undefined) puertos.push(Number(entrada.target));
+          if (entrada.published !== undefined) puertos.push(Number(entrada.published));
+        }
+      }
+    }
+    return puertos.filter((p) => !Number.isNaN(p));
+  }
+
   it.each([
     ['compose.yml', COMPOSE],
     ['compose.dev.yml', COMPOSE_DEV],
-  ])('%s no publica ningún 1883 al host', (_nombre, ruta) => {
-    const publicados = lineasVivas(ruta).filter((l) => /^-\s*"?\$?\{?[\w:.-]*1883/.test(l));
-    expect(publicados).toEqual([]);
+  ])('%s no publica ningún 1883 al host (parseado como YAML)', (_nombre, ruta) => {
+    const puertos = puertosPublicados(ruta);
+    // Control de que el parseo ve algo: si devolviera [] por un cambio de
+    // formato, la aserción siguiente pasaría sin mirar nada.
+    expect(puertos.length).toBeGreaterThan(0);
+    expect(puertos).not.toContain(1883);
   });
 
   /**
