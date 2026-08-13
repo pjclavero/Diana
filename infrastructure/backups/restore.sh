@@ -38,7 +38,30 @@ echo "[restore] ATENCIÓN: esta operación sobrescribe el contenido de '${TARGET
 psql -tc "SELECT 1 FROM pg_database WHERE datname = '${TARGET_DB}'" | grep -q 1 \
   || psql -c "CREATE DATABASE \"${TARGET_DB}\""
 
+# MEDIDO (2026-08-09, VM109): sin estas comprobaciones, restaurar un .sql.gz
+# truncado imprimía "gunzip: unexpected end of file", dejaba la base a medias y
+# aun así devolvía rc=0 y "restauración completada" — porque /bin/sh no tiene
+# `pipefail` y el estado del pipe era el de psql. Un backup corrupto se daba
+# por bueno.
+echo "[restore] verificando integridad del fichero..."
+gzip -t "$BACKUP_FILE" 2>/dev/null || {
+    echo "[restore] ERROR: $BACKUP_FILE está corrupto o truncado (gzip -t)" >&2; exit 1; }
+gunzip -c "$BACKUP_FILE" | tail -5 | grep -q 'PostgreSQL database dump complete' || {
+    echo "[restore] ERROR: $BACKUP_FILE no contiene el marcador de fin de pg_dump" >&2; exit 1; }
+
 echo "[restore] restaurando..."
-gunzip -c "$BACKUP_FILE" | psql --dbname "$TARGET_DB" --set ON_ERROR_STOP=1
+PSQL_STATUS_FILE="$(mktemp)"
+gunzip -c "$BACKUP_FILE" \
+  | { if psql --dbname "$TARGET_DB" --set ON_ERROR_STOP=1; then
+          echo 0 > "$PSQL_STATUS_FILE"
+      else
+          echo $? > "$PSQL_STATUS_FILE"
+      fi; }
+PSQL_RC="$(cat "$PSQL_STATUS_FILE")"
+rm -f "$PSQL_STATUS_FILE"
+if [ "$PSQL_RC" != "0" ]; then
+    echo "[restore] ERROR: psql devolvió ${PSQL_RC}; la restauración NO es válida" >&2
+    exit 1
+fi
 
 echo "[restore] $(date -u -Iseconds) restauración completada sobre '${TARGET_DB}'"

@@ -137,7 +137,11 @@ services:
       PORT: ${BACKEND_PORT:-3000}
       DATABASE_URL: ${DATABASE_URL}
       MQTT_HOST: ${MQTT_HOST:-mosquitto}
-      MQTT_PORT: ${MQTT_PORT:-1883}
+      MQTT_PORT: ${MQTT_TLS_PORT:-8883}
+      MQTT_PROTOCOL: mqtts
+      # La CA propia con la que el backend valida al broker. Se monta sólo el
+      # certificado público: la clave de la CA no entra en este contenedor.
+      MQTT_CA_FILE: /app/certs/mqtt-ca.crt
       MQTT_USERNAME: ${MQTT_BACKEND_USERNAME:-backend}
       MQTT_PASSWORD: ${MQTT_BACKEND_PASSWORD}
       # El backend lee JWT_SECRET (configuration.ts:48) y ABORTA en producción
@@ -156,6 +160,8 @@ services:
     volumes:
       - diana_exports:/app/exports
       - diana_firmware:/app/firmware
+      # Sólo el certificado PÚBLICO de la CA (ca.key jamás sale de su carpeta).
+      - ./infrastructure/mosquitto/certs/ca.crt:/app/certs/mqtt-ca.crt:ro
     networks:
       - edge
       - internal
@@ -202,7 +208,11 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
       DATABASE_URL: ${DATABASE_URL}
       MQTT_HOST: ${MQTT_HOST:-mosquitto}
-      MQTT_PORT: ${MQTT_PORT:-1883}
+      MQTT_PORT: ${MQTT_TLS_PORT:-8883}
+      MQTT_PROTOCOL: mqtts
+      # La CA propia con la que el backend valida al broker. Se monta sólo el
+      # certificado público: la clave de la CA no entra en este contenedor.
+      MQTT_CA_FILE: /app/certs/mqtt-ca.crt
       MQTT_USERNAME: ${MQTT_BACKEND_USERNAME:-backend}
       MQTT_PASSWORD: ${MQTT_BACKEND_PASSWORD}
       REPORTS_CRON: ${WORKER_REPORTS_CRON:-0 3 * * *}
@@ -210,6 +220,8 @@ services:
       TZ: UTC
     volumes:
       - diana_exports:/app/exports
+      # Sólo el certificado PÚBLICO de la CA (ca.key jamás sale de su carpeta).
+      - ./infrastructure/mosquitto/certs/ca.crt:/app/certs/mqtt-ca.crt:ro
     networks:
       - internal
     healthcheck:
@@ -300,11 +312,22 @@ services:
     image: eclipse-mosquitto:2.0.18
     restart: unless-stopped
     ports:
-      - "${MQTT_PORT:-1883}:1883"
+      # Sólo TLS (P0-2). El 1883 en claro YA NO SE PUBLICA ni existe en el
+      # broker: era el camino por el que se leían credenciales de la LAN (H7-03).
+      - "${MQTT_TLS_PORT:-8883}:8883"
     volumes:
       - ./infrastructure/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - ./infrastructure/mosquitto/acl:/mosquitto/config/acl:ro
       - ./infrastructure/mosquitto/passwd:/mosquitto/config/passwd:ro
+      # Material TLS generado por infrastructure/mosquitto/generate-certs.sh.
+      # Se montan los TRES ficheros uno a uno, NO el directorio: montar la
+      # carpeta entera metería también `ca.key` dentro del contenedor, y quien
+      # tenga esa clave puede emitir un certificado de servidor válido y
+      # suplantar al broker. La CA firma desde fuera; aquí no hace falta.
+      # Sólo lectura: el broker no tiene por qué reescribir su propia clave.
+      - ./infrastructure/mosquitto/certs/ca.crt:/mosquitto/certs/ca.crt:ro
+      - ./infrastructure/mosquitto/certs/server.crt:/mosquitto/certs/server.crt:ro
+      - ./infrastructure/mosquitto/certs/server.key:/mosquitto/certs/server.key:ro
       - mosquitto_data:/mosquitto/data
     environment:
       MQTT_HEALTHCHECK_USERNAME: ${MQTT_HEALTHCHECK_USERNAME:-healthcheck}
@@ -319,7 +342,10 @@ services:
       # un mensaje que nadie emite y expiraba siempre («Timed out» → unhealthy),
       # aunque la conexión y la ACL funcionaran. Publicar prueba broker + auth +
       # permiso de escritura del usuario healthcheck sobre _health/probe.
-      test: ["CMD-SHELL", "mosquitto_pub -h 127.0.0.1 -p 1883 -u \"$$MQTT_HEALTHCHECK_USERNAME\" -P \"$$MQTT_HEALTHCHECK_PASSWORD\" -t _health/probe -m ping -i healthcheck_probe || exit 1"]
+      # Va por TLS contra `localhost` (nombre presente en el SAN) validando la
+      # CA: así el healthcheck comprueba también que el material TLS sigue
+      # siendo válido, no sólo que el broker acepta credenciales.
+      test: ["CMD-SHELL", "mosquitto_pub -h localhost -p 8883 --cafile /mosquitto/certs/ca.crt -u \"$$MQTT_HEALTHCHECK_USERNAME\" -P \"$$MQTT_HEALTHCHECK_PASSWORD\" -t _health/probe -m ping -i healthcheck_probe || exit 1"]
       interval: 15s
       timeout: 6s
       retries: 5
@@ -363,12 +389,15 @@ services:
     networks:
       - internal
     healthcheck:
-      # El proceso es un bucle en primer plano; comprobamos que sigue vivo.
-      test: ["CMD-SHELL", "pgrep -f cron-loop-entrypoint.sh || exit 1"]
+      # No basta con que el bucle siga vivo: eso no distingue "hay copia valida"
+      # de "el bucle gira y todos los volcados fallan" (MEDIDO 2026-08-10).
+      # Se exige proceso vivo + ultimo resultado OK + copia no demasiado antigua.
+      # Umbral holgado (1800 min = 30 h) frente al cron diario de las 02:30.
+      test: ["CMD-SHELL", "pgrep -f cron-loop-entrypoint.sh >/dev/null && grep -q '^OK ' /backups/last-status 2>/dev/null && [ -n \"$$(find /backups/last-status -mmin -1800 2>/dev/null)\" ]"]
       interval: 60s
-      timeout: 5s
+      timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 30s
     deploy:
       resources:
         limits:
