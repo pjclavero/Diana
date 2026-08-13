@@ -24,6 +24,8 @@ import { join } from 'node:path';
 const RAIZ = join(__dirname, '..', '..', '..', '..');
 const CONF = join(RAIZ, 'infrastructure', 'mosquitto', 'mosquitto.conf');
 const COMPOSE = join(RAIZ, 'compose.yml');
+const COMPOSE_DEV = join(RAIZ, 'compose.dev.yml');
+const CONF_TEST = join(RAIZ, 'infrastructure', 'mosquitto', 'mosquitto.test.conf');
 
 /** Líneas efectivas: sin comentarios (donde SÍ se habla del 1883 histórico). */
 function lineasVivas(ruta: string): string[] {
@@ -57,8 +59,32 @@ describe('P0-2: el broker no tiene ningún camino en claro', () => {
     expect(lineasVivas(CONF).filter((l) => l.includes('1883'))).toEqual([]);
   });
 
-  it('compose.yml no publica ningún 1883 al host', () => {
-    const publicados = lineasVivas(COMPOSE).filter((l) => /^-\s*"?\$?\{?[\w:.-]*1883/.test(l));
+  it.each([
+    ['compose.yml', COMPOSE],
+    ['compose.dev.yml', COMPOSE_DEV],
+  ])('%s no publica ningún 1883 al host', (_nombre, ruta) => {
+    const publicados = lineasVivas(ruta).filter((l) => /^-\s*"?\$?\{?[\w:.-]*1883/.test(l));
     expect(publicados).toEqual([]);
+  });
+
+  /**
+   * La mitad que faltaba, y que convertía todo lo anterior en la corrección
+   * del ejemplar en vez de la clase: `mosquitto.test.conf` SÍ declara un
+   * listener en claro —es legítimo, es el broker efímero de la suite— pero
+   * mientras compartió la red `internal` con producción, activar el perfil
+   * `test` ponía un broker sin cifrar al alcance de cualquier contenedor
+   * productivo. Un broker en claro sólo es aceptable si está AISLADO.
+   *
+   * MUTACIÓN QUE DEBE PONERLA ROJA: devolver `mosquitto-test` a la red
+   * `internal` en compose.yml.
+   */
+  it('el broker de pruebas habla en claro, y por eso NO toca la red de producción', () => {
+    expect(lineasVivas(CONF_TEST).some((l) => /^listener\s+1883/.test(l))).toBe(true);
+
+    const compose = readFileSync(COMPOSE, 'utf8');
+    const bloque = compose.slice(compose.indexOf('\n  mosquitto-test:'));
+    const redes = bloque.slice(bloque.indexOf('networks:'), bloque.indexOf('healthcheck:'));
+    expect(redes).toContain('testnet');
+    expect(redes).not.toContain('internal');
   });
 });

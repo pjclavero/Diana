@@ -119,9 +119,16 @@ topic write targets/v1/module/+/provision
 # ------------------------------------------------------------------------------
 # Módulos: reglas genéricas aplicadas a CUALQUIER cliente autenticado, usando
 # el patrón %c (client_id de la conexión MQTT). Con `use_username_as_clientid
-# true` en mosquitto.conf el broker fuerza client_id = usuario autenticado,
-# así que %c aquí equivale de hecho a %u — pero sin tener que reescribir los
-# patrones, porque el usuario ya se llama igual que el module_id (F-02). No
+# true` el broker fuerza client_id = usuario autenticado, así que %c equivale
+# de hecho a %u — pero sin tener que reescribir los patrones, porque el usuario
+# ya se llama igual que el module_id (F-02).
+#
+# MATIZ QUE NO PUEDE PERDERSE: esa equivalencia vale SÓLO en los listeners que
+# declaran la directiva, porque `use_username_as_clientid` es por listener (no
+# la gobierna `per_listener_settings`, a diferencia de acl_file o
+# password_file). En mosquitto.conf está declarada tras el 8883 Y tras el 9001;
+# si alguien añade un listener nuevo sin ella, sobre ese listener %c vuelve a
+# ser un dato que elige el cliente y F-02 queda reabierta ahí. No
 # se listan usuarios individuales aquí: cada módulo nuevo sólo necesita
 # usuario+contraseña vía generate-users.sh, la ACL ya le aplica.
 #
@@ -199,3 +206,25 @@ pattern read targets/v1/module/%c/provision
 # ------------------------------------------------------------------------------
 user healthcheck
 topic readwrite _health/probe
+
+# ------------------------------------------------------------------------------
+# acl-observer: observador de SÓLO LECTURA para test-acl.sh, acotado al espacio
+# de nombres de las identidades de prueba. No puede publicar en ningún sitio.
+#
+# Por qué existe una cuenta en vez de reutilizar `backend`: con
+# `use_username_as_clientid true` el broker reescribe el client_id con el
+# usuario autenticado, así que un observador conectado como `backend` tendría
+# el MISMO client_id que el backend de producción. Los dos se expulsarían en
+# bucle — flapping de la ingesta real — y el resultado de la prueba saldría
+# envenenado. Un observador debe poder mirar sin desplazar a nadie.
+#
+# Alcance mínimo a propósito: lee los dos subárboles de prueba y nada más. Un
+# `topic read #` habría sido más cómodo y habría creado una cuenta capaz de
+# leer todo el tráfico de juego.
+#
+# TEMPORAL: se crea para verificar P0-2 y se BORRA al cerrarlo, junto con
+# module-acltest-a/b. Ver docs/operations/operacion.md.
+# ------------------------------------------------------------------------------
+user acl-observer
+topic read targets/v1/module/module-acltest-a/#
+topic read targets/v1/module/module-acltest-b/#

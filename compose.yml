@@ -302,9 +302,14 @@ services:
     logging: *default-logging
 
   # ----------------------------------------------------------------------------
-  # Mosquitto — sólo el puerto MQTT sobre TLS (8883) se publica al host (lo
-  # necesitan los módulos ESP32 físicos de la LAN). No hay ningún listener MQTT
-  # en claro, ni publicado ni interno. El puerto WebSocket (9001) queda interno.
+  # Mosquitto — sólo el puerto MQTT sobre TLS (8883) se publica al host. No hay
+  # ningún listener MQTT en claro, ni publicado ni interno. El WebSocket (9001)
+  # queda interno.
+  #
+  # OJO con la frase que había aquí: decía que el 8883 «lo necesitan los módulos
+  # ESP32 físicos de la LAN». Hoy es falsa al revés — el firmware vigente lleva
+  # `mqtt://%s:1883` cableado y NO puede usar este puerto. El TLS del firmware
+  # es un carril aparte, pendiente.
   # ----------------------------------------------------------------------------
   mosquitto:
     image: eclipse-mosquitto:2.0.18
@@ -489,7 +494,7 @@ services:
       TZ: UTC
       PGTZ: UTC
     networks:
-      - internal
+      - testnet
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U diana_test -d diana_test"]
       interval: 5s
@@ -512,7 +517,7 @@ services:
     volumes:
       - ./infrastructure/mosquitto/mosquitto.test.conf:/mosquitto/config/mosquitto.conf:ro
     networks:
-      - internal
+      - testnet
     healthcheck:
       test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -p 1883 -t '$$SYS/broker/version' -C 1 -W 3 -i healthcheck_probe || exit 1"]
       interval: 5s
@@ -545,7 +550,7 @@ services:
       - ./:/workspace:ro
     command: ["sh", "-c", "pip install --quiet --no-cache-dir jsonschema referencing && python3 contracts/validate.py"]
     networks:
-      - internal
+      - testnet
     logging: *default-logging
 
   # ----------------------------------------------------------------------------
@@ -574,6 +579,14 @@ services:
     logging: *default-logging
 
 networks:
+  # Red del perfil `test`, DELIBERADAMENTE SEPARADA. El broker efímero de
+  # pruebas (mosquitto-test) escucha en claro a propósito, y mientras compartió
+  # la red `internal` ofrecía a cualquier contenedor de producción un camino
+  # MQTT sin cifrar en cuanto se activaba el perfil. Un broker en claro sólo es
+  # aceptable si está aislado de verdad, no si está «sólo para tests» por
+  # convención. No conectar servicios productivos a esta red.
+  testnet:
+    driver: bridge
   # Red de borde: proxy <-> frontend/backend. El proxy es el único servicio
   # con puertos publicados al host (además de mosquitto:8883, sólo TLS).
   edge:

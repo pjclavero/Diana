@@ -42,4 +42,13 @@ async function bootstrap(): Promise<void> {
   );
 }
 
-void bootstrap();
+// El fallo cerrado de P0-2 (CA ausente/ilegible, URL en claro en producción)
+// sale como excepción del arranque. Con `void bootstrap()` viajaba como
+// promesa no manejada: Node termina igualmente con código 1 —el corte se
+// cumple— pero sin registro legible de la causa. Quien mire por qué no
+// arranca el backend merece leer el motivo, no un stack de unhandled rejection.
+bootstrap().catch((error) => {
+  // eslint-disable-next-line no-console
+  console.error('[bootstrap] arranque abortado:', error instanceof Error ? error.message : error);
+  process.exit(1);
+});

@@ -95,14 +95,37 @@ Desde el **host de la VM**, por TLS contra el 8883 publicado:
 
 ```bash
 cd /opt/diana/infrastructure/mosquitto
-# Las contraseñas por entorno, no por argumento (no acaban en el historial ni
-# en `ps`). Sin argumentos: localhost:8883 validando ./certs/ca.crt.
-ACL_BACKEND_PW='…' ACL_M1_PW='…' ACL_M2_PW='…' ./test-acl.sh
+# Alta previa de las identidades de prueba (una sola vez):
+./generate-users.sh module-acltest-a
+./generate-users.sh module-acltest-b
+./generate-users.sh acl-observer
+# Contraseñas por entorno, no por argumento (no acaban en el historial ni en
+# `ps`). Sin argumentos: localhost:8883 validando ./certs/ca.crt.
+ACL_A_PW='…' ACL_B_PW='…' ACL_OBS_PW='…' ./test-acl.sh
 ```
 
-Requiere los usuarios `backend`, `module-m1`, `module-m2` en `passwd`. Todas
-las rutas negativas (suplantación, escritura en `config/desired`, `command`,
-`ota`) deben quedar bloqueadas.
+**Identidades dedicadas, nunca las reales.** `module-acltest-a/b` no tienen
+ninguna regla propia en la ACL: atraviesan exactamente los mismos
+`pattern … %c` que `module-01`, así que lo que se demuestra es la política de
+producción y no una hecha para que el test pase. `acl-observer` es de sólo
+lectura y acotado al espacio de nombres de prueba.
+
+**Por qué no se reutiliza `backend` como observador:** con
+`use_username_as_clientid true` el broker reescribe el client_id con el usuario
+autenticado, así que un observador conectado como `backend` tendría el mismo
+client_id que el backend de producción; los dos se expulsarían en bucle,
+provocando flapping de la ingesta real y envenenando el propio resultado.
+
+El script **distingue** un rechazo de autenticación de una denegación de ACL, y
+cuenta el primero como ERROR DE ARNÉS, no como acierto: un control que no llega
+a tocar la ACL no demuestra nada sobre la autorización. Si ves `[ERROR]` en el
+resumen, el resultado no es interpretable aunque no haya `[FAIL]`.
+
+Estas tres cuentas son **temporales**: se borran al cerrar P0-2, junto con
+`module-p02a/b`.
+
+> **Una sola ejecución a la vez.** El script toma un cerrojo: dos observadores
+> con el mismo usuario se expulsarían mutuamente.
 
 > **Si falla la conexión, NO republiques el 1883.** Esa es la reacción que
 > deshace P0-2 entero, y este documento ya indujo a ella dos veces con dos
@@ -123,7 +146,12 @@ las rutas negativas (suplantación, escritura en `config/desired`, `command`,
 docker compose --profile simulator run --rm device-simulator run \
   --broker mqtts://mosquitto:8883 \
   --cafile /workspace/certs/ca.crt \
-  --username module-01 --password "$M1_PW" --modules 3
+  --username module-01 --password "$M1_PW" --modules 1
+# --modules 1 NO es arbitrario: el simulador crea UN transporte MQTT POR
+# MÓDULO (simulators/src/simulation.ts), y con `use_username_as_clientid true`
+# los tres compartirían client_id `module-01` y se expulsarían en bucle;
+# además module-02/03 publicarían en tópicos que la ACL les niega. Para varios
+# módulos hacen falta credenciales por módulo, una por identidad.
 # NO EJECUTADO todavía contra la VM (a 2026-08-13): esta receta es coherente
 # con el compose y el CLI actuales —el montaje de ca.crt existe y --cafile está
 # implementado— pero hasta que alguien la corra, es un procedimiento, no una
@@ -153,8 +181,14 @@ haga, esto es un procedimiento, no una verificación.
   convierta un error de CA en una conexión sin validar. Los certificados se
   generan con `infrastructure/mosquitto/generate-certs.sh`; `ca.key` no entra
   en ningún contenedor.
-- El único puerto MQTT publicado al host es `8883` (lo usan los módulos ESP32
-  físicos). PostgreSQL NO se publica. El proxy publica `8080`.
+- El único puerto MQTT publicado al host es `8883`. **Los módulos ESP32
+  físicos NO pueden usarlo todavía**: el firmware vigente tiene
+  `mqtt://%s:1883` cableado (`firmware/esp32/main/app_main.c`), sin TLS ni CA.
+  P0-2 asegura TLS para el plano de servidor e integración; **el transporte
+  MQTT TLS del firmware queda pendiente de implementación y validación
+  física**, en un carril propio. No hay módulos físicos activos hoy (40 h de
+  log del broker sin ninguno), así que esto no bloquea las celdas 10-16, pero
+  no debe describirse al revés. PostgreSQL NO se publica. El proxy publica `8080`.
 - **No queda ningún listener en claro**, ni publicado al host ni dentro de la
   red interna de Docker. El `listener 1883` interno se eliminó el 2026-08-13,
   cuando `test-acl.sh` —su única razón de ser— aprendió a hablar TLS. Lo vigila

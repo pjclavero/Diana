@@ -54,7 +54,11 @@ cd /opt/diana/infrastructure/mosquitto
 ./generate-users.sh backend        # actualizar MQTT_BACKEND_PASSWORD en .env
 ./generate-users.sh healthcheck    # actualizar MQTT_HEALTHCHECK_PASSWORD en .env
 ./generate-users.sh module-01 ... module-09   # un usuario por módulo físico
-# Para las pruebas de ACL además: module-m1, module-m2
+# Para las pruebas de ACL además (P0-2, identidades dedicadas y temporales):
+#   module-acltest-a, module-acltest-b, acl-observer
+# module-m1/module-m2 NO existen ni deben crearse: eran los usuarios de una
+# versión de test-acl.sh cuyos casos negativos pasaban por fallo de
+# autenticación, no por la ACL.
 ```
 
 El `client_id` MQTT de cada módulo debe ser su `module_id` **sin** el prefijo
