@@ -335,3 +335,36 @@ roto**, no porque no exista.
 
 **Lección para este procedimiento: `healthy` no es evidencia de funcionamiento.** Un healthcheck
 de proceso no distingue un servicio que trabaja de uno que falla en bucle. **Sin resolver.**
+
+## Matriz de acceso administrativo (ACCESS-RECOVERY)
+
+Toda instalación de Diana debe **declarar** por qué vías se administra y
+recuperar. La regla de fondo: *la pérdida del agente QEMU no puede dejar una
+instalación sin vía de administración*. Y al revés — Tailscale es una facilidad
+de esta instalación concreta, **no** una dependencia arquitectónica de Diana:
+el procedimiento portable no puede apoyarse en él.
+
+Jerarquía de recuperación, de menos a más invasiva:
+
+1. **Consola local / del hipervisor** — último recurso universal, siempre debe existir.
+2. **SSH LAN** — canal administrativo estándar cuando esté habilitado.
+3. **Agente QEMU** — auxiliar, sólo si la instalación está virtualizada en Proxmox/QEMU.
+4. **Tailscale SSH** — adicional y opcional, sólo si esa instalación usa Tailscale.
+5. **Reinicio completo** — únicamente cuando ninguno de los anteriores recupere el sistema.
+
+| Canal | VM109 | Instalación genérica |
+|---|---|---|
+| Consola / hipervisor | ✅ Proxmox | Obligatorio, o equivalente físico |
+| SSH LAN | ⚠ **por comprobar** | Recomendado |
+| Agente QEMU | ✅ | Opcional, sólo VM |
+| Tailscale SSH | ✅ `diana-admin@diana-server` | Opcional |
+| Reinicio remoto | ✅ `qm reboot 109` | Según plataforma |
+
+**Pendiente tras P0-2 (gate ACCESS-RECOVERY):** averiguar si `diana-admin`
+tiene SSH convencional por LAN o **solamente** Tailscale SSH. Si es lo segundo,
+VM109 está bien cubierta pero el procedimiento portable **no** está cerrado.
+
+El 2026-08-13 el agente QEMU se atascó (guest-exec huérfano por exceder la
+ventana de 550 s) y la recuperación se hizo por Tailscale SSH reiniciando
+`qemu-guest-agent`. Producción no se vio afectada en ningún momento. La
+documentación anterior afirmaba que no existía acceso SSH a VM109: era falso.
