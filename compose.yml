@@ -207,21 +207,18 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       DATABASE_URL: ${DATABASE_URL}
-      MQTT_HOST: ${MQTT_HOST:-mosquitto}
-      MQTT_PORT: ${MQTT_TLS_PORT:-8883}
-      MQTT_PROTOCOL: mqtts
-      # La CA propia con la que el backend valida al broker. Se monta sólo el
-      # certificado público: la clave de la CA no entra en este contenedor.
-      MQTT_CA_FILE: /app/certs/mqtt-ca.crt
-      MQTT_USERNAME: ${MQTT_BACKEND_USERNAME:-backend}
-      MQTT_PASSWORD: ${MQTT_BACKEND_PASSWORD}
+      # SIN configuración ni credenciales MQTT, a propósito (P0-2, celda 11).
+      # El worker no es cliente MQTT: su package.json no declara `mqtt`, la
+      # librería no está en su imagen, no hay código MQTT en server/worker/src
+      # y su único interlocutor TCP es postgres. Recibía sin embargo
+      # MQTT_USERNAME/MQTT_PASSWORD del backend — la credencial más privilegiada
+      # del broker, en un proceso que jamás la usa: superficie de robo pura.
+      # Mínimo privilegio: lo que no se consume, no se entrega.
       REPORTS_CRON: ${WORKER_REPORTS_CRON:-0 3 * * *}
       LOG_LEVEL: ${WORKER_LOG_LEVEL:-info}
       TZ: UTC
     volumes:
       - diana_exports:/app/exports
-      # Sólo el certificado PÚBLICO de la CA (ca.key jamás sale de su carpeta).
-      - ./infrastructure/mosquitto/certs/ca.crt:/app/certs/mqtt-ca.crt:ro
     networks:
       - internal
     healthcheck:
