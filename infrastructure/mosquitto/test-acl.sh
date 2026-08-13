@@ -38,7 +38,7 @@
 #
 #   module-acltest-a   módulo de prueba
 #   module-acltest-b   segunda identidad, para el intento de suplantación
-#   acl-observer       sólo lectura sobre el espacio de nombres de prueba
+#   module-aclobserver sólo lectura sobre el espacio de nombres de prueba
 #
 # Ninguna comparte usuario con `backend`. Esto no es estética: con
 # `use_username_as_clientid true` el broker reescribe el client_id con el
@@ -54,7 +54,7 @@
 # Crear (una vez) y BORRAR al cerrar P0-2:
 #   ./generate-users.sh module-acltest-a
 #   ./generate-users.sh module-acltest-b
-#   ./generate-users.sh acl-observer
+#   ./generate-users.sh module-aclobserver
 #
 # USO, desde el HOST de la VM (el 8883 es el único puerto publicado):
 #
@@ -70,7 +70,9 @@
 #   (2) «docker compose exec mosquitto sh -c ./test-acl.sh» — el script no está
 #       montado en ese contenedor y la imagen no lleva bash (comprobado).
 #   (3) los usuarios module-m1/module-m2 no existían en el broker.
-#   (4) esta misma cabecera afirmaba «si una falla, ABORTA» cuando no abortaba:
+#   (4) «./generate-users.sh acl-observer»: el validador del propio script lo
+#       rechaza. Escrita en cuatro sitios y ejecutada en ninguno.
+#   (5) esta misma cabecera afirmaba «si una falla, ABORTA» cuando no abortaba:
 #       el patrón «Connection Refused» llevaba R mayúscula y no emparejaba con
 #       la cadena real, así que un broker apagado salía como tres [ OK ].
 # Las tres se escribieron sin ejecutar lo que se escribía. No corrijas este
@@ -84,6 +86,14 @@
 # ningún módulo real usa; no altera partidas ni configuración. Para limpiar los
 # retenidos que pudieran quedar:
 #   mosquitto_pub … -t targets/v1/module/module-acltest-a/presence -r -n
+#
+# NOMBRE DEL OBSERVADOR: `module-aclobserver`, no `acl-observer`. El validador
+# de generate-users.sh sólo acepta `backend`, `healthcheck` o `module-*`
+# (COMPROBADO: `./generate-users.sh acl-observer` sale con rc=1), asi que la
+# instrucción de alta que decía crear `acl-observer` era la CUARTA instrucción
+# falsa de este fichero. El prefijo `module-` le da además escritura sobre su
+# propio subárbol vía los `pattern` globales; es inerte y está fijado en el
+# caso 8.
 #
 # CONTRASEÑAS por entorno (ACL_A_PW, ACL_B_PW, ACL_OBS_PW), no por argumento,
 # para no dejarlas en el historial ni en `ps`. Mitigación parcial y hay que
@@ -99,7 +109,7 @@ CAFILE="${3:-$(cd "$(dirname "$0")" && pwd)/certs/ca.crt}"
 
 U_A="module-acltest-a"
 U_B="module-acltest-b"
-U_OBS="acl-observer"
+U_OBS="module-aclobserver"
 
 # --- Transporte: TLS obligatorio, y falla cerrado -----------------------------
 # Verificar la ACL por un canal sin cifrar mediría un broker que P0-2 dice no
@@ -111,13 +121,24 @@ if [ "${ACL_TEST_ALLOW_PLAINTEXT:-0}" = "1" ]; then
     # La escotilla existe para el broker efímero del perfil `test`, y se niega
     # a apuntar a producción: un fichero que se despliega en /opt/diana no debe
     # poder convertir «no hay CA» en «pruebo sin TLS» contra el broker real.
-    case "$HOST" in
-        localhost|127.0.0.1|::1|mosquitto)
-            echo "ERROR: ACL_TEST_ALLOW_PLAINTEXT=1 apuntando a '$HOST', que es el" >&2
-            echo "       broker de producción. La escotilla es para un broker de" >&2
-            echo "       pruebas aislado; indica su host explícitamente." >&2
+    # Comparar CADENAS era inútil: `127.0.0.2`, `127.1`, `LOCALHOST`,
+    # `localhost.` y `0.0.0.0` son el mismo host y atravesaban la lista negra.
+    # Se resuelve la dirección y se compara con loopback y con la IP del
+    # despliegue, y además se exige nombrar el broker de laboratorio.
+    ip_resuelta="$(getent ahostsv4 "$HOST" 2>/dev/null | awk 'NR==1{print $1}')"
+    case "${ip_resuelta:-}" in
+        127.*|0.0.0.0|192.168.1.209|"")
+            echo "ERROR: ACL_TEST_ALLOW_PLAINTEXT=1 apuntando a '$HOST'" >&2
+            echo "       (resuelve a '${ip_resuelta:-no resuelve}'), que es o puede ser" >&2
+            echo "       el broker de producción. La escotilla es sólo para un broker" >&2
+            echo "       de laboratorio aislado, con host propio y resoluble." >&2
             exit 2 ;;
     esac
+    [ "${ACL_TEST_LAB_BROKER:-}" = "$HOST" ] || {
+        echo "ERROR: para usar la escotilla en claro, nombra el broker de laboratorio" >&2
+        echo "       explícitamente: ACL_TEST_LAB_BROKER=$HOST" >&2
+        exit 2
+    }
     echo "AVISO: ACL_TEST_ALLOW_PLAINTEXT=1 — sin TLS contra '$HOST'." >&2
 elif [ -r "$CAFILE" ]; then
     TLS_ARGS="--cafile $CAFILE"
@@ -155,8 +176,12 @@ log_pass()  { echo "  [PASS]  $1"; PASS=$((PASS + 1)); }
 log_fail()  { echo "  [FAIL]  $1"; FAIL=$((FAIL + 1)); }
 log_error() { echo "  [ERROR] $1"; ERROR=$((ERROR + 1)); }
 
-mpub() { mosquitto_pub -h "$HOST" -p "$PORT" $TLS_ARGS -V 5 "$@"; }
-msub() { mosquitto_sub -h "$HOST" -p "$PORT" $TLS_ARGS -V 5 "$@"; }
+# `timeout` obligatorio: mosquitto_pub NO tiene tiempo límite de conexión. Un
+# broker que acepta el TCP y no contesta lo deja vivo indefinidamente (medido:
+# seguía corriendo a los 30 s), colgando la verificación entera.
+NET_TIMEOUT="${ACL_NET_TIMEOUT:-10}"
+mpub() { timeout "$NET_TIMEOUT" mosquitto_pub -h "$HOST" -p "$PORT" $TLS_ARGS -V 5 "$@"; }
+msub() { timeout "$NET_TIMEOUT" mosquitto_sub -h "$HOST" -p "$PORT" $TLS_ARGS -V 5 "$@"; }
 
 # --- Clasificador -------------------------------------------------------------
 # Imprime exactamente uno de: AUTH_OK_ACL_ALLOWED | AUTH_OK_ACL_DENIED |
@@ -170,6 +195,7 @@ msub() { mosquitto_sub -h "$HOST" -p "$PORT" $TLS_ARGS -V 5 "$@"; }
 classify_publish() {
     cp_user="$1"; cp_pw="$2"; cp_topic="$3"; cp_payload="$4"
     cp_out="$(mpub -u "$cp_user" -P "$cp_pw" -t "$cp_topic" -m "$cp_payload" -q 1 2>&1)"
+    cp_rc=$?
     # ORDEN IMPORTANTE: los fallos de TRANSPORTE se descartan ANTES que nada.
     # La version anterior tenia `*"Connection Refused"*` con R mayúscula, que no
     # empareja nunca con la cadena real («Connection refused»), así que un
@@ -180,7 +206,13 @@ classify_publish() {
             echo "SIN_TRANSPORTE" ;;
         *"Connection error"*|*"onnection Refused"*) echo "AUTH_DENIED" ;;
         *"failed: Not authorized"*|*"failed: Not Authorized"*) echo "AUTH_OK_ACL_DENIED" ;;
-        "") echo "AUTH_OK_ACL_ALLOWED" ;;
+        "")
+            # SIN SALIDA NO ES PRUEBA DE ÉXITO. Ésta era la rama que dejaba
+            # pasar tres [PASS] contra un socket que no envió un solo byte:
+            # cualquier muerte silenciosa del hijo —señal, OOM, el `timeout` de
+            # arriba, un broker que acepta TCP y calla— produce salida vacía.
+            # Un publish realmente aceptado devuelve además rc=0.
+            if [ "$cp_rc" -eq 0 ]; then echo "AUTH_OK_ACL_ALLOWED"; else echo "SIN_TRANSPORTE"; fi ;;
         *) echo "ERROR" ;;
     esac
 }
@@ -282,9 +314,32 @@ else
     log_error "credencial incorrecta → $r; el clasificador NO distingue auth de ACL"
 fi
 
+# Control positivo POR EFECTO OBSERVADO, no por ausencia de error. «No salió
+# ningún aviso» es compatible con «el cliente murió antes de hablar»; que el
+# observador reciba el mensaje no lo es.
+expect_allowed_observed() {
+    eo_desc="$1"; eo_user="$2"; eo_pw="$3"; eo_topic="$4"
+    eo_out="$(mktemp)"; eo_mark="eco-$$-$(od -An -N2 -tu2 /dev/urandom | tr -d ' ')"
+    msub -u "$U_OBS" -P "$OBS_PW" -t "$eo_topic" -C 1 -W "$WAIT_SECS" >"$eo_out" 2>/dev/null &
+    eo_pid=$!
+    sleep 1
+    eo_veredicto="$(classify_publish "$eo_user" "$eo_pw" "$eo_topic" "$eo_mark")"
+    wait "$eo_pid" 2>/dev/null
+    if grep -q "$eo_mark" "$eo_out" 2>/dev/null; then
+        log_pass "$eo_desc · ACL_ALLOWED y MESSAGE_OBSERVED"
+    else
+        case "$eo_veredicto" in
+            AUTH_OK_ACL_ALLOWED) log_fail "$eo_desc · publicó sin aviso pero el observador NO lo vio" ;;
+            AUTH_OK_ACL_DENIED)  log_fail "$eo_desc · ACL_DENIED — permiso legítimo roto" ;;
+            *)                   log_error "$eo_desc · $eo_veredicto — no se midió la ACL" ;;
+        esac
+    fi
+    rm -f "$eo_out"
+}
+
 echo "=== 3. Control positivo: cada módulo publica en su propio espacio ==="
-expect_allowed "$U_A escribe su presence" "$U_A" "$A_PW" "targets/v1/module/$U_A/presence"
-expect_allowed "$U_B escribe su presence" "$U_B" "$B_PW" "targets/v1/module/$U_B/presence"
+expect_allowed_observed "$U_A escribe su presence" "$U_A" "$A_PW" "targets/v1/module/$U_A/presence"
+expect_allowed_observed "$U_B escribe su presence" "$U_B" "$B_PW" "targets/v1/module/$U_B/presence"
 
 echo "=== 4. Suplantación entre módulos, en ambos sentidos ==="
 expect_denied "$U_A escribe el presence de $U_B" "$U_A" "$A_PW" "targets/v1/module/$U_B/presence"

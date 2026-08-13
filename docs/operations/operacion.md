@@ -95,10 +95,11 @@ Desde el **host de la VM**, por TLS contra el 8883 publicado:
 
 ```bash
 cd /opt/diana/infrastructure/mosquitto
-# Alta previa de las identidades de prueba (una sola vez):
+# Alta previa de las identidades de prueba (una sola vez). LEE EL AVISO DE
+# ABAJO ANTES DE EJECUTARLO: en VM109 esta ruta tiene obstáculos conocidos.
 ./generate-users.sh module-acltest-a
 ./generate-users.sh module-acltest-b
-./generate-users.sh acl-observer
+./generate-users.sh module-aclobserver
 # Contraseñas por entorno, no por argumento (no acaban en el historial ni en
 # `ps`). Sin argumentos: localhost:8883 validando ./certs/ca.crt.
 ACL_A_PW='…' ACL_B_PW='…' ACL_OBS_PW='…' ./test-acl.sh
@@ -107,7 +108,7 @@ ACL_A_PW='…' ACL_B_PW='…' ACL_OBS_PW='…' ./test-acl.sh
 **Identidades dedicadas, nunca las reales.** `module-acltest-a/b` no tienen
 ninguna regla propia en la ACL: atraviesan exactamente los mismos
 `pattern … %c` que `module-01`, así que lo que se demuestra es la política de
-producción y no una hecha para que el test pase. `acl-observer` es de sólo
+producción y no una hecha para que el test pase. `module-aclobserver` es de sólo
 lectura y acotado al espacio de nombres de prueba.
 
 **Por qué no se reutiliza `backend` como observador:** con
@@ -126,6 +127,33 @@ Estas tres cuentas son **temporales**: se borran al cerrar P0-2, junto con
 
 > **Una sola ejecución a la vez.** El script toma un cerrojo: dos observadores
 > con el mismo usuario se expulsarían mutuamente.
+
+#### Alta de usuarios del broker — NO EJECUTADO, con obstáculos conocidos
+
+Este procedimiento **no se ha ejecutado todavía** y por tanto no está
+verificado. Se escribe aquí con lo que sí está comprobado en VM109, en lugar
+de dar una receta limpia que fallaría, porque este documento ya indujo cuatro
+veces a comandos que no funcionaban:
+
+| obstáculo | comprobado |
+|---|---|
+| `mosquitto_passwd` **no está instalado** en el host de la VM | sí |
+| el montaje de `passwd` en el contenedor es `:ro` — `mosquitto_passwd` dentro del contenedor **no puede escribirlo** | sí (`docker inspect`: `RW=false`) |
+| `generate-users.sh` hace `chmod 600`; con el propietario equivocado provoca `Unable to open pwfile` y **bucle de reinicio** del broker | documentado como fallo #2 en `deployment/procedimiento.md` |
+| mosquitto **no relee** `password_file` solo: hace falta recargarlo (`SIGHUP`) | sí |
+
+Consecuencia práctica: dar de alta estas tres identidades **requiere una
+decisión del operador** sobre cómo escribir en `passwd` (instalar
+`mosquitto-clients` en el host, montar el fichero en lectura-escritura, o
+generar los hashes fuera y añadirlos), y es una modificación de producción.
+Hasta que eso ocurra, `test-acl.sh` **no se ha ejecutado nunca de extremo a
+extremo**: la rama de su clasificador que produce los `[PASS]` —la denegación
+de ACL real— no la ha visto funcionar nadie. Las otras tres ramas
+(`AUTH_DENIED`, `SIN_TRANSPORTE`, error de TLS) sí están medidas contra el
+broker real.
+
+Estas identidades son **temporales** y se borran al cerrar P0-2, junto con
+`module-p02a`/`module-p02b`, que siguen en el `passwd` de producción.
 
 > **Si falla la conexión, NO republiques el 1883.** Esa es la reacción que
 > deshace P0-2 entero, y este documento ya indujo a ella dos veces con dos
@@ -189,8 +217,8 @@ haga, esto es un procedimiento, no una verificación.
   física**, en un carril propio. No hay módulos físicos activos hoy (40 h de
   log del broker sin ninguno), así que esto no bloquea las celdas 10-16, pero
   no debe describirse al revés. PostgreSQL NO se publica. El proxy publica `8080`.
-- **No queda ningún listener en claro**, ni publicado al host ni dentro de la
-  red interna de Docker. El `listener 1883` interno se eliminó el 2026-08-13,
+- **No queda ningún listener MQTT/TCP en claro**, ni publicado al host ni
+  dentro de la red interna de Docker. El `listener 1883` interno se eliminó el 2026-08-13,
   cuando `test-acl.sh` —su única razón de ser— aprendió a hablar TLS. Lo vigila
   `server/backend/test/mqtt/broker-sin-listener-en-claro.spec.ts`, que se pone
   roja si alguien lo reintroduce en `mosquitto.conf` o vuelve a publicar el

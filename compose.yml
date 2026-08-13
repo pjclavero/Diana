@@ -137,7 +137,13 @@ services:
       PORT: ${BACKEND_PORT:-3000}
       DATABASE_URL: ${DATABASE_URL}
       MQTT_HOST: ${MQTT_HOST:-mosquitto}
-      MQTT_PORT: ${MQTT_TLS_PORT:-8883}
+      # Puerto INTERNO del broker, fijo. Antes era ${MQTT_TLS_PORT:-8883}, que
+      # es el puerto PUBLICADO AL HOST: cambiar la publicación —algo que un
+      # operador hace sin pensar si el 8883 le choca con otra cosa— rompía la
+      # conexión del backend, que habla con `mosquitto:8883` DENTRO de la red.
+      # Es la misma clase de defecto que este hotfix corrigió en el backend:
+      # configuración que aparenta gobernar algo que no gobierna.
+      MQTT_PORT: 8883
       MQTT_PROTOCOL: mqtts
       # La CA propia con la que el backend valida al broker. Se monta sólo el
       # certificado público: la clave de la CA no entra en este contenedor.
@@ -593,10 +599,12 @@ networks:
     driver: bridge
   # Red interna: backend/worker/migrate/backup <-> postgres/mosquitto. Ningún
   # servicio de esta red publica puertos al host salvo mosquitto (8883 sobre
-  # TLS, necesario para los módulos físicos de la LAN). Desde 2026-08-13 no hay
-  # NINGÚN camino MQTT en claro: tampoco dentro de esta red. El listener 1883
-  # interno se eliminó al dotar de TLS a test-acl.sh, que era su única razón de
-  # ser; lo vigila una prueba de regresión en el backend.
+  # TLS). Desde 2026-08-13 no hay ningún camino MQTT/TCP en claro tampoco
+  # dentro de esta red: el listener 1883 interno se eliminó al dotar de TLS a
+  # test-acl.sh, que era su única razón de ser, y lo vigila una prueba de
+  # regresión. OJO, no es lo mismo que «no hay nada en claro»: el listener 9001
+  # de WebSockets SIGUE sin cifrar dentro de esta red. Es deuda declarada —WSS
+  # está fuera del alcance de P0-2— no un descuido.
   internal:
     driver: bridge
 

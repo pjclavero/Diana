@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 // js-yaml, declarado en devDependencies: parser de verdad en vez de una regex
 // por línea. Se carga con require para no depender de @types/js-yaml.
@@ -39,7 +39,22 @@ function lineasVivas(ruta: string): string[] {
     .filter((l) => l.length > 0 && !l.startsWith('#'));
 }
 
-describe('P0-2: el broker no tiene ningún camino en claro', () => {
+describe('P0-2: el broker no tiene ningún camino MQTT/TCP en claro', () => {
+  /**
+   * El título dice MQTT/TCP y no «ningún camino en claro» porque lo segundo
+   * sería mentira: el listener 9001 (WebSockets) sigue sin TLS. La versión
+   * anterior lo eximía con un `p !== 9001` mudo dentro del filtro, de forma
+   * que la prueba se llamaba como la propiedad fuerte y comprobaba la débil.
+   * La exención pasa a ser una aserción explícita: si alguien pone TLS al 9001,
+   * este test se rompe y hay que venir a borrar la deuda a mano.
+   */
+  it('el 9001 WebSockets SIGUE en claro: deuda declarada, no camino olvidado', () => {
+    const vivas = lineasVivas(CONF);
+    expect(vivas).toContain('listener 9001');
+    const trasWs = vivas.slice(vivas.indexOf('listener 9001'));
+    expect(trasWs.some((l) => l.startsWith('certfile '))).toBe(false);
+  });
+
   it('mosquitto.conf declara listeners, y ninguno de ellos es MQTT sin TLS', () => {
     const vivas = lineasVivas(CONF);
     const listeners = vivas
@@ -53,7 +68,8 @@ describe('P0-2: el broker no tiene ningún camino en claro', () => {
       vivas.some((l) => l.startsWith('certfile ')) && vivas.some((l) => l.startsWith('keyfile '));
     expect(tieneMaterialTls).toBe(true);
 
-    // El 9001 es WebSockets interno tras el proxy; el resto debe ser el 8883.
+    // El 9001 es WebSockets y está EXENTO a propósito (ver la prueba anterior,
+    // que fija su estado real). El resto debe ser el 8883.
     const mqttEnClaro = listeners.filter((p) => p !== 8883 && p !== 9001);
     expect(mqttEnClaro).toEqual([]);
     expect(listeners).not.toContain(1883);
@@ -78,29 +94,70 @@ describe('P0-2: el broker no tiene ningún camino en claro', () => {
    * Vigilar una propiedad con una regex de línea es vigilar una forma de
    * escribirla, no la propiedad.
    */
+  /**
+   * Puertos publicados al host, resueltos con un parser YAML de verdad y
+   * FALLANDO CERRADO ante cualquier campo que no sepa interpretar.
+   *
+   * Dos versiones anteriores de esta función fueron esquivables, y las dos por
+   * la misma razón: descartaban en silencio lo que no encajaba en su idea de
+   * cómo se escribe un puerto.
+   *
+   *   1ª (regex por línea): esquivada por la sintaxis larga
+   *      `- target: 1883 / published: 1883`.
+   *   2ª (YAML + Number()): esquivada por un RANGO — `- "1880-1890:1880-1890"`
+   *      publica el 1883 y `Number("1880-1890")` da NaN, que un
+   *      `.filter(!isNaN)` tiraba a la basura. Verde con el puerto abierto.
+   *
+   * Por eso ahora un campo no interpretable LANZA en vez de ignorarse: si
+   * aparece una forma nueva de declarar puertos, esta prueba se rompe y
+   * alguien la mira, que es exactamente lo que debe pasar.
+   */
+  function expandir(campo: string | number): number[] {
+    const texto = String(campo).trim();
+    const rango = /^(\d+)-(\d+)$/.exec(texto);
+    if (rango) {
+      const [desde, hasta] = [Number(rango[1]), Number(rango[2])];
+      if (hasta < desde || hasta - desde > 65535) throw new Error(`Rango imposible: ${texto}`);
+      return Array.from({ length: hasta - desde + 1 }, (_, i) => desde + i);
+    }
+    if (/^\d+$/.test(texto)) return [Number(texto)];
+    throw new Error(
+      `Campo de puerto no interpretable: "${texto}". Si es una forma legítima, ` +
+        'enséñale a esta función a expandirla; NO la ignores: ignorar en silencio ' +
+        'es como se coló un rango que publicaba el 1883.',
+    );
+  }
+
   function puertosPublicados(ruta: string): number[] {
     const doc = parseYaml(readFileSync(ruta, 'utf8')) as {
-      services?: Record<string, { ports?: Array<string | { target?: number; published?: number | string }> }>;
+      services?: Record<
+        string,
+        { ports?: Array<string | { target?: number | string; published?: number | string }> }
+      >;
     };
     const puertos: number[] = [];
     for (const servicio of Object.values(doc.services ?? {})) {
       for (const entrada of servicio.ports ?? []) {
-        if (typeof entrada === 'string') {
-          // [IP:][HOST:]CONTENEDOR — el interpolado ${VAR:-8883} contiene ':',
-          // así que se toman los dos últimos campos tras quitar el valor por
-          // defecto de la interpolación.
-          const limpio = entrada.replace(/\$\{[^}]*:-([^}]*)\}/g, '$1');
-          const campos = limpio.split(':');
-          puertos.push(Number(campos[campos.length - 1]));
-          if (campos.length >= 2) puertos.push(Number(campos[campos.length - 2]));
+        if (typeof entrada === 'string' || typeof entrada === 'number') {
+          // [IP:][HOST:]CONTENEDOR, con posibles rangos e interpolación.
+          const limpio = String(entrada).replace(/\$\{[^}]*:-([^}]*)\}/g, '$1').replace(/\$\{[^}]*\}/g, '0');
+          const campos = limpio.split(':').filter((c) => !/^\d+\.\d+\.\d+\.\d+$/.test(c) && c !== '');
+          for (const campo of campos) puertos.push(...expandir(campo));
         } else {
-          if (entrada.target !== undefined) puertos.push(Number(entrada.target));
-          if (entrada.published !== undefined) puertos.push(Number(entrada.published));
+          if (entrada.target !== undefined) puertos.push(...expandir(entrada.target));
+          if (entrada.published !== undefined) puertos.push(...expandir(entrada.published));
         }
       }
     }
-    return puertos.filter((p) => !Number.isNaN(p));
+    return puertos;
   }
+
+  it('no existe un compose.override.yml sin vigilar', () => {
+    // docker compose lo aplica AUTOMÁTICAMENTE si existe. Un 1883 ahí quedaría
+    // publicado sin que ninguna de las comprobaciones de arriba lo mirase.
+    expect(existsSync(join(RAIZ, 'compose.override.yml'))).toBe(false);
+    expect(existsSync(join(RAIZ, 'compose.override.yaml'))).toBe(false);
+  });
 
   it.each([
     ['compose.yml', COMPOSE],
@@ -132,5 +189,27 @@ describe('P0-2: el broker no tiene ningún camino en claro', () => {
     const redes = bloque.slice(bloque.indexOf('networks:'), bloque.indexOf('healthcheck:'));
     expect(redes).toContain('testnet');
     expect(redes).not.toContain('internal');
+  });
+
+  /**
+   * El sentido contrario, que faltaba: la comprobación de arriba impedía llevar
+   * el broker en claro a la red de producción, pero NO impedía traer un
+   * servicio de producción a la red del broker en claro. Añadir `testnet` a las
+   * redes del backend dejaba la suite en verde con el backend sentado en la red
+   * del broker sin cifrar. Una regla vigilada en una sola dirección no es una
+   * regla, es un comentario.
+   *
+   * MUTACIÓN QUE DEBE PONERLA ROJA: añadir `- testnet` a las redes de backend,
+   * worker, mosquitto o postgres.
+   */
+  it('ningún servicio de producción está en la red del broker en claro', () => {
+    const doc = parseYaml(readFileSync(COMPOSE, 'utf8')) as {
+      services?: Record<string, { profiles?: string[]; networks?: string[] }>;
+    };
+    const intrusos = Object.entries(doc.services ?? {})
+      .filter(([, s]) => !(s.profiles ?? []).includes('test'))
+      .filter(([, s]) => (s.networks ?? []).includes('testnet'))
+      .map(([nombre]) => nombre);
+    expect(intrusos).toEqual([]);
   });
 });

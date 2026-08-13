@@ -208,7 +208,7 @@ user healthcheck
 topic readwrite _health/probe
 
 # ------------------------------------------------------------------------------
-# acl-observer: observador de SÓLO LECTURA para test-acl.sh, acotado al espacio
+# module-aclobserver: observador de SÓLO LECTURA para test-acl.sh, acotado al espacio
 # de nombres de las identidades de prueba. No puede publicar en ningún sitio.
 #
 # Por qué existe una cuenta en vez de reutilizar `backend`: con
@@ -225,9 +225,9 @@ topic readwrite _health/probe
 # LO QUE SÍ PUEDE ESCRIBIR, y decirlo importa: en el formato `acl_file` las
 # líneas `pattern` son GLOBALES y se aplican a todo cliente autenticado — es
 # justamente el mecanismo en el que se apoya este fichero, que no declara
-# ningún bloque `user module-01`. Así que `acl-observer` también recibe los
+# ningún bloque `user module-01`. Así que `module-aclobserver` también recibe los
 # siete `pattern write targets/v1/module/%c/…` sobre SU PROPIO subárbol,
-# `targets/v1/module/acl-observer/*`. Ese subárbol es inerte (ningún módulo
+# `targets/v1/module/module-aclobserver/*`. Ese subárbol es inerte (ningún módulo
 # real se llama así y el backend no ordena nada sobre él), pero la frase «no
 # puede publicar en ningún sitio» sería falsa y aquí no se escriben frases
 # falsas. Lo que sí es cierto, y es lo que importa: no puede publicar en el
@@ -236,6 +236,6 @@ topic readwrite _health/probe
 # TEMPORAL: se crea para verificar P0-2 y se BORRA al cerrarlo, junto con
 # module-acltest-a/b. Ver docs/operations/operacion.md.
 # ------------------------------------------------------------------------------
-user acl-observer
+user module-aclobserver
 topic read targets/v1/module/module-acltest-a/#
 topic read targets/v1/module/module-acltest-b/#

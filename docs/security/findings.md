@@ -215,8 +215,13 @@ reproducción de arriba, que debe pasar a fallar.
 > que era su única razón de ser. Ya no existe ningún camino MQTT en claro.
 > Sigue abierto: la validación de CA en el **firmware** de los módulos (fuera
 > del alcance de P0-2, y hay que decirlo en vez de dejarlo caer), la regla nft
-> que aún abre el 1883 a la LAN sin que nada escuche (limpieza obligatoria
-> antes del cierre definitivo de P0-2) y la mitad HTTP de F-07 (nginx sigue en
+> que aún abre el 1883 a la LAN sin que nada escuche. DUEÑO: el operador;
+> MOMENTO: intervención propia `P0-2-POST-INTEGRATION-FIREWALL`, después de la
+> celda 16 y del rollback/reaplicación, nunca durante las celdas 10-16. El
+> script `infrastructure/provisioning/04-firewall.sh` ya está corregido en el
+> repo pero NINGÚN paso del despliegue lo reaplica: hacerlo es un acto
+> deliberado, porque reescribe el ruleset entero de una VM cuyo único canal
+> administrativo es el agente QEMU y la mitad HTTP de F-07 (nginx sigue en
 > claro).
 
 **Severidad: Alta.** Es el habilitador de F-02: convierte a un actor sin credenciales (T1)

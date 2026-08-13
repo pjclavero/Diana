@@ -58,13 +58,26 @@ run_mosquitto_passwd() {
   else
     echo "mosquitto_passwd no está instalado localmente." >&2
     echo "Ejecuta en su lugar (con el stack ya levantado):" >&2
+    echo "  AVISO: la ruta de abajo NO funciona en la VM109 actual." >&2
+    echo "  El montaje de passwd en el contenedor es de SÓLO LECTURA" >&2
+    echo "  (compose.yml: ':ro'), así que mosquitto_passwd no puede escribirlo." >&2
+    echo "  Ver docs/operations/operacion.md, «Alta de usuarios del broker»." >&2
     echo "  docker compose exec mosquitto mosquitto_passwd -b /mosquitto/config/passwd '$USERNAME' '<password>'" >&2
     exit 2
   fi
 }
 
 run_mosquitto_passwd
+# OJO con el modo: el fallo #2 de docs/deployment/procedimiento.md fue
+# exactamente esto — `passwd` en 0600 con un propietario que el proceso del
+# broker (uid 1883) no podía leer, «Unable to open pwfile» y bucle de
+# reinicio. Se conserva 0600 por ser material de credenciales, pero el
+# PROPIETARIO debe permitir la lectura al broker. No relajar el modo a 0644:
+# la solución es el propietario/grupo, no aflojar el fichero.
 chmod 600 "$PASSWD_FILE"
+echo "RECUERDA: mosquitto NO relee password_file solo. Tras el alta hace falta" >&2
+echo "recargarlo (SIGHUP al proceso del broker). Y comprueba que el propietario" >&2
+echo "de $PASSWD_FILE permite la lectura al uid 1883, o el broker no arrancará." >&2
 
 echo "Usuario '$USERNAME' creado/actualizado en $PASSWD_FILE" >&2
 if [[ "$PRINT_ONLY" == "--print-only" ]]; then
