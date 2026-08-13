@@ -150,3 +150,94 @@ DEPLOY TREE:  APTO PARA SANEAMIENTO
 Ni `git reset --hard`, ni `git clean`, ni borrado de `.PRE`, ni sobrescritura
 de `mosquitto.conf`, ni construcción de imagen, ni despliegue. Esto es la
 fotografía; la limpieza selectiva viene después del dictamen.
+
+---
+
+# Saneamiento selectivo EJECUTADO (2026-08-13)
+
+| elemento / grupo | clase | acción | destino | verificación |
+|---|---|---|---|---|
+| `infrastructure/mosquitto/passwd` | A | conservar | ubicación actual | 7/7 sano tras la operación |
+| `certs/ca.crt`, `certs/server.crt`, `certs/server.key` | A | conservar | runtime | broker `healthy` |
+| **`certs/ca.key`** | **A-PKI** | **extraer** | `/root/diana-pki` (0700, root) | **copia verificada por sha256 ANTES de destruir el original**; `shred` después |
+| `.env` | A | conservar | runtime | intacto |
+| `.env.bak-pre-pull-…`, `.env.bak-wp08-…` | C-secreto | **destruir** | — | `shred`; nada los referenciaba y **0 claves** ausentes de `.env` |
+| 5 tracked modificados | B | no preservar a mano | Git objetivo | idénticos a `2586dbc` |
+| `verify-restore.sh`, `generate-certs.sh` | B | conservar | ya en el objetivo | — |
+| `rollback/`, `backups/`, `staging-p02/`, `compose.yml.PRE-HC-…`, `passwd.PRE` | D | **mover** | `/root/diana-evidence/p0-2/predeploy/` (0700) | fuera del checkout |
+
+`ca.key`: original `50cbdbea8232dc46…`, copia `50cbdbea8232dc46…` — idénticas
+antes de destruir. Queda además `SHA256SUMS` junto a la copia. **Destino final
+pendiente: almacenamiento offline fuera de VM109.** Comprobado antes de mover
+que **ningún contenedor la monta**, ninguna unidad systemd la referencia y
+`compose.yml` sólo la nombra en comentarios.
+
+## Consecuencia que casi se me escapa: `generate-certs.sh` habría creado una CA nueva
+
+Sacar `ca.key` del árbol dejó una trampa. El script generaba la CA en
+`CERT_DIR` **cada vez que llegaba a ese punto** —certificado caducado o
+`FORCE=1`—, así que la siguiente rotación habría emitido en silencio una CA
+distinta e invalidado la confianza de todos los clientes. Una rotación de
+servidor no puede convertirse en un cambio de raíz de confianza por accidente.
+
+Corregido, y es lo que el operador pedía conceptualmente: la herramienta pasa a
+ser de **provisión y rotación**, no algo que el stack necesite para arrancar.
+
+- `CA_DIR` (por defecto `/root/diana-pki`) separa la CA del material de runtime.
+- Si la CA existe, **se reutiliza y no se toca**.
+- Si no existe, **aborta** explicando cómo traerla.
+- Sólo `NEW_CA=1` crea una raíz nueva, avisando de que hay que redistribuir
+  `ca.crt` a backend, simulador y firmware.
+- Guardarraíl final: si al terminar apareciera `ca.key` en `CERT_DIR`, sale con error.
+
+Calibrado ejecutándolo: (A) sin CA y sin `NEW_CA` → `rc=1` y **cero** ficheros
+creados; (B) con `NEW_CA=1` → CA en `CA_DIR`, cadena `OK`, y `ca.key` **no**
+aparece en el árbol de despliegue; (C) segunda pasada → *«reutilizando la CA
+existente»* y la clave no cambia.
+
+## Estado final del checkout
+
+```
+ M compose.yml                              (B, idéntico a 2586dbc)
+ M infrastructure/backups/backup.sh         (B)
+ M infrastructure/backups/restore.sh        (B)
+ M infrastructure/mosquitto/acl             (B)
+ M infrastructure/mosquitto/mosquitto.conf  (B)
+?? infrastructure/backups/verify-restore.sh (B, nuevo en el objetivo)
+?? infrastructure/mosquitto/generate-certs.sh (B, ídem)
+?? infrastructure/mosquitto/certs/          (A: ca.crt, server.crt, server.key)
+?? infrastructure/mosquitto/passwd          (A)
+```
+
+Todo lo que permanece dentro de `/opt/diana` está ahí por una razón explícita
+de runtime o de despliegue. Ni evidencia, ni copias manuales, ni credenciales
+obsoletas, ni artefactos de laboratorio.
+
+Queda un residuo conocido y **no tocado**: `server/backend/node_modules/`
+(ignorado, caché de construcción). No cumple la propiedad, pero eliminarlo no
+aporta a P0-2 y sí puede sorprender a algún procedimiento; se anota para
+decidirlo aparte.
+
+## Gate
+
+```
+0 elementos E                                    ✔
+0 secretos obsoletos conocidos                   ✔ (dos .env.bak destruidos)
+0 evidencia dentro del checkout                  ✔
+0 residuos conocidos (salvo node_modules, anotado) ✔
+tracked production = exactamente explicado       ✔ (5/5 == 2586dbc)
+runtime secrets presentes y deliberados          ✔
+ca.key fuera del deploy tree                     ✔
+HEAD/base conocidos                              ✔ (6da16d4)
+
+SANITIZED TREE → LISTO PARA BUILD DEL HOTFIX
+```
+
+## Regla operativa permanente
+
+**En producción Diana queda PROHIBIDO usar `git clean` como procedimiento de
+despliegue o recuperación.** Demostrado empíricamente sobre este inventario:
+`git clean -fd` habría borrado `infrastructure/mosquitto/passwd` y los
+certificados no ignorados —broker sin arrancar y backend abortando por CA
+ausente— y `-fdx` se habría llevado además `.env` y las claves privadas. La
+limpieza es siempre selectiva y basada en inventario.

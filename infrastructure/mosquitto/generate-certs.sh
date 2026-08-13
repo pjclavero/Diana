@@ -2,12 +2,16 @@
 # ==============================================================================
 # Diana · generate-certs.sh — CA propia y certificado de servidor para MQTT TLS
 # ==============================================================================
-# Genera, bajo infrastructure/mosquitto/certs/ (fuera de git):
+# LA CLAVE DE LA CA NO VIVE EN EL ÁRBOL DE DESPLIEGUE. Desde 2026-08-13 reside
+# en $CA_DIR, un directorio root-only fuera de /opt/diana, y su destino final es
+# almacenamiento offline separado de la VM: su función es EMITIR y ROTAR
+# certificados, no ejecutar Diana. El stack productivo no la necesita para
+# arrancar — sólo necesita ca.crt, server.crt y server.key.
 #
-#   ca.key      clave privada de la CA        0600  — NUNCA sale de aquí
-#   ca.crt      certificado de la CA          0644  — se distribuye a los clientes
-#   server.key  clave privada del broker      0600
-#   server.crt  certificado del broker        0644
+#   $CA_DIR/ca.key   clave privada de la CA   0600  — FUERA del despliegue
+#   $CERT_DIR/ca.crt   certificado de la CA   0644  — se distribuye a los clientes
+#   $CERT_DIR/server.key  clave del broker    0600  — propiedad del uid del broker
+#   $CERT_DIR/server.crt  certificado broker  0644
 #
 # Los clientes (backend, simulador, firmware) validan `server.crt` contra
 # `ca.crt` y comprueban además el NOMBRE del servidor, así que el certificado
@@ -24,7 +28,9 @@
 # Uso:
 #   ./generate-certs.sh                    # IP pública por defecto (ver abajo)
 #   MQTT_PUBLIC_IP=192.168.1.209 ./generate-certs.sh
-#   FORCE=1 ./generate-certs.sh            # regenera aunque ya existan
+#   FORCE=1 ./generate-certs.sh            # rota el certificado de SERVIDOR
+#   NEW_CA=1 ./generate-certs.sh           # crea una CA NUEVA (rompe la confianza)
+#   CA_DIR=/ruta/segura ./generate-certs.sh
 #
 # El script es idempotente: si los certificados ya existen y siguen siendo
 # válidos, no los toca (regenerarlos rompería a todo cliente que ya confía en
@@ -34,6 +40,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CERT_DIR="${CERT_DIR:-${SCRIPT_DIR}/certs}"
+# Ubicación de la CA, FUERA del árbol de despliegue.
+CA_DIR="${CA_DIR:-/root/diana-pki}"
 MQTT_PUBLIC_IP="${MQTT_PUBLIC_IP:-192.168.1.209}"
 CA_DAYS="${CA_DAYS:-3650}"
 SERVER_DAYS="${SERVER_DAYS:-825}"   # límite habitual de los clientes TLS modernos
@@ -53,12 +61,39 @@ if [ -f "${CERT_DIR}/server.crt" ] && [ "${FORCE:-0}" != "1" ]; then
     echo "[certs] el certificado de servidor existente está CADUCADO; se regenera."
 fi
 
-echo "[certs] generando CA propia (${CA_DAYS} días)…"
-openssl req -x509 -newkey rsa:4096 -sha256 -days "$CA_DAYS" -nodes \
-    -keyout "${CERT_DIR}/ca.key" -out "${CERT_DIR}/ca.crt" \
+# --- La CA: se REUTILIZA, no se recrea -----------------------------------------
+# Antes este bloque creaba una CA nueva en CERT_DIR cada vez que llegaba aquí
+# (certificado caducado o FORCE=1). Con la clave de la CA ya fuera del árbol,
+# eso habría emitido en SILENCIO una CA distinta e invalidado la confianza de
+# TODOS los clientes: backend, simulador y, cuando exista, el firmware. Una
+# rotación de servidor no puede convertirse en un cambio de raíz de confianza
+# por accidente.
+if [ -f "${CA_DIR}/ca.key" ] && [ -f "${CA_DIR}/ca.crt" ]; then
+    echo "[certs] reutilizando la CA existente de ${CA_DIR} (no se toca)."
+elif [ "${NEW_CA:-0}" = "1" ]; then
+    echo "[certs] *** CREANDO UNA CA NUEVA en ${CA_DIR} ***"
+    echo "[certs] Esto INVALIDA a todos los clientes que confían en la anterior:"
+    echo "[certs] habrá que redistribuir ca.crt al backend, al simulador y al"
+    echo "[certs] firmware antes de que vuelvan a conectar."
+    mkdir -p "$CA_DIR"; chmod 700 "$CA_DIR"
+    openssl req -x509 -newkey rsa:4096 -sha256 -days "$CA_DAYS" -nodes \
+        -keyout "${CA_DIR}/ca.key" -out "${CA_DIR}/ca.crt" \
     -subj "/C=ES/O=Proyecto Diana/CN=Diana Internal CA" \
     -addext "basicConstraints=critical,CA:TRUE,pathlen:0" \
-    -addext "keyUsage=critical,keyCertSign,cRLSign" 2>/dev/null
+        -addext "keyUsage=critical,keyCertSign,cRLSign" 2>/dev/null
+    chmod 600 "${CA_DIR}/ca.key"
+else
+    echo "[certs] ERROR: no hay CA en ${CA_DIR} y NEW_CA no está a 1." >&2
+    echo "[certs] Este script NO crea una raíz de confianza por accidente." >&2
+    echo "[certs] Si la CA está archivada fuera de esta máquina, tráela a" >&2
+    echo "[certs] ${CA_DIR} (0600) o indica CA_DIR. Si de verdad quieres una CA" >&2
+    echo "[certs] nueva —y redistribuir ca.crt a TODOS los clientes— usa NEW_CA=1." >&2
+    exit 1
+fi
+
+# ca.crt sí es público y sí vive junto al resto del material de runtime: es lo
+# que los clientes usan para validar al broker.
+cp "${CA_DIR}/ca.crt" "${CERT_DIR}/ca.crt"
 
 echo "[certs] generando certificado de broker (${SERVER_DAYS} días)…"
 openssl req -newkey rsa:2048 -sha256 -nodes \
@@ -73,20 +108,20 @@ subjectAltName = DNS:mosquitto,DNS:localhost,IP:127.0.0.1,IP:${MQTT_PUBLIC_IP}
 EOF
 
 openssl x509 -req -in "${CERT_DIR}/server.csr" -sha256 -days "$SERVER_DAYS" \
-    -CA "${CERT_DIR}/ca.crt" -CAkey "${CERT_DIR}/ca.key" -CAcreateserial \
+    -CA "${CA_DIR}/ca.crt" -CAkey "${CA_DIR}/ca.key" -CAcreateserial \
     -extfile "${CERT_DIR}/server.ext" -out "${CERT_DIR}/server.crt" 2>/dev/null
 
-rm -f "${CERT_DIR}/server.csr" "${CERT_DIR}/server.ext" "${CERT_DIR}/ca.srl"
+rm -f "${CERT_DIR}/server.csr" "${CERT_DIR}/server.ext" "${CA_DIR}/ca.srl"
 
 # Las claves privadas no las lee nadie salvo su dueño.
-chmod 600 "${CERT_DIR}/ca.key" "${CERT_DIR}/server.key"
+chmod 600 "${CERT_DIR}/server.key"
 chmod 644 "${CERT_DIR}/ca.crt" "${CERT_DIR}/server.crt"
 
 # La imagen oficial eclipse-mosquitto NO corre como root: su proceso es el
 # usuario `mosquitto`, uid 1883. Con server.key en 0600 propiedad de root el
 # broker no puede leer su propia clave y no arranca. Se le da la propiedad de
-# la clave del SERVIDOR, y sólo de ella: `ca.key` sigue siendo de root y ni
-# siquiera se monta en el contenedor (ver compose.yml).
+# la clave del SERVIDOR, y sólo de ella: `ca.key` ni siquiera está en este
+# directorio — vive en ${CA_DIR}, fuera del árbol de despliegue.
 BROKER_UID="${BROKER_UID:-1883}"
 if [ "$(id -u)" = "0" ]; then
     chown "${BROKER_UID}:${BROKER_UID}" "${CERT_DIR}/server.key"
@@ -100,4 +135,12 @@ openssl verify -CAfile "${CERT_DIR}/ca.crt" "${CERT_DIR}/server.crt"
 openssl x509 -in "${CERT_DIR}/server.crt" -noout -subject -issuer -dates -ext subjectAltName
 
 echo "[certs] listo en ${CERT_DIR}"
-echo "[certs] RECUERDA: ca.key NO se copia a ningún cliente ni al repositorio."
+echo "[certs] RECUERDA: ca.key NO se copia a ningún cliente, ni al repositorio,"
+echo "[certs] ni al árbol de despliegue. Vive en ${CA_DIR} y su sitio definitivo"
+echo "[certs] es almacenamiento offline fuera de esta máquina."
+# Guardarraíl final: que este script no deje nunca la clave de la CA dentro del
+# material que se despliega, pase lo que pase por arriba.
+if [ -e "${CERT_DIR}/ca.key" ]; then
+    echo "[certs] ERROR: ha aparecido ca.key en ${CERT_DIR}. No debe estar ahí." >&2
+    exit 1
+fi
