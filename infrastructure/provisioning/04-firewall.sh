@@ -6,7 +6,8 @@
 # Reglas:
 #   - SSH (22): sólo LAN (192.168.1.0/24) y Tailscale (100.64.0.0/10).
 #   - HTTP/HTTPS (80/443): LAN y Tailscale.
-#   - MQTT (1883): sólo LAN (lo necesitan los módulos físicos).
+#   - MQTT sobre TLS (8883): sólo LAN (lo necesitan los módulos físicos).
+#     El 1883 en claro ya NO se abre (P0-2).
 #   - UDP 41641: Tailscale (establecimiento directo de conexiones).
 #   - Todo lo demás entrante: DROP. Nada expuesto a Internet.
 #   - PostgreSQL (5432) deliberadamente NO se abre en ninguna regla.
@@ -35,8 +36,16 @@ table inet filter {
         ip saddr 192.168.1.0/24 tcp dport { 80, 443 } accept
         ip saddr 100.64.0.0/10 tcp dport { 80, 443 } accept
 
-        # MQTT: solo LAN
-        ip saddr 192.168.1.0/24 tcp dport 1883 accept
+        # MQTT sobre TLS: solo LAN. El 1883 en claro ya no se abre (P0-2):
+        # la regla anterior seguia aceptandolo aunque nada escuche ya ahi, y
+        # habria vuelto a abrir el camino sin cifrar en cuanto algo se atara a
+        # ese puerto del host.
+        #
+        # NOTA: los puertos que publica Docker NO pasan por esta cadena input
+        # (van por la cadena forward de Docker), asi que esta regla no es la
+        # que permite hoy llegar al broker; se corrige para que el fichero
+        # diga la verdad y no deje un agujero latente.
+        ip saddr 192.168.1.0/24 tcp dport 8883 accept
 
         # Tailscale: establecimiento directo de conexiones
         udp dport 41641 accept

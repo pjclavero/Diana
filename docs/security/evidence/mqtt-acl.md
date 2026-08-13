@@ -1,5 +1,12 @@
 # Evidencia · MQTT (ACL, TLS, client_id)
 
+> **REGISTRO HISTÓRICO.** Capturado antes de P0-2 (transcripciones de
+> `mosquitto.conf` previas al 2026-08-10). Los números de línea y el texto de
+> abajo NO corresponden al fichero actual: hoy el listener es 8883 con TLS,
+> `use_username_as_clientid true` está activo y la regla nft del 1883 se ha
+> sustituido por 8883. Ver `p02-baseline-produccion.md` y el hotfix
+> `hotfix/p02-tls-6da16d4`. Se conserva porque documenta lo que se midió.
+
 ## mosquitto.conf: no existe use_username_as_clientid
 ```
 9:# - Listener MQTT estándar (1883) + listener WebSocket (9001) para el panel.

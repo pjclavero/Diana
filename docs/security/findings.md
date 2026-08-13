@@ -41,9 +41,9 @@ credenciales privilegiadas), **Alta**, **Media**, **Baja**. Se justifican una a 
 
 | # | Hallazgo | Sev. | Activo | Paquete | Método |
 |---|---|---|---|---|---|
-| F-01 | El `.gitignore` no cubre `infrastructure/mosquitto/passwd` | Alta | A2 | WP-00/WP-01 | OBSERVADO |
+| F-01 | El `.gitignore` no cubre `infrastructure/mosquitto/passwd` | Alta | A2 | WP-00/WP-01 | **CORREGIDO 2026-08-13 · P0-2** (el patrón llevaba barra y se anclaba a la raíz) |
 | F-02 | La ACL de MQTT autoriza por `client_id`: suplantación de módulo | Crítica | A1, A4 | WP-01 | **CONFIRMADO EN VIVO (2026-07-21)** |
-| F-03 | MQTT 1883 en claro y abierto a toda la LAN | Alta | A2, A1 | WP-01, WP-08 | OBSERVADO |
+| F-03 | MQTT 1883 en claro y abierto a toda la LAN | Alta | A2, A1 | WP-01, WP-08 | **CERRADO (mitad MQTT) 2026-08-13 · P0-2**; ver nota en su sección |
 | F-04 | El contrato de variables de entorno está roto: `JWT_SECRET` nunca llega al backend | Alta | A3 | WP-01, WP-02 | OBSERVADO + DEDUCIDO |
 | F-05 | WebSocket `/live` sin autenticación y con CORS reflejado | Alta | A1, A6 | WP-02 | DEDUCIDO |
 | F-06 | Swagger `/docs` se publica sin autenticación ni condición de entorno | Media | A6 | WP-02 | DEDUCIDO |
@@ -205,6 +205,15 @@ reproducción de arriba, que debe pasar a fallar.
 
 ## F-03 · MQTT 1883 en claro y abierto a toda la LAN
 
+> **ESTADO (2026-08-13): CERRADO en su mitad MQTT por P0-2.** Todo lo que sigue
+> describe la situación ANTES del hotfix `hotfix/p02-tls-6da16d4` y se conserva
+> como registro histórico de lo medido, no como estado actual. Hoy: el broker
+> sirve en 8883 con CA propia, el 1883 no se publica al host, el backend valida
+> CA y nombre y aborta si la URL va en claro con `NODE_ENV=production`.
+> Sigue abierto: un `listener 1883` interno a la red de Docker (condición de
+> cierre: dotar de TLS a `test-acl.sh`), el firmware de los módulos, y la mitad
+> HTTP de F-07 (nginx sigue en claro).
+
 **Severidad: Alta.** Es el habilitador de F-02: convierte a un actor sin credenciales (T1)
 en un actor con credenciales de módulo (T3) mediante captura pasiva.
 
@@ -277,7 +286,7 @@ Comparando ambas listas, el desajuste es sistemático y afecta a cinco variables
 |---|---|---|
 | `JWT_SECRET` | *(nada)* | El secreto nunca llega |
 | `CORS_ORIGINS` (plural) | `CORS_ORIGIN` (singular) | La lista queda vacía |
-| `MQTT_URL` | `MQTT_HOST` + `MQTT_PORT` | Cae al valor por defecto `mqtt://mosquitto:1883` |
+| `MQTT_URL` | `MQTT_HOST` + `MQTT_PORT` | ~~Cae al valor por defecto `mqtt://mosquitto:1883`~~ · **CORREGIDO 2026-08-13 (P0-2)**: la URL se construye con `MQTT_PROTOCOL/HOST/PORT` (`mqtts`/8883 por defecto). `MQTT_URL` conserva precedencia absoluta y es hoy la escapatoria a vigilar |
 | *(nada)* | `SESSION_SECRET` | Variable muerta |
 | `DIANA_ADMIN_USERNAME/PASSWORD/EMAIL` | *(nada)* | Contraseña de admin siempre autogenerada (ver F-11) |
 

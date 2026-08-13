@@ -69,7 +69,8 @@ services:
       - "${POSTGRES_DEV_HOST_PORT:-5433}:5432"
 
   mosquitto:
-    # En dev, además del 1883 (ya publicado en compose.yml base), se publica
+    # En dev, además del 8883 TLS (el único que publica compose.yml base desde
+    # P0-2; el 1883 en claro ya no se publica), se publica
     # el listener WebSocket para probar clientes MQTT-over-WS desde el
     # navegador sin pasar por el proxy.
     ports:

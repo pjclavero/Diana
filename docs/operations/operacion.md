@@ -93,7 +93,10 @@ docker run --rm --network "$NET" -v /opt/diana:/repo -w /repo/server/backend \
 
 ```bash
 cd /opt/diana/infrastructure/mosquitto
-./test-acl.sh 127.0.0.1 1883 "$MQTT_BACKEND_PW" "$M1_PW" "$M2_PW"
+# Desde el host ya no funciona: el 1883 no se publica (P0-2) y este script
+# todavía no habla TLS. Se ejecuta dentro de la red de Docker:
+docker compose exec mosquitto sh -c \
+  './test-acl.sh 127.0.0.1 1883 "$MQTT_BACKEND_PW" "$M1_PW" "$M2_PW"' 
 ```
 Requiere los usuarios `backend`, `module-m1`, `module-m2` en `passwd`. Todas
 las rutas negativas (suplantación, escritura en `config/desired`, `command`,
@@ -132,9 +135,12 @@ haga, esto es un procedimiento, no una verificación.
   físicos). PostgreSQL NO se publica. El proxy publica `8080`.
 - **Queda un `listener 1883` en claro dentro de la red interna de Docker**, sin
   publicar al host. Es transitorio: sobrevive únicamente porque `test-acl.sh`
-  todavía no sabe hablar TLS. Mientras exista, una configuración que devuelva
-  la URL del backend a `mqtt://` conectaría sin validar nada y sin un solo
-  error en el log.
+  todavía no sabe hablar TLS, y esa es la condición para cerrarlo. Un cliente
+  que devolviera su URL a `mqtt://` encontraría ahí un broker dispuesto a
+  hablarle en claro; el backend ya no es uno de ellos (aborta si la URL va sin
+  TLS y `NODE_ENV=production`), pero cualquier otro cliente sí lo sería.
+- **`MQTT_URL` es la escapatoria a vigilar**: tiene precedencia absoluta sobre
+  protocolo, host y puerto. No definirla en el `.env` de la VM.
 - **nginx sigue en claro**: el bloque HTTPS/8443 continúa preparado y
   comentado. P0-2 cubrió el transporte MQTT, no el HTTP.
 - No exponer nada a Internet sin revisar antes CORS, TLS y contraseñas.

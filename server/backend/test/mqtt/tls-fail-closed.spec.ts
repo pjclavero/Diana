@@ -89,11 +89,35 @@ describe('MqttService · TLS que falla cerrado (P0-2)', () => {
     expect(options).not.toHaveProperty('servername');
   });
 
-  it('URL en claro: no se inventan opciones TLS', async () => {
-    const service = buildService('mqtt://broker:1883', null);
-    await service.onModuleInit();
-    const options = connectSpy.mock.calls[0][1] as Record<string, unknown>;
-    expect(options).not.toHaveProperty('ca');
-    expect(options).not.toHaveProperty('rejectUnauthorized');
+  it('URL en claro fuera de producción: se permite, pero no se inventan opciones TLS', async () => {
+    const previo = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'test';
+    try {
+      const service = buildService('mqtt://broker:1883', null);
+      await service.onModuleInit();
+      const options = connectSpy.mock.calls[0][1] as Record<string, unknown>;
+      expect(options).not.toHaveProperty('ca');
+      expect(options).not.toHaveProperty('rejectUnauthorized');
+    } finally {
+      process.env.NODE_ENV = previo;
+    }
+  });
+
+  it('URL en claro EN PRODUCCIÓN: aborta — la escapatoria de MQTT_URL queda cerrada', async () => {
+    // Por qué este caso y no otro: MQTT_URL tiene precedencia absoluta sobre
+    // protocolo/host/puerto, así que ponerla a `mqtt://` en el .env de la VM
+    // devolvía el backend a texto en claro sin romper nada visible. Fijar en
+    // un test que "MQTT_URL gana" no vigilaba NADA: la única mutación que lo
+    // habría puesto rojo era invertir la precedencia, o sea, arreglar el
+    // problema. El control tiene que estar en el código, y esto lo comprueba.
+    const previo = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const service = buildService('mqtt://mosquitto:1883', null);
+      await expect(service.onModuleInit()).rejects.toThrow(/no está permitido en producción/);
+      expect(connectSpy).not.toHaveBeenCalled();
+    } finally {
+      process.env.NODE_ENV = previo;
+    }
   });
 });

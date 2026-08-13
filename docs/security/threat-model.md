@@ -40,7 +40,11 @@ Se descarta explícitamente al atacante remoto de Internet: no hay exposición e
 
 ### T1 · Alguien en la LAN, sin credenciales
 
-**Qué alcanza hoy:** los puertos 22, 80/443 y **1883** desde `192.168.1.0/24` (regla nft
+> **DESFASADO desde 2026-08-13 (P0-2)**: el broker ya no sirve en claro desde
+> la LAN — publica 8883 con TLS y CA propia. Este apartado describe el estado
+> anterior; se conserva como registro de lo medido.
+
+**Qué alcanzaba (hasta 2026-08-13):** los puertos 22, 80/443 y **1883** desde `192.168.1.0/24` (regla nft
 verificada). El broker rechaza el anónimo (`mosquitto.conf:29`), pero **1883 va en claro**:
 un CONNECT MQTT lleva usuario y contraseña sin cifrar. En una LAN doméstica con WiFi, la
 captura pasiva es realista.
@@ -117,7 +121,7 @@ grupo `docker`; la clave es el **único** factor. Ver el dictamen completo en **
 | HTTP 80/443 → nginx → panel y API | cabeceras de seguridad completas, `limit_req`, CSP con `frame-ancestors 'none'` | F-07, F-08 |
 | API REST `/api/**` | JWT + permisos como guards globales, `ValidationPipe` estricto, `helmet` | F-04, F-06, F-12 |
 | WebSocket `/live` | **sin autenticación y con CORS reflejado** | F-05 |
-| MQTT 1883/tcp (toda la LAN) | sin anónimo, con ACL, **sin TLS**, autorización por `client_id` | F-02, F-03 |
+| ~~MQTT 1883/tcp (toda la LAN)~~ → **MQTT 8883/tcp, TLS con CA propia** (2026-08-13, P0-2) | sin anónimo, con ACL, **con TLS y validación de CA/nombre**, autorización por usuario autenticado (`use_username_as_clientid`) | F-02 y F-03 cerradas en su mitad MQTT |
 | Canal de comandos → módulo | `nonce` persistido en NVS + `command_id` + caducidad; techo de 30 s para acciones críticas | F-16 |
 | Canal OTA → módulo | sha256 + tamaño + placa + versión + firma delegada a ESP-IDF; prohibida en partida; rollback A/B | F-14 |
 | PostgreSQL | **no publicado al host** en `compose.yml` (sí en `compose.dev.yml`, documentado) | — |

@@ -17,8 +17,17 @@
 # Uso:
 #   ./test-acl.sh <host> <puerto> <backend_password> <m1_password> <m2_password>
 #
-# Ejemplo contra el stack local (desde el host, con el puerto 1883 publicado):
-#   ./test-acl.sh 127.0.0.1 1883 "$BACKEND_PW" "$M1_PW" "$M2_PW"
+# OJO (P0-2, 2026-08-13): desde el host YA NO FUNCIONA. El 1883 dejó de
+# publicarse; sólo se publica 8883 con TLS, y este script todavía no sabe
+# hablar TLS (no pasa --cafile en ninguna invocación). Mientras siga así, hay
+# que ejecutarlo DENTRO de la red de Docker, contra el listener 1883 interno:
+#
+#   docker compose exec mosquitto sh -c \
+#     './test-acl.sh 127.0.0.1 1883 "$BACKEND_PW" "$M1_PW" "$M2_PW"'
+#
+# Dotar de TLS a este script es la condición para cerrar ese listener interno
+# (ver infrastructure/mosquitto/mosquitto.conf, bloque del paso 10). Si alguien
+# "arregla" el fallo republicando el 1883 al host, deshace P0-2 entero.
 #
 # Qué comprueba (todas las rutas negativas deben FALLAR; success = ACL correcta):
 #   1. Cliente anónimo no puede ni conectar (allow_anonymous false).

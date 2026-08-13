@@ -66,7 +66,31 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
    */
   private tlsOptions(): Record<string, unknown> {
     const isTls = /^(mqtts|wss|ssl|tls):\/\//.test(this.config.mqtt.url);
-    if (!isTls) return {};
+    if (!isTls) {
+      // La escapatoria real de P0-2, y la única que no cerraba nada de lo
+      // anterior: MQTT_URL tiene precedencia absoluta sobre protocolo, host y
+      // puerto, así que un `MQTT_URL=mqtt://mosquitto:1883` en el .env de la
+      // VM devolvía el backend a texto en claro sin romper nada visible —
+      // ninguna excepción, ningún error en el log, y con el listener 1883
+      // interno todavía escuchando para recibirlo.
+      //
+      // Un test no puede ver eso: es un hecho del despliegue, no del código.
+      // Así que se cierra donde sí se puede, en el arranque. Fuera de
+      // producción se permite (el laboratorio y las pruebas de integración lo
+      // necesitan) y se avisa; en producción aborta.
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error(
+          `MQTT en claro (${this.config.mqtt.url}) no está permitido en producción: ` +
+            'una URL sin TLS deja el transporte sin cifrar y sin validar la ' +
+            'identidad del broker (P0-2). Usa mqtts:// con MQTT_CA_FILE.',
+        );
+      }
+      this.logger.warn(
+        `MQTT en claro (${this.config.mqtt.url}): el transporte NO está cifrado ` +
+          'y no se valida la identidad del broker. Sólo aceptable fuera de producción.',
+      );
+      return {};
+    }
 
     const caFile = this.config.mqtt.caFile;
     if (!caFile) {
