@@ -74,6 +74,29 @@ describe('configuration · el endpoint MQTT por defecto es TLS (P0-2)', () => {
     expect(loadConfiguration().mqtt.url).toBe('mqtt://mosquitto:1883');
   });
 
+  it('MQTT_URL tiene precedencia absoluta: es la escapatoria, y queda fijada aquí', () => {
+    // La vigilancia que faltaba. `MQTT_URL` gana sobre protocolo, host y
+    // puerto (configuration.ts), así que un MQTT_URL=mqtt://… en el .env de la
+    // VM anula el TLS entero: ni protocolo por defecto, ni CA, ni validación —
+    // y, mientras siga vivo el listener 1883 interno, tampoco un error visible.
+    // No se prohíbe (el laboratorio la necesita), pero deja de ser invisible:
+    // si alguien cambia la precedencia o la introduce como valor por defecto,
+    // esta prueba se entera.
+    process.env.MQTT_URL = 'mqtts://otro-broker:8883';
+    expect(loadConfiguration().mqtt.url).toBe('mqtts://otro-broker:8883');
+
+    // Gana incluso contradiciendo a protocolo/host/puerto: eso es lo peligroso.
+    process.env.MQTT_PROTOCOL = 'mqtts';
+    process.env.MQTT_HOST = 'mosquitto';
+    process.env.MQTT_PORT = '8883';
+    process.env.MQTT_URL = 'mqtt://mosquitto:1883';
+    expect(loadConfiguration().mqtt.url).toBe('mqtt://mosquitto:1883');
+
+    // Y no hay ningún valor por defecto de MQTT_URL: sin ella, manda el resto.
+    delete process.env.MQTT_URL;
+    expect(loadConfiguration().mqtt.url).toBe('mqtts://mosquitto:8883');
+  });
+
   it('MQTT_CA_FILE llega a la configuración; su ausencia no se disfraza', () => {
     expect(loadConfiguration().mqtt.caFile).toBeNull();
 

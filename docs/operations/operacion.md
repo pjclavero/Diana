@@ -122,8 +122,19 @@ haga, esto es un procedimiento, no una verificación.
 
 ## Notas de seguridad de esta instalación (pendientes)
 
-- **TLS desactivado**: nginx y mosquitto sirven en claro dentro de la LAN. El
-  bloque HTTPS/8443 y el listener MQTT 8883 están preparados y comentados.
-- El único puerto MQTT publicado al host es `1883` (lo necesitan los módulos
-  ESP32 físicos). PostgreSQL NO se publica. El proxy publica `8080`.
+- **MQTT sobre TLS (P0-2, desde 2026-08-13)**: mosquitto sirve en `8883` con
+  certificado de una CA propia, y el backend valida CA y nombre de servidor. Si
+  la CA falta o no se puede leer, el backend **aborta**: no existe camino que
+  convierta un error de CA en una conexión sin validar. Los certificados se
+  generan con `infrastructure/mosquitto/generate-certs.sh`; `ca.key` no entra
+  en ningún contenedor.
+- El único puerto MQTT publicado al host es `8883` (lo usan los módulos ESP32
+  físicos). PostgreSQL NO se publica. El proxy publica `8080`.
+- **Queda un `listener 1883` en claro dentro de la red interna de Docker**, sin
+  publicar al host. Es transitorio: sobrevive únicamente porque `test-acl.sh`
+  todavía no sabe hablar TLS. Mientras exista, una configuración que devuelva
+  la URL del backend a `mqtt://` conectaría sin validar nada y sin un solo
+  error en el log.
+- **nginx sigue en claro**: el bloque HTTPS/8443 continúa preparado y
+  comentado. P0-2 cubrió el transporte MQTT, no el HTTP.
 - No exponer nada a Internet sin revisar antes CORS, TLS y contraseñas.

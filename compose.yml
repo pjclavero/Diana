@@ -560,12 +560,14 @@ services:
 
 networks:
   # Red de borde: proxy <-> frontend/backend. El proxy es el único servicio
-  # con puertos publicados al host (además de mosquitto:1883).
+  # con puertos publicados al host (además de mosquitto:8883, sólo TLS).
   edge:
     driver: bridge
   # Red interna: backend/worker/migrate/backup <-> postgres/mosquitto. Ningún
-  # servicio de esta red publica puertos al host salvo mosquitto (1883,
-  # necesario para los módulos físicos de la LAN).
+  # servicio de esta red publica puertos al host salvo mosquitto (8883 sobre
+  # TLS, necesario para los módulos físicos de la LAN). El 1883 en claro sigue
+  # existiendo DENTRO de esta red —transitorio, ver mosquitto.conf— pero no se
+  # publica: desde la LAN el camino sin cifrar ya no existe.
   internal:
     driver: bridge
 
