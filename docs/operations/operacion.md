@@ -91,21 +91,43 @@ docker run --rm --network "$NET" -v /opt/diana:/repo -w /repo/server/backend \
 
 ### ACL de Mosquitto
 
+Desde el **host de la VM**, por TLS contra el 8883 publicado:
+
 ```bash
 cd /opt/diana/infrastructure/mosquitto
-# Desde el host ya no funciona: el 1883 no se publica (P0-2) y este script
-# todavía no habla TLS. Se ejecuta dentro de la red de Docker:
-docker compose exec mosquitto sh -c \
-  './test-acl.sh 127.0.0.1 1883 "$MQTT_BACKEND_PW" "$M1_PW" "$M2_PW"' 
+# Las contraseñas por entorno, no por argumento (no acaban en el historial ni
+# en `ps`). Sin argumentos: localhost:8883 validando ./certs/ca.crt.
+ACL_BACKEND_PW='…' ACL_M1_PW='…' ACL_M2_PW='…' ./test-acl.sh
 ```
+
 Requiere los usuarios `backend`, `module-m1`, `module-m2` en `passwd`. Todas
 las rutas negativas (suplantación, escritura en `config/desired`, `command`,
 `ota`) deben quedar bloqueadas.
 
+> **Si falla la conexión, NO republiques el 1883.** Esa es la reacción que
+> deshace P0-2 entero, y este documento ya indujo a ella dos veces con dos
+> comandos distintos que no funcionaban. Comprueba en este orden: que
+> `./certs/ca.crt` existe y es legible; que el 8883 está publicado
+> (`ss -ltn | grep 8883`); y que el broker está sano
+> (`docker compose ps mosquitto`). Un `Error: A TLS error occurred` significa
+> CA equivocada, no que haga falta texto en claro.
+
 ### Simulador -> Mosquitto -> PostgreSQL
 
+> **`docker compose --profile simulator up -d device-simulator` no simula
+> nada.** El `CMD` de esa imagen es `run --help`, y las variables `MQTT_HOST`/
+> `MQTT_PORT` que compose le pasaba nunca se leyeron (retiradas en P0-2). El
+> simulador elige broker sólo con `--broker`.
+
 ```bash
-docker compose --profile simulator up -d device-simulator
+docker compose --profile simulator run --rm device-simulator run \
+  --broker mqtts://mosquitto:8883 \
+  --cafile /workspace/certs/ca.crt \
+  --username module-01 --password "$M1_PW" --modules 3
+# NO EJECUTADO todavía contra la VM (a 2026-08-13): esta receta es coherente
+# con el compose y el CLI actuales —el montaje de ca.crt existe y --cafile está
+# implementado— pero hasta que alguien la corra, es un procedimiento, no una
+# verificación. Si falla, arréglala aquí; no reabras el 1883.
 # El backend ingesta desde MQTT; comprobar filas en hit_events:
 docker compose exec -T postgres psql "$DATABASE_URL" -c "SELECT count(*) FROM hit_events;"
 ```
@@ -133,12 +155,16 @@ haga, esto es un procedimiento, no una verificación.
   en ningún contenedor.
 - El único puerto MQTT publicado al host es `8883` (lo usan los módulos ESP32
   físicos). PostgreSQL NO se publica. El proxy publica `8080`.
-- **Queda un `listener 1883` en claro dentro de la red interna de Docker**, sin
-  publicar al host. Es transitorio: sobrevive únicamente porque `test-acl.sh`
-  todavía no sabe hablar TLS, y esa es la condición para cerrarlo. Un cliente
-  que devolviera su URL a `mqtt://` encontraría ahí un broker dispuesto a
-  hablarle en claro; el backend ya no es uno de ellos (aborta si la URL va sin
-  TLS y `NODE_ENV=production`), pero cualquier otro cliente sí lo sería.
+- **No queda ningún listener en claro**, ni publicado al host ni dentro de la
+  red interna de Docker. El `listener 1883` interno se eliminó el 2026-08-13,
+  cuando `test-acl.sh` —su única razón de ser— aprendió a hablar TLS. Lo vigila
+  `server/backend/test/mqtt/broker-sin-listener-en-claro.spec.ts`, que se pone
+  roja si alguien lo reintroduce en `mosquitto.conf` o vuelve a publicar el
+  1883 en `compose.yml`.
+- **El simulador necesita `--cafile`** para hablar con el broker
+  (`--broker mqtts://…:8883 --cafile …/certs/ca.crt`). Sin ella aborta en vez de
+  conectar sin validar. La receta antigua con `mqtt://…:1883` ya no funciona y
+  no debe "arreglarse" reabriendo el puerto.
 - **`MQTT_URL` es la escapatoria a vigilar**: tiene precedencia absoluta sobre
   protocolo, host y puerto. No definirla en el `.env` de la VM.
 - **nginx sigue en claro**: el bloque HTTPS/8443 continúa preparado y

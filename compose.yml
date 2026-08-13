@@ -303,14 +303,14 @@ services:
 
   # ----------------------------------------------------------------------------
   # Mosquitto — sólo el puerto MQTT sobre TLS (8883) se publica al host (lo
-  # necesitan los módulos ESP32 físicos de la LAN). El 1883 en claro ya no se
-  # publica. El puerto WebSocket (9001) queda interno.
+  # necesitan los módulos ESP32 físicos de la LAN). No hay ningún listener MQTT
+  # en claro, ni publicado ni interno. El puerto WebSocket (9001) queda interno.
   # ----------------------------------------------------------------------------
   mosquitto:
     image: eclipse-mosquitto:2.0.18
     restart: unless-stopped
     ports:
-      # Sólo TLS (P0-2). El 1883 en claro YA NO SE PUBLICA ni existe en el
+      # Sólo TLS (P0-2). El 1883 en claro NO EXISTE en el
       # broker: era el camino por el que se leían credenciales de la LAN (H7-03).
       - "${MQTT_TLS_PORT:-8883}:8883"
     volumes:
@@ -419,12 +419,27 @@ services:
       mosquitto:
         condition: service_healthy
     environment:
-      MQTT_HOST: ${MQTT_HOST:-mosquitto}
-      MQTT_PORT: ${MQTT_PORT:-1883}
+      # MQTT_HOST/MQTT_PORT retiradas (P0-2): el simulador NO las lee. Su
+      # entrypoint es `node dist/cli.js` y el broker se elige exclusivamente con
+      # `--broker`; estas dos variables llevaban aquí desde el principio sin que
+      # nadie las consultara, apuntando además al 1883 en claro que ya no
+      # existe. Es el mismo defecto que tenía el backend —configuración que el
+      # despliegue pasa y el proceso ignora— y engañaba igual.
+      #
+      # Para lanzarlo contra el broker real, desde el host de la VM:
+      #   npx diana-sim run --broker mqtts://mosquitto:8883 \
+      #     --cafile /opt/diana/infrastructure/mosquitto/certs/ca.crt \
+      #     --username module-01 --password ***
       SIMULATOR_MODULE_COUNT: ${SIMULATOR_MODULE_COUNT:-3}
       SIMULATOR_SEED: ${SIMULATOR_SEED:-42}
       SIMULATOR_MODULE_PREFIX: ${SIMULATOR_MODULE_PREFIX:-sim}
       TZ: UTC
+    volumes:
+      # Sólo la CA pública, en sólo lectura: es lo único que necesita para
+      # validar al broker. Ni la clave de la CA ni el certificado del servidor
+      # tienen nada que hacer aquí. Sin este montaje, `--cafile` no tendría
+      # ninguna ruta válida que señalar dentro del contenedor.
+      - ./infrastructure/mosquitto/certs/ca.crt:/workspace/certs/ca.crt:ro
     networks:
       - internal
     deploy:
@@ -565,9 +580,10 @@ networks:
     driver: bridge
   # Red interna: backend/worker/migrate/backup <-> postgres/mosquitto. Ningún
   # servicio de esta red publica puertos al host salvo mosquitto (8883 sobre
-  # TLS, necesario para los módulos físicos de la LAN). El 1883 en claro sigue
-  # existiendo DENTRO de esta red —transitorio, ver mosquitto.conf— pero no se
-  # publica: desde la LAN el camino sin cifrar ya no existe.
+  # TLS, necesario para los módulos físicos de la LAN). Desde 2026-08-13 no hay
+  # NINGÚN camino MQTT en claro: tampoco dentro de esta red. El listener 1883
+  # interno se eliminó al dotar de TLS a test-acl.sh, que era su única razón de
+  # ser; lo vigila una prueba de regresión en el backend.
   internal:
     driver: bridge
 

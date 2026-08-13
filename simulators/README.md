@@ -15,7 +15,8 @@ No sustituye ni modifica nada fuera de `simulators/**`.
   (`src/transport/memoryBroker.ts`), porque en este entorno de desarrollo
   **no hay ningún Mosquitto disponible**.
 - Para correr contra un Mosquitto real (WP-08, VM `diana-server`): añade
-  `--broker mqtt://host:1883 --username ... --password ...` al CLI. Esa ruta
+  `--broker mqtts://host:8883 --cafile <ca.crt> --username ... --password ...` al
+  CLI. La CA es obligatoria con `mqtts://` y sin ella aborta (P0-2). Esa ruta
   usa `mqtt.js` (`src/transport/mqttjsTransport.ts`) y **no se ha ejecutado
   en este entorno** por no haber broker disponible; queda documentada aquí y
   cubierta por el mismo código que ya pasa los tests en memoria (la única
@@ -78,7 +79,8 @@ node dist/cli.js run --scenario scenarios/02-partida-aleatoria-completa.json
 
 # Contra un Mosquitto real (WP-08, no probado aquí por falta de broker):
 node dist/cli.js run --scenario scenarios/02-partida-aleatoria-completa.json \
-  --broker mqtt://192.168.1.209:1883 \
+  --broker mqtts://192.168.1.209:8883 \
+  --cafile /opt/diana/infrastructure/mosquitto/certs/ca.crt \
   --username module-01 --password *** \
   --speed 1 --keep-alive
 ```

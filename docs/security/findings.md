@@ -210,9 +210,14 @@ reproducción de arriba, que debe pasar a fallar.
 > como registro histórico de lo medido, no como estado actual. Hoy: el broker
 > sirve en 8883 con CA propia, el 1883 no se publica al host, el backend valida
 > CA y nombre y aborta si la URL va en claro con `NODE_ENV=production`.
-> Sigue abierto: un `listener 1883` interno a la red de Docker (condición de
-> cierre: dotar de TLS a `test-acl.sh`), el firmware de los módulos, y la mitad
-> HTTP de F-07 (nginx sigue en claro).
+> El `listener 1883` interno a la red de Docker, que se citaba aquí como
+> pendiente, se eliminó también el 2026-08-13 al dotar de TLS a `test-acl.sh`,
+> que era su única razón de ser. Ya no existe ningún camino MQTT en claro.
+> Sigue abierto: la validación de CA en el **firmware** de los módulos (fuera
+> del alcance de P0-2, y hay que decirlo en vez de dejarlo caer), la regla nft
+> que aún abre el 1883 a la LAN sin que nada escuche (limpieza obligatoria
+> antes del cierre definitivo de P0-2) y la mitad HTTP de F-07 (nginx sigue en
+> claro).
 
 **Severidad: Alta.** Es el habilitador de F-02: convierte a un actor sin credenciales (T1)
 en un actor con credenciales de módulo (T3) mediante captura pasiva.

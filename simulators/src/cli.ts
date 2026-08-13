@@ -16,8 +16,12 @@ Uso:
 Opciones:
   --modules <n>        Número de módulos 1..9 (matriz por defecto del dosier §6.1).
   --scenario <path>     Escenario declarativo JSON/YAML (ver simulators/scenarios/).
-  --broker <url>        mqtt://host:puerto de un Mosquitto real. Si se omite, se usa
+  --broker <url>        mqtts://host:puerto de un Mosquitto real. Si se omite, se usa
                          un broker en memoria (sin red) y el proceso termina al acabar.
+  --cafile <ruta>        CA con la que validar al broker. OBLIGATORIA con una URL
+                         mqtts://: el broker de Diana usa una CA propia, que no
+                         está en el almacén del sistema. Sin ella no se conecta
+                         en claro por su cuenta: falla (P0-2).
   --username <user>      Credenciales MQTT (sólo con --broker).
   --password <pass>
   --system-id <id>       Por defecto "system-a".
@@ -36,7 +40,8 @@ Ejemplos:
 
   # Corre un escenario declarativo contra Mosquitto real en la VM:
   diana-sim run --scenario simulators/scenarios/02-partida-aleatoria-completa.json \\
-    --broker mqtt://192.168.1.209:1883 --username module-01 --password *** --speed 1
+    --broker mqtts://192.168.1.209:8883 --cafile /opt/diana/infrastructure/mosquitto/certs/ca.crt \\
+      --username module-01 --password *** --speed 1
 `;
 }
 
@@ -47,6 +52,7 @@ async function main(): Promise<void> {
       modules: { type: 'string' },
       scenario: { type: 'string' },
       broker: { type: 'string' },
+      cafile: { type: 'string' },
       username: { type: 'string' },
       password: { type: 'string' },
       'system-id': { type: 'string', default: 'system-a' },
@@ -78,7 +84,12 @@ async function main(): Promise<void> {
     const sim = await runScenario(scenario, {
       clock,
       mqtt: values.broker
-        ? { url: values.broker, username: values.username, password: values.password }
+        ? {
+            url: values.broker,
+            username: values.username,
+            password: values.password,
+            caFile: values.cafile,
+          }
         : undefined,
     });
     void sim;
@@ -98,6 +109,7 @@ async function main(): Promise<void> {
           url: values.broker,
           username: values.username,
           password: values.password,
+          caFile: values.cafile,
         }
       : undefined,
   });

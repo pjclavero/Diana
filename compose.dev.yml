@@ -70,7 +70,7 @@ services:
 
   mosquitto:
     # En dev, además del 8883 TLS (el único que publica compose.yml base desde
-    # P0-2; el 1883 en claro ya no se publica), se publica
+    # P0-2; el 1883 en claro ya no existe, ni publicado ni interno), se publica
     # el listener WebSocket para probar clientes MQTT-over-WS desde el
     # navegador sin pasar por el proxy.
     ports:
