@@ -1,5 +1,10 @@
 # Decisiones de diseño del WP-06 y su motivo
 
+> **AVISO PROTOTIPO DO-ONLY:** estas decisiones documentan una PCB futura o
+> preliminar cuando hablan de AO, ADC, ADS7953, MCP3208, MCP6004 externo, LM339
+> externo o `VREF_TH`. El prototipo fisico actual usa DO-only con 2 x SN74HC165;
+> ver `docs/hardware/prototipo-do-only.md`.
+
 Cada decisión indica **qué se decidió**, **por qué**, **qué se descartó** y **qué
 se pierde**. Las que se apartan del dosier están marcadas con ⚠ y **requieren
 aprobación del supervisor**.
@@ -164,6 +169,11 @@ cortocircuito **deja de proteger sin aviso**. Registrado como riesgo.
 
 ## D-09 · `+5V_LED` y `+5V_LOG` separados topológicamente, no galvánicamente ⚠
 
+> **Aviso 2026-08-20:** esta decision fue escrita con la hipotesis antigua de
+> 72 LED totales. El banco real usa 216 LED (`9 x 24`), por lo que las cifras
+> de corriente de esta seccion deben revisarse antes de fabricar o dimensionar
+> fuente/cobre.
+
 **Decidido:** un solo convertidor de 6 A cuya salida se reparte desde un único
 polígono en dos caminos de cobre distintos.
 
@@ -182,6 +192,10 @@ la medida B4 (transitorio negro → blanco).**
 ---
 
 ## D-10 · El 74AHCT125 se alimenta de `+5V_LOG`, no de `+5V_LED`
+
+> **Aviso 2026-08-20:** revisar con el nuevo consumo teorico de 216 LED. La
+> prueba parcial confirmo que 2 aros encienden, pero no valida transitorios ni
+> caidas de tension de una fila completa.
 
 **Decidido:** V_CC del conversor de nivel desde el riel de lógica.
 

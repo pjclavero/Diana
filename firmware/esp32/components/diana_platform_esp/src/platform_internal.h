@@ -8,7 +8,6 @@
 
 #include "diana/platform_esp.h"
 
-#include "esp_adc/adc_oneshot.h"
 #include "esp_eth.h"
 #include "esp_netif.h"
 #include "freertos/FreeRTOS.h"
@@ -17,13 +16,14 @@
 #include "led_strip.h"
 #include "mqtt_client.h"
 
-#include "esp32s3_w5500_protoA.h"
+#include "esp32s3_proto_do_w5500.h"
 
 struct diana_platform {
     /* red */
     esp_eth_handle_t   eth;
     esp_netif_t       *netif;
     esp_eth_netif_glue_handle_t glue;
+    bool               eth_ready;
     volatile bool      link_up;
     volatile bool      has_ip;
     char               ip[16];
@@ -35,10 +35,9 @@ struct diana_platform {
     volatile uint32_t  mqtt_reconnects;
     QueueHandle_t      rx_queue;
 
-    /* piezo */
+    /* sensores DO-only por 2 x 74HC165 */
     QueueHandle_t      trigger_queue;
-    adc_oneshot_unit_handle_t adc;
-    SemaphoreHandle_t  adc_lock;
+    uint16_t           hc165_last_raw;
 
     /* led */
     led_strip_handle_t strip[DIANA_LED_CHAINS];
@@ -60,7 +59,7 @@ struct diana_platform {
 /* Inicializadores por subsistema. Todos devuelven 0 en exito. */
 int diana_pf_nvs_init(void);
 int diana_pf_queue_init(struct diana_platform *p);
-int diana_pf_piezo_init(struct diana_platform *p);
+int diana_pf_hc165_init(struct diana_platform *p);
 int diana_pf_leds_init(struct diana_platform *p);
 int diana_pf_inputs_init(void);
 int diana_pf_net_init(struct diana_platform *p);
@@ -79,7 +78,6 @@ int    diana_pf_q_pop(void *ctx);
 size_t diana_pf_q_count(void *ctx);
 size_t diana_pf_q_capacity(void *ctx);
 
-int  diana_pf_piezo_amplitude(void *ctx, uint8_t channel, uint16_t *out);
 int  diana_pf_led_write(void *ctx, uint8_t chain, const diana_hal_rgb *px,
                         size_t count);
 int  diana_pf_selector_read(void *ctx, int *out);
@@ -94,7 +92,5 @@ int  diana_pf_ota_verify_signature(void *ctx, const uint8_t *image, size_t len,
                                    const char *signature_b64);
 int  diana_pf_ota_activate(void *ctx);
 int  diana_pf_ota_rollback(void *ctx);
-
-int  diana_pf_adc_read_mv(struct diana_platform *p, int channel, int *out_mv);
 
 #endif /* DIANA_PLATFORM_INTERNAL_H */

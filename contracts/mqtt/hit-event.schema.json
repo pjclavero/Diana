@@ -27,10 +27,20 @@
       "type": "integer",
       "minimum": 0,
       "maximum": 65535,
-      "description": "Lectura de la envolvente por el ADC, en cuentas crudas."
+      "description": "Lectura de la envolvente por el ADC, en cuentas crudas. Ausente en perfiles digitales DO-only."
     },
-    "threshold": { "type": "integer", "minimum": 0, "maximum": 65535 },
-    "noise_floor": { "type": "integer", "minimum": 0, "maximum": 65535 },
+    "threshold": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 65535,
+      "description": "Umbral analogico aplicado. Ausente en perfiles digitales DO-only con sensibilidad por potenciometro fisico."
+    },
+    "noise_floor": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 65535,
+      "description": "Ruido analogico estimado. Ausente en perfiles digitales DO-only."
+    },
     "neighbours": {
       "type": "array",
       "maxItems": 8,
@@ -63,7 +73,7 @@
   "required": [
     "schema_version", "event_id", "system_id", "module_id",
     "target_index", "local_sequence", "device",
-    "amplitude", "threshold", "target_state_before",
+    "target_state_before",
     "classification", "firmware_version"
   ],
   "additionalProperties": false,

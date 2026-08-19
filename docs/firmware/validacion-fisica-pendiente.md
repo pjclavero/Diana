@@ -1,8 +1,9 @@
 # Validación física pendiente
 
-**Este documento existe porque el firmware de WP-04 se ha escrito sin ESP-IDF,
-sin hardware y sin posibilidad de medir nada.** Todo lo que aparece aquí está
-sin comprobar. Ningún valor de este documento debe tratarse como calibrado.
+**Este documento existe para separar lo implementado de lo validado en banco.**
+Parte del firmware ya se ha compilado, flasheado y observado sobre hardware real,
+pero la validación física completa sigue abierta. Ningún valor de este documento
+debe tratarse como calibrado.
 
 ## 0. Resumen para quien vaya a montar el banco
 
@@ -10,13 +11,32 @@ sin comprobar. Ningún valor de este documento debe tratarse como calibrado.
 |---|---|
 | Lógica de negocio | probada en PC, 389 comprobaciones |
 | Conformidad con el contrato MQTT | validada contra los esquemas reales |
-| Compilación con ESP-IDF | **nunca ejecutada** |
-| Cualquier cosa con hardware | **nunca ejecutada** |
-| Umbrales piezoeléctricos | **inventados**, punto de partida |
+| Compilación con ESP-IDF | ejecutada con ESP-IDF v5.5 |
+| Flash/monitor | ejecutado en COM6 sobre ESP32-S3 `10:20:ba:4b:b7:04` |
+| LED | 2 aros de 24 LED encendidos tras configurar 72 LED/fila |
+| Sensores DO | reposo observado alto; firmware en `DIANA_DO_ACTIVE_LOW` |
+| Bloqueo físico | primer 74HC165 reportado muy caliente; no alimentar hasta revisar |
+| Umbrales piezoeléctricos | no aplican en DO-only; debounce/refractory pendientes |
 
-## 1. Umbrales piezoeléctricos: NO están calibrados
+## 0.1. Incidencia crítica de banco 2026-08-20
 
-Los valores por defecto de `diana/config.h` son:
+El usuario reportó que el primer 74HC165 estaba muy caliente y que D1 parecía
+activo permanente. Se retiró alimentación. Esto bloquea la validación de
+sensores.
+
+Antes de alimentar de nuevo:
+
+1. Probar el primer 74HC165 sin sensores conectados.
+2. Verificar `VCC=3.3 V`, `GND` y ausencia de corto entre alimentación y masa.
+3. Medir `DO` de cada sensor alimentado a 5 V.
+4. Si `DO HIGH` es mayor que 3.3 V, insertar adaptación de nivel.
+5. Fijar a nivel conocido todas las entradas no usadas.
+6. Repetir D1/D2/D3 sólo cuando el 74HC165 permanezca frío.
+
+## 1. Ruta analógica histórica: NO aplica al perfil DO-only
+
+Los valores por defecto de `diana/config.h` pertenecen a la ruta analogica
+historica y no calibran el prototipo DO-only:
 
 | Parámetro | Valor | De dónde sale |
 |---|---:|---|
@@ -94,11 +114,15 @@ diseño de agrupación hay que replantearlo, no ajustarlo.
 
 | Qué | Criterio |
 |---|---|
-| Modelo de consumo | medir con pinza el consumo real en blanco máximo y comparar con los 4320 mA estimados |
+| Modelo de consumo | medir con pinza el consumo real en blanco máximo y comparar con los 12960 mA teoricos |
 | Presupuesto de 3000 mA | comprobar que la fuente aguanta el pico sin caída de tensión |
 | Conversión de nivel | verificar que los WS2812 leen bien el dato a 5 V |
 | Caída por fila | medir la tensión al final de cada cadena; puede exigir inyección adicional |
 | Legibilidad de los patrones | a la distancia de uso, con luz ambiente real, y con un observador daltónico |
+
+Estado 2026-08-20: los aros reales son de 24 LED cada uno. El firmware se
+corrigió de 24 LED por fila a 72 LED por fila (`3 x 24`) y el usuario confirmó
+que los 2 aros conectados se encienden.
 
 ## 5. OTA
 
@@ -108,7 +132,7 @@ plazo. La verificación de firma en host es un doble, no criptografía real.
 
 Falta, con hardware:
 
-1. Primera compilación real con ESP-IDF (nunca hecha).
+1. OTA real A/B; la compilación USB de bring-up ya se hizo, pero no una OTA.
 2. Generar la clave de firma y comprobar que una imagen **sin firmar** es
    rechazada por el bootloader.
 3. Actualización completa A → B y arranque desde la nueva partición.

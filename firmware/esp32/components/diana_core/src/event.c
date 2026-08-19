@@ -65,9 +65,11 @@ void diana_hit_event_build(diana_hit_event *ev, const diana_hal *hal,
     fill_common(ev, hal, id, now_us, group->t_us);
 
     ev->target_index = group->target_index;
+    ev->has_amplitude = group->has_amplitude;
     ev->amplitude = group->amplitude;
+    ev->has_threshold = group->has_threshold;
     ev->threshold = group->threshold;
-    ev->has_noise_floor = true;
+    ev->has_noise_floor = group->has_noise_floor;
     ev->noise_floor = group->noise_floor;
     ev->target_state_before = state_before;
     ev->classification = group->classification;
@@ -106,9 +108,11 @@ bool diana_hit_event_build_rejected(diana_hit_event *ev, const diana_hal *hal,
     fill_common(ev, hal, id, now_us, event_us);
 
     ev->target_index = idx;
+    ev->has_amplitude = group->has_amplitude;
     ev->amplitude = self->amplitude;
+    ev->has_threshold = group->has_threshold;
     ev->threshold = group->threshold;
-    ev->has_noise_floor = true;
+    ev->has_noise_floor = group->has_noise_floor;
     ev->noise_floor = group->noise_floor;
     ev->target_state_before = state_before;
     ev->classification = DIANA_HIT_CROSSTALK_REJECTED;
@@ -192,8 +196,8 @@ size_t diana_hit_event_to_json(const diana_hit_event *ev, char *buf, size_t cap)
         diana_json_null(&j, "coordinator");
     }
 
-    diana_json_int(&j, "amplitude", ev->amplitude);
-    diana_json_int(&j, "threshold", ev->threshold);
+    if (ev->has_amplitude) diana_json_int(&j, "amplitude", ev->amplitude);
+    if (ev->has_threshold) diana_json_int(&j, "threshold", ev->threshold);
     if (ev->has_noise_floor) diana_json_int(&j, "noise_floor", ev->noise_floor);
 
     if (ev->neighbour_count > 0) {

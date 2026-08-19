@@ -8,6 +8,7 @@
  */
 #include "app.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "cJSON.h"

@@ -1,5 +1,9 @@
 # Pinout preliminar y presupuesto de GPIO
 
+> **OBSOLETO PARA EL PROTOTIPO FISICO ACTUAL.** Para el montaje DO-only real,
+> usar `docs/firmware/pinout-definitivo.md`. Este documento queda como referencia
+> historica de una propuesta analogica/preliminar.
+
 > **NINGÚN PIN DE ESTE DOCUMENTO SE HA VERIFICADO SOBRE HARDWARE.**
 > Es una propuesta que cumple el presupuesto del dosier §8.4 y las restricciones
 > publicadas del ESP32-S3. Debe contrastarse con la placa concreta y pasar la

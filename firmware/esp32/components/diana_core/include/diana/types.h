@@ -22,8 +22,9 @@ extern "C" {
 #define DIANA_SCHEMA_VERSION      1
 #define DIANA_TARGET_COUNT        9
 #define DIANA_LED_CHAINS          3
-#define DIANA_LEDS_PER_CHAIN      24
-#define DIANA_LEDS_PER_TARGET     8
+/* Aros WS2812B reales: 24 LED por diana, 3 dianas por fila. */
+#define DIANA_LEDS_PER_CHAIN      72
+#define DIANA_LEDS_PER_TARGET     24
 #define DIANA_ID_MAXLEN           64   /* identifier: hasta 63 chars + NUL */
 #define DIANA_UUID_LEN            37   /* 36 chars + NUL */
 #define DIANA_EVENTID_LEN         37

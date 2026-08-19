@@ -3,6 +3,13 @@
 **Estado:** WP-04, primera entrega. Lógica probada en host; capa de hardware sin
 compilar ni verificar.
 
+**Perfil fisico actual:** `DIANA_BOARD_PROTO_DO_W5500`. Este perfil usa W5500,
+2 x SN74HC165 y sensores DO-only. No compila la ruta analogica de impacto ni
+depende de `piezo_amplitude()`, ADC, `VREF_TH`, ADS7953, MCP3208, MCP6004
+externo o LM339 externo. La ruta analogica documentada en entregas anteriores
+queda como futura PCB y esta marcada como **NO UTILIZADO EN EL PROTOTIPO
+DO-ONLY**.
+
 ## 1. Principio rector
 
 El firmware está partido en dos mitades con una frontera dura:

@@ -8,7 +8,7 @@ Detalle por área en `docs/firmware/`, `docs/api/`, `docs/mqtt/`, `docs/hardware
 ```
   ┌─────────┐  ┌─────────┐        ┌─────────┐
   │ Módulo 1│  │ Módulo 2│  ...   │ Módulo 9│   ESP32-S3 + W5500
-  │PRINCIPAL│  │SATÉLITE │        │SATÉLITE │   9 dianas · 72 LED c/u
+  │PRINCIPAL│  │SATÉLITE │        │SATÉLITE │   9 dianas · 216 LED/módulo
   └────┬────┘  └────┬────┘        └────┬────┘
        └────────────┴──────┬───────────┘
                     Switch Ethernet (estrella)

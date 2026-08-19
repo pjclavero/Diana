@@ -22,7 +22,7 @@ MSGDIR  := $(BUILD)/messages
 
 CFLAGS  := -std=c11 -Wall -Wextra -Werror -Wshadow -Wconversion \
            -Wno-sign-conversion -O1 -g \
-           -I$(CORE)/include -I$(HALDIR)/include -I$(HOST)
+           -I$(CORE)/include -I$(HALDIR)/include -I$(HOST) -I$(FW)/boards
 LDFLAGS := -lm
 
 CORE_SRC := $(wildcard $(CORE)/src/*.c)
