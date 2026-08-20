@@ -48,6 +48,19 @@
 #define DIANA_PIN_HC165_CLK    48
 #define DIANA_HC165_BITS       16
 
+/* --- Reserva: pines libres que NO se cablean en V1 -------------------------
+ * Rescatado de hw/do-only-v1. Se declaran para que consten y para que nadie
+ * los ocupe sin saber por que estaban libres. NO tienen uso en el firmware.
+ *   GPIO7 : IRQ_ANY agregado de las senales DO. NO IMPLEMENTADO y no cableado:
+ *           hace falta medir antes polaridad, duracion y forma del pulso DO.
+ *   GPIO14: libre (era nCS_ADC).
+ *   GPIO21: libre (era VREF_TH_PWM).
+ * Si se confirma el conflicto GPIO48 / LED RGB del DevKit, HC165_CLK se mueve
+ * a 14 o 21 y se actualiza tambien docs/firmware/pinout-definitivo.md. */
+#define DIANA_PIN_RESERVED_IRQ_ANY  7
+#define DIANA_PIN_RESERVED_A       14
+#define DIANA_PIN_RESERVED_B       21
+
 /* --- Presupuesto de potencia LED ----------------------------------------- */
 #define DIANA_LED_BUDGET_MA    3000
 #define DIANA_LED_BRIGHTNESS_DEFAULT 120
