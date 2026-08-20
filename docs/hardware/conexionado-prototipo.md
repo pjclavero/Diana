@@ -2,6 +2,43 @@
 
 Montaje valido para `DIANA_BOARD_PROTO_DO_W5500`.
 
+Los datos medidos de este documento vienen del banco 2026-08-20 sobre el
+ESP32-S3 real. La regla de decision de nivel, la numeracion DIP-16 y la lista
+de comprobacion previa se rescataron de la rama `hw/do-only-v1` (MP0-S): son
+razonamiento, no medidas, y no sustituyen a nada observado.
+
+## ANTES DE DAR TENSION: regla de decision del nivel de `DO`
+
+El 74HC165 que se calento el 2026-08-20 obliga a tomarse esto en serio. Los
+modulos piezo comerciales se anuncian como «TTL 5 V»; el ESP32-S3 y los 74HC165
+de este montaje trabajan a **3.3 V**.
+
+Medir sobre **un** sensor, antes de fijar el conexionado:
+
+| Medida | Como | Por que decide el montaje |
+| --- | --- | --- |
+| `V_DO_IDLE` | multimetro, sensor en reposo | si en reposo hay ~5 V, hay 5 V permanentes contra la entrada del 74HC165 |
+| `V_DO_TRIGGER` | osciloscopio, golpeando la diana | dice el nivel real del pulso |
+| Polaridad | ¿el impacto lleva `DO` a alto o a bajo? | en banco se observo reposo ALTO; el firmware esta en `DIANA_DO_ACTIVE_LOW` |
+| Duracion minima del pulso | osciloscopio, >= 20 impactos | si el pulso es mas corto que el periodo de sondeo (`DIANA_HC165_POLL_MS = 2`), se pierden impactos |
+
+```text
+   ¿Cuanto vale DO en su nivel ALTO, medido?
+        |
+        +-- ~3.3 V  --> conexion directa DO -> entrada del 74HC165. OK
+        |
+        +-- ~5.0 V  --> ADAPTACION DE NIVEL en CADA UNA de las nueve lineas DO,
+                        antes del 74HC165. Nueve canales, nueve adaptaciones.
+                        Ninguna se salta.
+```
+
+Muchos de estos modulos aceptan alimentarse a 3.3 V en `V`, y entonces su `DO`
+sale a 3.3 V y el problema desaparece. Comprobarlo **midiendo**, no por lo que
+diga el anuncio: hay que verificar que a 3.3 V el comparador del modulo sigue
+disparando de forma fiable.
+
+Nada de lo anterior esta medido todavia: `PENDING_PHYSICAL_VALIDATION`.
+
 ## ESP32 a W5500
 
 | ESP32-S3 | W5500 | Direccion |
@@ -65,6 +102,23 @@ se corto alimentacion. Eso no es normal. Antes de alimentar de nuevo:
 - medir `DO HIGH` de cada sensor alimentado a 5 V;
 - no conectar `DO=5 V` a entradas de un 74HC165 alimentado a 3.3 V sin
   adaptacion de nivel.
+
+### Numeracion de pines del 74HC165 (DIP-16 / SOIC-16)
+
+| Pin | Senal | Pin | Senal |
+| ---: | --- | ---: | --- |
+| 1 | `SH/LD` | 16 | `VCC` (**3.3 V**) |
+| 2 | `CLK` | 15 | `CLK INH` (`CE`) |
+| 3 | entrada `E` | 14 | entrada `D` |
+| 4 | entrada `F` | 13 | entrada `C` |
+| 5 | entrada `G` | 12 | entrada `B` |
+| 6 | entrada `H` | 11 | entrada `A` |
+| 7 | `QH` negada | 10 | `SER` (entrada serie) |
+| 8 | `GND` | 9 | `QH` (salida serie) |
+
+Coincide con `hardware/electronics/schematics/04-piezo-array-9ch.md` seccion 3.3.
+
+Desacoplo: 100 nF entre pin 16 y pin 8, **uno por integrado y pegado al chip**.
 
 ## HC165 a sensores D1-D9
 
@@ -186,3 +240,34 @@ GPIO4 -> 74AHCT125 -> fila D1-D3
 GPIO5 -> 74AHCT125 -> fila D4-D6
 GPIO6 -> 74AHCT125 -> fila D7-D9
 ```
+
+## Comprobacion antes de dar tension
+
+Lista rescatada de `hw/do-only-v1`. Es la que habria que haber pasado antes del
+banco 2026-08-20; el primer 74HC165 se calento y hubo que cortar alimentacion.
+
+1. Continuidad de masa entre ESP32, ambos 74HC165, los nueve sensores y el W5500.
+2. `VCC` de los 74HC165 medido a **3.3 V**, no a 5 V.
+3. `CLK INH` (pin 15) de ambos registros a masa.
+4. `SER_IN` (pin 10) del **#1** atado a nivel fijo, no al aire.
+5. `QH` de **#1** a `SER` de **#2**; `QH` de **#2** a GPIO38. **En ese orden.**
+6. Ningun `AO` conectado.
+7. Nivel real de `DO` medido y, si es de 5 V, adaptacion de nivel montada en
+   **las nueve** lineas.
+8. Alimentacion de los LED separada de la del ESP32, con masa comun.
+9. Tension del modulo W5500 confirmada contra el modelo real.
+10. Ningun condensador electrolitico con la polaridad invertida.
+11. Con los `DO` desconectados, dar tension solo a los 74HC165 y comprobar que
+    **no se calientan solos**. Si se calientan, el fallo no esta en los
+    sensores.
+
+Solo despues: dar tension y pasar a
+[`calibracion-sensores-do.md`](calibracion-sensores-do.md).
+
+Aviso GPIO48: algunas revisiones del DevKit ESP32-S3 usan GPIO48 para su LED RGB
+integrado (`PENDING_PHYSICAL_VALIDATION`). Si la placa comprada lo ocupa,
+`HC165_CLK` se mueve a GPIO14 o GPIO21, ambos libres, y se actualiza el header
+`esp32s3_proto_do_w5500.h` y `docs/firmware/pinout-definitivo.md` a la vez.
+
+Pines que NO se cablean en V1: GPIO7 (`IRQ_ANY`), GPIO14 y GPIO21. Ver
+`docs/firmware/pinout-definitivo.md`.
