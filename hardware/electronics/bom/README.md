@@ -1,5 +1,19 @@
 # BOM preliminar — módulo 3×3
 
+> ## ⚠ NO UTILIZADO EN PROTOTIPO V1 — las partidas de MCP6004, LM339, ADS7953/MCP3208 y CD74HC4067
+>
+> El prototipo físico V1 detecta **exclusivamente** por la salida digital `DO` de
+> nueve módulos comerciales de sensor piezoeléctrico, con umbral ajustado por
+> potenciómetro. **No monta** ADS7953, ADS1115, MCP3208, CD74HC4067, MCP6004,
+> LM339 externo ni `VREF_TH` por PWM, y **no mide amplitud**.
+>
+> Este documento se conserva como **DISEÑO FUTURO** (PCB integrada). Sigue siendo
+> válido como tal; **no describe el prototipo que se monta hoy**.
+> Prototipo V1: `docs/hardware/prototipo-do-only.md` ·
+> pinout normativo: `firmware/esp32/boards/esp32s3_proto_do_w5500.h`.
+
+---
+
 Fichero: [`bom-modulo-3x3-preliminar.csv`](bom-modulo-3x3-preliminar.csv) — 58 líneas.
 
 ## Por qué NO hay precios

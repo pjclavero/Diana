@@ -1,5 +1,16 @@
 # Protocolo de ensayo de impacto
 
+> ## ⚠ NOTA PARA EL PROTOTIPO V1 (DO-only)
+>
+> Las amplitudes de este protocolo (§5.2 paso 5, matriz 9×9 de acoplamiento) se
+> miden con **instrumentación de banco** (osciloscopio sobre el piezo o sobre
+> `AO`), **no con el sistema Diana**: el prototipo V1 no mide amplitud, sólo lee
+> la salida digital `DO`. El ensayo sigue siendo válido y necesario; lo que no
+> se puede es esperar que el módulo entregue esos números.
+> Ver `docs/hardware/prototipo-do-only.md` §4.
+
+---
+
 > **NO EJECUTADO.** No hay material ni utillaje. Dosier §29.1, §29.2 y §7.3.
 
 ## 1. El problema: repetibilidad

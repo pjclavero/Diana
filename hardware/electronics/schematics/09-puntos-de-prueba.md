@@ -1,5 +1,19 @@
 # Puntos de prueba — tabla única
 
+> ## ⚠ NO UTILIZADO EN PROTOTIPO V1 — TP40–TP44 (`VREF_TH`) y TP50 (`nCS_ADC`) y demás puntos de la cadena analógica
+>
+> El prototipo físico V1 detecta **exclusivamente** por la salida digital `DO` de
+> nueve módulos comerciales de sensor piezoeléctrico, con umbral ajustado por
+> potenciómetro. **No monta** ADS7953, ADS1115, MCP3208, CD74HC4067, MCP6004,
+> LM339 externo ni `VREF_TH` por PWM, y **no mide amplitud**.
+>
+> Este documento se conserva como **DISEÑO FUTURO** (PCB integrada). Sigue siendo
+> válido como tal; **no describe el prototipo que se monta hoy**.
+> Prototipo V1: `docs/hardware/prototipo-do-only.md` ·
+> pinout normativo: `firmware/esp32/boards/esp32s3_proto_do_w5500.h`.
+
+---
+
 > **SIN VALIDAR.** Los criterios son objetivos de diseño calculados, **no
 > medidas**. Ninguno se ha comprobado.
 

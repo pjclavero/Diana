@@ -1,5 +1,19 @@
 # Cálculo 02 — Cadena piezoeléctrica: energía, clamp, envolvente e histéresis
 
+> ## ⚠ NO UTILIZADO EN PROTOTIPO V1 — cadena analógica completa
+>
+> El prototipo físico V1 detecta **exclusivamente** por la salida digital `DO` de
+> nueve módulos comerciales de sensor piezoeléctrico, con umbral ajustado por
+> potenciómetro. **No monta** ADS7953, ADS1115, MCP3208, CD74HC4067, MCP6004,
+> LM339 externo ni `VREF_TH` por PWM, y **no mide amplitud**.
+>
+> Este documento se conserva como **DISEÑO FUTURO** (PCB integrada). Sigue siendo
+> válido como tal; **no describe el prototipo que se monta hoy**.
+> Prototipo V1: `docs/hardware/prototipo-do-only.md` ·
+> pinout normativo: `firmware/esp32/boards/esp32s3_proto_do_w5500.h`.
+
+---
+
 > **Estado: cálculo de diseño. NADA medido.** El dosier §9.3 declara
 > explícitamente que «los valores finales deben validarse en banco» y §34 lista
 > «Piezo daña el ESP32» como riesgo de impacto *avería*. Este documento

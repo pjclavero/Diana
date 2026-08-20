@@ -1,5 +1,20 @@
 # Cálculo 03 — Presupuesto de GPIO del ESP32-S3
 
+> ## ⚠ APLICACIÓN PARCIAL EN EL PROTOTIPO V1
+>
+> **Sí aplica y sigue siendo el motivo de la arquitectura:** la conclusión de que
+> la topología literal del dosier §8.4 **no cuadra** en GPIO y de que la
+> topología B (2 × 74HC165) sí. El prototipo V1 adopta la topología B.
+>
+> **NO UTILIZADO EN PROTOTIPO V1 (DISEÑO FUTURO):** las líneas `nCS_ADC` (IO14) y
+> `VREF_TH_PWM` (IO21) de las tablas, y la topología C (CD74HC4067).
+> En V1 esos pines quedan libres, más IO7 (`IRQ_ANY`), luego el margen de reserva
+> es mayor que el calculado aquí.
+>
+> Pinout normativo: `firmware/esp32/boards/esp32s3_proto_do_w5500.h`.
+
+---
+
 > **DICTAMEN ANTICIPADO: la topología literal del dosier §8.4 NO CUADRA.**
 > Faltan **4 GPIO** sin contar la reserva, y **9** contando la reserva máxima que
 > el propio dosier pide. Esto materializa el riesgo «Escasez de GPIO → Rediseño»

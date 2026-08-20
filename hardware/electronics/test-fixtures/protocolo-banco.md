@@ -1,5 +1,19 @@
 # Protocolo de prueba en banco — módulo 3×3
 
+> ## ⚠ NO UTILIZADO EN PROTOTIPO V1 — los ensayos que dependen de `VREF_TH`, del ADC o de la amplitud (p. ej. F6)
+>
+> El prototipo físico V1 detecta **exclusivamente** por la salida digital `DO` de
+> nueve módulos comerciales de sensor piezoeléctrico, con umbral ajustado por
+> potenciómetro. **No monta** ADS7953, ADS1115, MCP3208, CD74HC4067, MCP6004,
+> LM339 externo ni `VREF_TH` por PWM, y **no mide amplitud**.
+>
+> Este documento se conserva como **DISEÑO FUTURO** (PCB integrada). Sigue siendo
+> válido como tal; **no describe el prototipo que se monta hoy**.
+> Prototipo V1: `docs/hardware/prototipo-do-only.md` ·
+> pinout normativo: `firmware/esp32/boards/esp32s3_proto_do_w5500.h`.
+
+---
+
 > **Este protocolo NO SE HA EJECUTADO.** No hay hardware. Es el procedimiento que
 > debe seguirse cuando exista la primera placa, y **es la única vía por la que
 > este diseño puede pasar de «documentado» a «validado»**.
