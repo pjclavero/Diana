@@ -4,6 +4,14 @@
 > preliminar cuando hablan de AO, ADC, ADS7953, MCP3208, MCP6004 externo, LM339
 > externo o `VREF_TH`. El prototipo fisico actual usa DO-only con 2 x SN74HC165;
 > ver `docs/hardware/prototipo-do-only.md`.
+>
+> Detalle por decision (rescatado de `hw/do-only-v1`):
+>
+> - **D-03 (dos 74HC165 en cascada): VIGENTE en el prototipo fisico.** Es la
+>   topologia que se monta hoy.
+> - **D-01, D-02, D-04, D-05 y todo lo referido a MCP6004, LM339, ADS7953,
+>   MCP3208, CD74HC4067 y `VREF_TH`: NO UTILIZADO EN EL PROTOTIPO**, se
+>   conservan como diseno de la PCB integrada futura.
 
 Cada decisión indica **qué se decidió**, **por qué**, **qué se descartó** y **qué
 se pierde**. Las que se apartan del dosier están marcadas con ⚠ y **requieren
