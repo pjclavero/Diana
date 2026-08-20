@@ -165,6 +165,7 @@ static int h_piezo(void *c, uint8_t channel, uint16_t *out)
 {
     host_hal_ctx *ctx = (host_hal_ctx *)c;
     if (channel >= DIANA_TARGET_COUNT) return DIANA_HAL_ERR_INVALID;
+    ctx->piezo_reads++;
     *out = ctx->piezo_amplitude[channel];
     return DIANA_HAL_OK;
 }
