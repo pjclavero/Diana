@@ -20,7 +20,7 @@ HOST    := $(FW)/test_host
 BUILD   := $(FW)/build-host
 MSGDIR  := $(BUILD)/messages
 
-CFLAGS  := -std=c11 -Wall -Wextra -Werror -Wshadow -Wconversion \
+CFLAGS  := -std=c11 -MMD -MP -Wall -Wextra -Werror -Wshadow -Wconversion \
            -Wno-sign-conversion -O1 -g \
            -I$(CORE)/include -I$(HALDIR)/include -I$(HOST) -I$(FW)/boards
 LDFLAGS := -lm
@@ -40,6 +40,11 @@ build: $(BIN)
 $(BUILD)/%.o: $(FW)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
+
+# Sin esto, cambiar una CABECERA no recompila los .o que la incluyen y la suite
+# se ejecuta con objetos de dos disposiciones de struct distintas: verdes o
+# rojos falsos. Se descubrio anadiendo un campo a host_hal_ctx (MP0-S).
+-include $(OBJ:.o=.d)
 
 $(BIN): $(OBJ)
 	@mkdir -p $(dir $@)
