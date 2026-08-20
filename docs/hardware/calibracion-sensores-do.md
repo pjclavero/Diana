@@ -109,3 +109,55 @@ No cerrar estos valores sin captura fisica.
 | Varios bits en un golpe | Registrar MULTI_TRIGGER y revisar sensibilidad/mecanica |
 | Bit incorrecto | Revisar orden HC165 A-H y cascada |
 | Reservas activas | Fijar B-H de HC165 #2 a nivel conocido |
+
+## Hoja de registro por diana
+
+Rescatada de `hw/do-only-v1`. Se rellena en banco, una fila por diana y vuelta.
+Los contadores de calibracion del firmware (`diana_sensor_state.diag`) dan
+`trigger_count` por diana, `multi_trigger_count` y `capture_count` como
+denominador honesto.
+
+| Diana | Vuelta | Impactos | Detecciones | Falsos negativos | Disparos multiples (¿que diana?) | Accion |
+| --- | ---: | ---: | ---: | ---: | --- | --- |
+| D1 | | 20 | | | | |
+| D2 | | 20 | | | | |
+| D3 | | 20 | | | | |
+| D4 | | 20 | | | | |
+| D5 | | 20 | | | | |
+| D6 | | 20 | | | | |
+| D7 | | 20 | | | | |
+| D8 | | 20 | | | | |
+| D9 | | 20 | | | | |
+
+El criterio numerico de aceptacion **no esta fijado** y no se inventa aqui: sale
+del protocolo de ensayo mecanico
+(`hardware/mechanical/tests/protocolo-impacto.md`). Exigible de partida: cero
+falsos negativos en la tanda final y disparos multiples excepcionales, no
+habituales.
+
+## Lo que esta calibracion NO puede arreglar
+
+- **Aislamiento mecanico insuficiente.** Si la estructura transmite el golpe, se
+  nota en varios canales a la vez y ningun ajuste de umbral lo separa. Es
+  mecanica: material, fijacion, desacoplo. El firmware solo lo MIDE
+  (`multi_trigger_count`).
+- **Un pulso `DO` mas corto que el periodo de sondeo.** Si el pulso desaparece
+  entre dos lecturas del 74HC165, el impacto se pierde por muy bien ajustado que
+  este el potenciometro. Se corrige midiendo el pulso y ajustando
+  `DIANA_HC165_POLL_MS`, no girando nada.
+- **Polaridad equivocada.** Si `DIANA_DO_POLARITY` no corresponde a la polaridad
+  real medida, el sistema detecta exactamente al reves y la calibracion no
+  significa nada.
+- **Diferencias de intensidad entre impactos.** Sin amplitud solo hay «paso el
+  umbral» o «no paso». No se puede distinguir un roce fuerte de un impacto flojo.
+
+## Pendiente de validacion fisica
+
+`PENDING_PHYSICAL_VALIDATION`; no convertir en constante hasta medirlo sobre las
+piezas compradas:
+
+- `V_DO_IDLE`, `V_DO_TRIGGER` y polaridad reales.
+- Duracion minima del pulso `DO`.
+- Debounce/refractario definitivos.
+- Si hace falta `IRQ_ANY` (GPIO7, sin cablear) o basta el sondeo.
+- Criterio numerico de aceptacion de disparos multiples.
