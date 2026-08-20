@@ -70,13 +70,38 @@ typedef struct {
     uint8_t  rejected_count;
 } diana_hit_group;
 
-/** Estado por canal: antirrebote y blanking. */
+/**
+ * Contadores de calibracion de la ruta DO-only.
+ *
+ * Rescatados de hw/do-only-v1: son el INSTRUMENTO con el que se ajusta en
+ * banco el aislamiento mecanico y el potenciometro de cada modulo. Sin
+ * amplitud no hay forma de rechazar crosstalk por software, asi que lo unico
+ * honesto es MEDIRLO: si `multi_trigger_count` sube, hay que apretar tornillos
+ * o bajar sensibilidad, no tocar codigo.
+ *
+ * `capture_count` es el denominador honesto: cuantas capturas se han procesado
+ * en total. Sin el, los contadores de disparos no significan nada.
+ *
+ * No se reinician solos. Ver `diana_sensor_diag_reset()`.
+ */
+typedef struct {
+    uint32_t trigger_count[DIANA_TARGET_COUNT]; /* disparos aceptados D1..D9 */
+    uint32_t multi_trigger_count;
+    uint32_t capture_count;
+    uint16_t last_active_bitmap;   /* ultimo bitmap de dianas activas visto */
+    uint8_t  last_target;          /* ultima diana aceptada, 0 si ninguna aun */
+    uint64_t last_trigger_us;
+    uint64_t last_multi_trigger_us;
+} diana_do_diag;
+
+/** Estado por canal: antirrebote, blanking y contadores de calibracion. */
 typedef struct {
     uint64_t blanking_until_us[DIANA_TARGET_COUNT];
     uint64_t last_trigger_us[DIANA_TARGET_COUNT];
     uint32_t suppressed_debounce[DIANA_TARGET_COUNT];
     uint32_t suppressed_blanking[DIANA_TARGET_COUNT];
     uint16_t do_last_active_bitmap;
+    diana_do_diag diag;
 } diana_sensor_state;
 
 typedef enum {
@@ -144,6 +169,9 @@ void diana_do_decode(uint16_t raw_bitmap, diana_do_polarity polarity,
 void diana_do_process_snapshot(diana_sensor_state *st, const diana_config *cfg,
                                uint16_t raw_bitmap, diana_do_polarity polarity,
                                uint64_t now_us, diana_hit_group *out);
+
+/** Pone a cero los contadores de calibracion, sin tocar refractario ni bordes. */
+void diana_sensor_diag_reset(diana_sensor_state *st);
 
 int diana_selector_decode(int gpio15_level, int gpio16_level,
                           diana_selector_profile profile,

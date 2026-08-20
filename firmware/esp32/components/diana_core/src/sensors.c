@@ -170,6 +170,12 @@ void diana_sensor_classify(const diana_config *cfg,
     out->reason[0] = '\0';
 }
 
+void diana_sensor_diag_reset(diana_sensor_state *st)
+{
+    if (!st) return;
+    memset(&st->diag, 0, sizeof(st->diag));
+}
+
 uint16_t diana_do_active_bitmap(uint16_t raw_bitmap, diana_do_polarity polarity)
 {
     uint16_t v = raw_bitmap & DIANA_DO_MASK;
@@ -207,6 +213,11 @@ void diana_do_process_snapshot(diana_sensor_state *st, const diana_config *cfg,
     do_empty_group(out, snap.raw_bitmap, snap.active_bitmap);
     out->active_count = snap.active_count;
 
+    /* Contadores de calibracion: se actualizan SIEMPRE, tambien cuando no hay
+     * impacto. capture_count es el denominador. */
+    st->diag.capture_count++;
+    st->diag.last_active_bitmap = snap.active_bitmap;
+
     if (snap.active_count == 0u) {
         st->do_last_active_bitmap = 0;
         snprintf(out->reason, sizeof(out->reason), "ningun DO activo");
@@ -214,6 +225,8 @@ void diana_do_process_snapshot(diana_sensor_state *st, const diana_config *cfg,
     }
 
     if (snap.active_count > 1u) {
+        st->diag.multi_trigger_count++;
+        st->diag.last_multi_trigger_us = now_us;
         st->do_last_active_bitmap = snap.active_bitmap;
         int n = snprintf(out->reason, sizeof(out->reason),
                          "MULTI_TRIGGER bitmap=0x%03x canales=",
@@ -287,6 +300,9 @@ void diana_do_process_snapshot(diana_sensor_state *st, const diana_config *cfg,
     st->last_trigger_us[i] = now_us;
     st->blanking_until_us[i] = now_us + cal->blanking_us;
     st->do_last_active_bitmap = snap.active_bitmap;
+    st->diag.trigger_count[i]++;
+    st->diag.last_target = target;
+    st->diag.last_trigger_us = now_us;
 
     out->accepted = true;
     out->reason[0] = '\0';

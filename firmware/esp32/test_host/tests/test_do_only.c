@@ -118,6 +118,92 @@ int run_do_only(void)
      * estaba solo dentro del bucle de bit-banging de io_hc165.c, que no
      * compila en host y que por tanto ninguna prueba podia tocar.
      * -------------------------------------------------------------------- */
+    /* --------------------------------------------------------------------
+     * RESCATE desde hw/do-only-v1: contadores de calibracion. Sin amplitud no
+     * se puede rechazar crosstalk por software; lo unico honesto es MEDIRLO.
+     * -------------------------------------------------------------------- */
+    SECTION("contadores de calibracion por diana, multi-trigger y capturas");
+    {
+        diana_sensor_state cst;
+        diana_sensor_state_init(&cst);
+        diana_hit_group cg;
+        uint64_t t = 10000000;
+
+        CHECK_EQ_INT(cst.diag.capture_count, 0, "arranca sin capturas");
+        CHECK_EQ_INT(cst.diag.last_target, 0, "arranca sin ultima diana");
+
+        /* Tres impactos en D4, espaciados por encima del refractario. */
+        for (int k = 0; k < 3; ++k) {
+            diana_do_process_snapshot(&cst, &cfg, bit_for_target(4),
+                                      DIANA_DO_ACTIVE_HIGH, t, &cg);
+            CHECK(cg.accepted, "impacto D4 aceptado");
+            t += 100000;
+            diana_do_process_snapshot(&cst, &cfg, 0, DIANA_DO_ACTIVE_HIGH, t, &cg);
+            t += 100000;
+        }
+        diana_do_process_snapshot(&cst, &cfg, bit_for_target(9),
+                                  DIANA_DO_ACTIVE_HIGH, t, &cg);
+        CHECK(cg.accepted, "impacto D9 aceptado");
+        uint64_t t_d9 = t;
+        t += 100000;
+        diana_do_process_snapshot(&cst, &cfg, 0, DIANA_DO_ACTIVE_HIGH, t, &cg);
+        t += 100000;
+
+        uint16_t both = (uint16_t)(bit_for_target(2) | bit_for_target(7));
+        diana_do_process_snapshot(&cst, &cfg, both, DIANA_DO_ACTIVE_HIGH, t, &cg);
+
+        CHECK_EQ_INT(cst.diag.trigger_count[3], 3, "D4 acumula 3 disparos");
+        CHECK_EQ_INT(cst.diag.trigger_count[8], 1, "D9 acumula 1 disparo");
+        CHECK_EQ_INT(cst.diag.trigger_count[1], 0,
+                     "D2 no acumula: el multi-trigger NO se atribuye a nadie");
+        CHECK_EQ_INT(cst.diag.trigger_count[6], 0,
+                     "D7 tampoco: sin amplitud no se elige un canal");
+        CHECK_EQ_INT(cst.diag.last_target, 9,
+                     "ultima diana aceptada = D9, el multi no elige ninguna");
+        CHECK_EQ_INT(cst.diag.last_trigger_us, t_d9, "marca de tiempo de D9");
+        CHECK_EQ_INT(cst.diag.multi_trigger_count, 1, "1 multi-trigger contado");
+        CHECK_EQ_INT(cst.diag.last_multi_trigger_us, t, "marca del multi-trigger");
+        CHECK_EQ_INT(cst.diag.last_active_bitmap, both,
+                     "ultimo bitmap activo = D2+D7");
+        CHECK_EQ_INT(cst.diag.capture_count, 9,
+                     "9 capturas procesadas: denominador honesto");
+
+        SECTION("los rebotes suprimidos se cuentan, no se pierden en silencio");
+        {
+            diana_sensor_state bst;
+            diana_sensor_state_init(&bst);
+            diana_hit_group bg;
+            diana_do_process_snapshot(&bst, &cfg, bit_for_target(6),
+                                      DIANA_DO_ACTIVE_HIGH, 20000000, &bg);
+            CHECK(bg.accepted, "primer impacto D6");
+            diana_do_process_snapshot(&bst, &cfg, 0, DIANA_DO_ACTIVE_HIGH,
+                                      20000100, &bg);
+            diana_do_process_snapshot(&bst, &cfg, bit_for_target(6),
+                                      DIANA_DO_ACTIVE_HIGH, 20000500, &bg);
+            CHECK(!bg.accepted, "rebote rechazado");
+            CHECK_EQ_INT(bst.suppressed_debounce[5], 1,
+                         "el rebote suprimido queda contado en D6");
+            CHECK_EQ_INT(bst.diag.trigger_count[5], 1,
+                         "el rebote NO cuenta como disparo aceptado");
+            CHECK_EQ_INT(bst.diag.capture_count, 3,
+                         "las tres capturas cuentan, tambien la del rebote");
+        }
+
+        SECTION("el reset de contadores no toca el estado de deteccion");
+        {
+            uint16_t last = cst.do_last_active_bitmap;
+            uint64_t blank = cst.blanking_until_us[3];
+            diana_sensor_diag_reset(&cst);
+            CHECK_EQ_INT(cst.diag.capture_count, 0, "capturas a cero");
+            CHECK_EQ_INT(cst.diag.trigger_count[3], 0, "D4 a cero");
+            CHECK_EQ_INT(cst.diag.multi_trigger_count, 0, "multi a cero");
+            CHECK_EQ_INT(cst.do_last_active_bitmap, last,
+                         "el borde activo NO se reinicia");
+            CHECK_EQ_INT(cst.blanking_until_us[3], blank,
+                         "el refractario de D4 NO se reinicia");
+        }
+    }
+
     SECTION("orden de la cascada: #1 QH -> #2 SER -> ESP32 GPIO38");
     {
         diana_shiftreg_cfg sr;
