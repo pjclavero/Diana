@@ -5,6 +5,7 @@
 #include "platform_internal.h"
 
 #include "diana/sensors.h"
+#include "diana/shiftreg.h"
 
 #include "driver/gpio.h"
 #include "esp_log.h"
@@ -49,7 +50,7 @@ int diana_pf_hc165_init(struct diana_platform *p)
 int diana_platform_hc165_read_raw(diana_platform *p, uint16_t *out_raw)
 {
     (void)p;
-    uint16_t raw = 0;
+    uint8_t serial[DIANA_SR_TOTAL_BITS];
 
     gpio_set_level(DIANA_PIN_HC165_CLK, 0);
     gpio_set_level(DIANA_PIN_HC165_LOAD, 0);
@@ -57,15 +58,19 @@ int diana_platform_hc165_read_raw(diana_platform *p, uint16_t *out_raw)
     gpio_set_level(DIANA_PIN_HC165_LOAD, 1);
     esp_rom_delay_us(2);
 
+    /* serial[0] es el PRIMER bit que sale por SR_DATA. El convenio bit->diana
+     * lo aplica diana_shiftreg_pack(), que SI se prueba en host. */
     for (uint8_t i = 0; i < DIANA_HC165_BITS; ++i) {
-        raw = (uint16_t)((raw << 1) | (uint16_t)gpio_get_level(DIANA_PIN_HC165_DATA));
+        serial[i] = (uint8_t)gpio_get_level(DIANA_PIN_HC165_DATA);
         gpio_set_level(DIANA_PIN_HC165_CLK, 1);
         esp_rom_delay_us(1);
         gpio_set_level(DIANA_PIN_HC165_CLK, 0);
         esp_rom_delay_us(1);
     }
 
-    *out_raw = raw;
+    diana_shiftreg_cfg sr;
+    diana_shiftreg_cfg_defaults(&sr);
+    *out_raw = diana_shiftreg_pack(&sr, serial, DIANA_HC165_BITS);
     return DIANA_HAL_OK;
 }
 
