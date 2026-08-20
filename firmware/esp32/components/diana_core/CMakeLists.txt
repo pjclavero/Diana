@@ -9,6 +9,7 @@ idf_component_register(
          "src/module_fsm.c"
          "src/target_fsm.c"
          "src/sensors.c"
+         "src/shiftreg.c"
          "src/event.c"
          "src/queue.c"
          "src/command.c"

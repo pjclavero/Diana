@@ -2,6 +2,7 @@
 
 #include "diana/event.h"
 #include "diana/sensors.h"
+#include "diana/shiftreg.h"
 #include "hal_host.h"
 #include "test_util.h"
 
@@ -111,6 +112,92 @@ int run_do_only(void)
     diana_do_process_snapshot(&st, &cfg, bit_for_target(3), DIANA_DO_ACTIVE_HIGH,
                               4062000, &g);
     CHECK(g.accepted, "nuevo impacto tras refractory");
+
+    /* --------------------------------------------------------------------
+     * RESCATE desde hw/do-only-v1: el convenio de cableado de la cascada
+     * estaba solo dentro del bucle de bit-banging de io_hc165.c, que no
+     * compila en host y que por tanto ninguna prueba podia tocar.
+     * -------------------------------------------------------------------- */
+    SECTION("orden de la cascada: #1 QH -> #2 SER -> ESP32 GPIO38");
+    {
+        diana_shiftreg_cfg sr;
+        diana_shiftreg_cfg_defaults(&sr);
+        CHECK_EQ_INT(sr.total_bits, DIANA_HC165_BITS,
+                     "la trama del modulo coincide con DIANA_HC165_BITS de la placa");
+
+        /* Solo D1 = registro #1 entrada A = ULTIMO bit de la secuencia serie. */
+        uint8_t s_d1[DIANA_SR_TOTAL_BITS] = {0};
+        s_d1[15] = 1;
+        CHECK_EQ_INT(diana_shiftreg_pack(&sr, s_d1, DIANA_SR_TOTAL_BITS), 1u << 0,
+                     "ultimo bit de la secuencia = #1 entrada A = D1 (bit 0)");
+
+        /* Solo D8 = registro #1 entrada H = primer bit del bloque del #1. */
+        uint8_t s_d8[DIANA_SR_TOTAL_BITS] = {0};
+        s_d8[8] = 1;
+        CHECK_EQ_INT(diana_shiftreg_pack(&sr, s_d8, DIANA_SR_TOTAL_BITS), 1u << 7,
+                     "bit 8 de la secuencia = #1 entrada H = D8 (bit 7)");
+
+        /* Solo D9 = registro #2 entrada A = ultimo bit del bloque del #2. */
+        uint8_t s_d9[DIANA_SR_TOTAL_BITS] = {0};
+        s_d9[7] = 1;
+        CHECK_EQ_INT(diana_shiftreg_pack(&sr, s_d9, DIANA_SR_TOTAL_BITS), 1u << 8,
+                     "bit 7 de la secuencia = #2 entrada A = D9 (bit 8)");
+
+        /* Trama de longitud distinta: no se adivina. Se usa s_d9, cuyo bit
+         * activo cae DENTRO de los 8 primeros: con s_d1 el resultado seria 0
+         * por casualidad y la comprobacion no sabria ponerse roja. */
+        CHECK_EQ_INT(diana_shiftreg_pack(&sr, s_d9, 8), 0,
+                     "longitud distinta de total_bits -> 0, no se supone nada");
+
+
+        SECTION("tabla explicita bit -> diana, incluida la reserva");
+        for (uint8_t d = 1; d <= DIANA_TARGET_COUNT; ++d) {
+            uint8_t bit = diana_shiftreg_target_bit(&sr, d);
+            CHECK_EQ_INT(bit, (uint8_t)(d - 1u), "cada diana en su bit");
+            CHECK_EQ_INT(diana_shiftreg_bit_target(&sr, bit), d,
+                         "el bit devuelve su diana");
+        }
+        for (uint8_t b = DIANA_TARGET_COUNT; b < DIANA_SR_TOTAL_BITS; ++b) {
+            CHECK_EQ_INT(diana_shiftreg_bit_target(&sr, b), 0,
+                         "los bits 9-15 son reserva, no diana");
+        }
+        CHECK_EQ_INT(diana_shiftreg_target_bit(&sr, 0), 0xFF,
+                     "diana 0 no existe");
+
+        SECTION("pack equivale al bucle real de io_hc165.c");
+        {
+            /* Referencia: EXACTAMENTE el bucle de la capa de plataforma.
+             * Si alguien cambia uno de los dos, esta prueba se pone roja. */
+            static const uint8_t vectores[6][DIANA_SR_TOTAL_BITS] = {
+                {0},
+                {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+                {0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0},
+                {1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0},
+                {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+                {1,1,0,0,1,0,0,1,0,1,1,0,0,0,1,1},
+            };
+            for (size_t v = 0; v < 6; ++v) {
+                uint16_t ref = 0;
+                for (uint8_t i = 0; i < DIANA_SR_TOTAL_BITS; ++i) {
+                    ref = (uint16_t)((ref << 1) | (uint16_t)vectores[v][i]);
+                }
+                CHECK_EQ_INT(diana_shiftreg_pack(&sr, vectores[v],
+                                                 DIANA_SR_TOTAL_BITS),
+                             ref, "pack reproduce el bucle de la ISR");
+            }
+        }
+
+        SECTION("la palabra empaquetada alimenta la decodificacion DO");
+        {
+            uint8_t s_d5[DIANA_SR_TOTAL_BITS] = {0};
+            s_d5[11] = 1;  /* #1 entrada E -> D5 -> bit 4 */
+            uint16_t raw = diana_shiftreg_pack(&sr, s_d5, DIANA_SR_TOTAL_BITS);
+            diana_do_snapshot s;
+            diana_do_decode(raw, DIANA_DO_ACTIVE_HIGH, &s);
+            CHECK_EQ_INT(s.active_count, 1, "una diana desde la trama serie");
+            CHECK_EQ_INT(s.active_channels[0], 5, "la trama serie de D5 da D5");
+        }
+    }
 
     SECTION("selector 2 posiciones actual");
     diana_selector_position pos = DIANA_SELECTOR_AUTO;
