@@ -1,5 +1,22 @@
 # Hoja 04 — Array de 9 canales piezoeléctricos y agregación de eventos
 
+> ## ⚠ APLICACIÓN PARCIAL EN EL PROTOTIPO V1
+>
+> **Sí aplica a V1:** §3.3, el conexionado de los dos 74HC165 en cascada
+> (`SR_LOAD` IO47, `SR_CLK` IO48, `SR_DATA` IO38, cascada QH#1 → SER#2,
+> `CLK_INH` a masa) y la secuencia de lectura de 16 bits.
+> En V1 las entradas paralelas reciben directamente los `DO` de los nueve
+> módulos comerciales, no `CMP_OUTn` de un LM339.
+>
+> **NO UTILIZADO EN PROTOTIPO V1 (DISEÑO FUTURO):** §3.1 y §3.2 (`IRQ_ANY` con
+> los 9 BAT54 y el pull-up R40), §4 (generación de `VREF_TH` por PWM) y el
+> paso 5 de la secuencia de lectura («lectura de amplitudes por el ADC»).
+>
+> Pinout normativo: `firmware/esp32/boards/esp32s3_proto_do_w5500.h`.
+> Prototipo V1: `docs/hardware/prototipo-do-only.md`.
+
+---
+
 > **SIN VALIDAR.** ERC no ejecutado. Dosier §9, §8.4 y §28.3.
 
 Esta hoja contiene **9 instancias** de la hoja 03 (`CH1`..`CH9`) más la lógica

@@ -1,5 +1,17 @@
 # Proyecto KiCad — módulo 3×3 — QUÉ ES Y QUÉ NO ES ESTE DIRECTORIO
 
+> ## ⚠ NO UTILIZADO EN PROTOTIPO V1
+>
+> Estos esquemáticos son los de la **PCB integrada futura** e incluyen la cadena
+> analógica (MCP6004, LM339, ADS7953/MCP3208, CD74HC4067, `VREF_TH`). El
+> prototipo físico V1 **no se monta a partir de aquí**: detecta exclusivamente
+> por la salida `DO` de nueve módulos comerciales.
+>
+> Para montar el prototipo: `docs/hardware/conexionado-prototipo.md`.
+> Pinout normativo: `firmware/esp32/boards/esp32s3_proto_do_w5500.h`.
+
+---
+
 > **ESTADO: SIN VALIDAR.** No se ha ejecutado ERC. No se ha abierto ningún fichero
 > con KiCad. Estos ficheros **no autorizan la fabricación de ninguna PCB**.
 

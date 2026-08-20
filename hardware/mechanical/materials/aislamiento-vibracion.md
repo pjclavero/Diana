@@ -1,5 +1,16 @@
 # Aislamiento de vibraciones entre dianas
 
+> ## ⚠ NOTA PARA EL PROTOTIPO V1 (DO-only)
+>
+> En V1 **no hay comparación de amplitudes en tiempo de juego**: la única defensa
+> contra la vibración transmitida es el aislamiento mecánico que analiza este
+> documento más el ajuste del potenciómetro de cada sensor
+> (`docs/hardware/calibracion-sensores-do.md`). Esto hace el aislamiento
+> **más** crítico en V1, no menos. Las amplitudes citadas aquí se miden con
+> instrumentación de banco.
+
+---
+
 > **NADA MEDIDO.** Cálculos sobre modelo de un grado de libertad, con hipótesis
 > de masa y rigidez. Dosier §7.2, §7.4 y §34 («Vibración cruzada → Impactos
 > falsos → Aislamiento + amplitud + ventana»).

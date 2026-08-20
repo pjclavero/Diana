@@ -1,5 +1,19 @@
 # Hoja 03 — Canal piezoeléctrico (hoja reutilizable, 9 instancias)
 
+> ## ⚠ NO UTILIZADO EN PROTOTIPO V1 — hoja completa (front-end MCP6004 + LM339 + `VREF_TH`)
+>
+> El prototipo físico V1 detecta **exclusivamente** por la salida digital `DO` de
+> nueve módulos comerciales de sensor piezoeléctrico, con umbral ajustado por
+> potenciómetro. **No monta** ADS7953, ADS1115, MCP3208, CD74HC4067, MCP6004,
+> LM339 externo ni `VREF_TH` por PWM, y **no mide amplitud**.
+>
+> Este documento se conserva como **DISEÑO FUTURO** (PCB integrada). Sigue siendo
+> válido como tal; **no describe el prototipo que se monta hoy**.
+> Prototipo V1: `docs/hardware/prototipo-do-only.md` ·
+> pinout normativo: `firmware/esp32/boards/esp32s3_proto_do_w5500.h`.
+
+---
+
 > **SIN VALIDAR.** ERC no ejecutado. Ningún umbral está calibrado: los valores
 > son **iniciales** y configurables (dosier §9.3 y prohibición explícita del
 > WP-04). Dosier §9.2, §9.3, §9.4, §9.5, §28.3.
