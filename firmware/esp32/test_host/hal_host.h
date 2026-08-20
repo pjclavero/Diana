@@ -84,6 +84,10 @@ typedef struct {
     bool lwt_retain;
 
     uint16_t piezo_amplitude[DIANA_TARGET_COUNT];
+    /* Cuantas veces se ha llamado a hal->piezo_amplitude. Instrumento de la
+     * prueba antirregresion: la ruta de impacto DO-only debe dejarlo a CERO
+     * incluso con el ADC disponible. */
+    uint32_t piezo_reads;
     diana_hal_rgb led[DIANA_LED_CHAINS][DIANA_LEDS_PER_CHAIN];
     int  selector;
     bool button;

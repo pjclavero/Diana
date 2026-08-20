@@ -334,5 +334,65 @@ int run_do_only(void)
     CHECK(strstr(json, "\"threshold\"") == NULL, "sin campo threshold");
     dump_message("hit-event.schema.json", "hit_digital_do", json);
 
+    /* --------------------------------------------------------------------
+     * RESCATE desde hw/do-only-v1: prueba ANTIRREGRESION del ADC.
+     * Se pone roja si alguien reintroduce una lectura de amplitud en la ruta
+     * de impacto de V1. Se hace con el HAL COMPLETO (piezo_amplitude
+     * DISPONIBLE) a proposito: con el puntero a NULL, una llamada protegida
+     * por guarda (`if (hal->piezo_amplitude) ...`) pasaria inadvertida.
+     * -------------------------------------------------------------------- */
+    SECTION("antirregresion: la ruta DO-only NO lee el ADC ni una vez");
+    CHECK(hal.piezo_amplitude != NULL,
+          "el HAL de host SI ofrece el ADC: la prueba no es vacia");
+    ctx.piezo_reads = 0;
+    diana_sensor_state ast;
+    diana_sensor_state_init(&ast);
+    diana_hit_group ag;
+    uint64_t at = 6000000;
+    int ahits = 0;
+    for (uint8_t d = 1; d <= DIANA_TARGET_COUNT; ++d) {
+        diana_do_process_snapshot(&ast, &cfg, bit_for_target(d),
+                                  DIANA_DO_ACTIVE_HIGH, at, &ag);
+        if (ag.accepted && ag.target_index == d) ahits++;
+        at += 100000;
+        diana_do_process_snapshot(&ast, &cfg, 0, DIANA_DO_ACTIVE_HIGH, at, &ag);
+        at += 100000;
+    }
+    CHECK_EQ_INT(ahits, 9, "las nueve dianas se detectan sin tocar el ADC");
+    CHECK_EQ_INT(ctx.piezo_reads, 0,
+                 "ANTIRREGRESION: CERO lecturas de ADC al detectar");
+
+    diana_sensor_state_init(&ast);
+    diana_do_process_snapshot(&ast, &cfg, bit_for_target(8),
+                              DIANA_DO_ACTIVE_HIGH, 7000000, &ag);
+    diana_hit_event aev;
+    diana_hit_event_build(&aev, &hal, &id, &ag, DIANA_TARGET_ACTIVE, 7000010);
+    CHECK_EQ_INT(ctx.piezo_reads, 0,
+                 "ANTIRREGRESION: construir el evento tampoco lee el ADC");
+    CHECK(!aev.has_amplitude,
+          "ANTIRREGRESION: tener ADC disponible no hace aparecer amplitude");
+    CHECK(!aev.has_threshold, "ANTIRREGRESION: ni threshold");
+    CHECK(!aev.has_noise_floor, "ANTIRREGRESION: ni noise_floor");
+    CHECK_EQ_INT(aev.neighbour_count, 0,
+                 "sin amplitud no hay vecinos auditables que emitir");
+
+    char ajson[DIANA_HIT_JSON_MAX];
+    size_t an = diana_hit_event_to_json(&aev, ajson, sizeof(ajson));
+    CHECK(an > 0, "el evento DO-only con HAL completo se serializa");
+    CHECK_EQ_INT(ctx.piezo_reads, 0,
+                 "ANTIRREGRESION: serializar tampoco lee el ADC");
+    CHECK(strstr(ajson, "\"amplitude\"") == NULL,
+          "ANTIRREGRESION: el JSON no lleva amplitude, ni con valor cero");
+
+    /* Y la via analogica (PCB futura) sigue intacta: SI lee el ADC.
+     * Esto demuestra que el contador funciona y que la comprobacion de arriba
+     * no es verde por estar el instrumento roto. */
+    SECTION("control positivo: la ruta analogica SI usa el ADC");
+    uint16_t amp = 0;
+    CHECK_EQ_INT(hal.piezo_amplitude(hal.ctx, 0, &amp), DIANA_HAL_OK,
+                 "lectura de amplitud disponible para la PCB futura");
+    CHECK_EQ_INT(ctx.piezo_reads, 1,
+                 "el contador de lecturas de ADC funciona de verdad");
+
     return g_tests_failed - before;
 }
