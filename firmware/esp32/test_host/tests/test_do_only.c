@@ -42,6 +42,29 @@ int run_do_only(void)
     CHECK_EQ_INT(DIANA_PIN_HC165_DATA, 38, "GPIO38 HC165 DATA");
     CHECK_EQ_INT(DIANA_PIN_HC165_LOAD, 47, "GPIO47 HC165 LOAD");
     CHECK_EQ_INT(DIANA_PIN_HC165_CLK, 48, "GPIO48 HC165 CLK");
+    /* Pines de reserva: NO se cablean en V1 y NO pueden solaparse con nada. */
+    CHECK_EQ_INT(DIANA_PIN_RESERVED_IRQ_ANY, 7, "GPIO7 reservado IRQ_ANY, sin cablear");
+    CHECK_EQ_INT(DIANA_PIN_RESERVED_A, 14, "GPIO14 libre (era nCS_ADC)");
+    CHECK_EQ_INT(DIANA_PIN_RESERVED_B, 21, "GPIO21 libre (era VREF_TH_PWM)");
+    {
+        const int usados[] = {
+            DIANA_PIN_LED_ROW0, DIANA_PIN_LED_ROW1, DIANA_PIN_LED_ROW2,
+            DIANA_PIN_ETH_RST, DIANA_PIN_ETH_INT, DIANA_PIN_ETH_CS,
+            DIANA_PIN_ETH_MOSI, DIANA_PIN_ETH_SCLK, DIANA_PIN_ETH_MISO,
+            DIANA_PIN_SELECTOR_A, DIANA_PIN_SELECTOR_B, DIANA_PIN_BUTTON_ID,
+            DIANA_PIN_HC165_DATA, DIANA_PIN_HC165_LOAD, DIANA_PIN_HC165_CLK,
+        };
+        const int reservados[] = {
+            DIANA_PIN_RESERVED_IRQ_ANY, DIANA_PIN_RESERVED_A, DIANA_PIN_RESERVED_B,
+        };
+        int solapes = 0;
+        for (size_t a = 0; a < sizeof(usados) / sizeof(usados[0]); ++a) {
+            for (size_t b = 0; b < sizeof(reservados) / sizeof(reservados[0]); ++b) {
+                if (usados[a] == reservados[b]) solapes++;
+            }
+        }
+        CHECK_EQ_INT(solapes, 0, "ningun pin de reserva pisa una funcion en uso");
+    }
 #ifdef DIANA_ADC_CH_MUX
     CHECK(false, "el perfil DO-only no debe definir ADC de impacto");
 #else

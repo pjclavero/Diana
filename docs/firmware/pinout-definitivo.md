@@ -32,6 +32,24 @@ firmware/esp32/boards/esp32s3_proto_do_w5500.h
 | GPIO47 | HC165_LOAD | Salida |
 | GPIO48 | HC165_CLK | Salida |
 
+## Pines libres: NO se cablean en V1
+
+Rescatado de `hw/do-only-v1`. Estos tres GPIO quedan **sin asignar a proposito**
+y no deben cablearse en el prototipo. Documentarlos evita que alguien los use
+sin darse cuenta de por que estaban libres.
+
+| GPIO | Motivo |
+| --- | --- |
+| GPIO7 | `IRQ_ANY` agregado de las senales `DO`. **No implementado y no cableado**: hace falta medir antes polaridad, duracion y forma del pulso `DO`. Cablear una interrupcion a ciegas es como se pierden impactos sin enterarse |
+| GPIO14 | Libre (era `nCS_ADC` en el diseno con ADC externo) |
+| GPIO21 | Libre (era `VREF_TH_PWM`) |
+
+Si el conflicto GPIO48 / LED RGB integrado se confirma, `HC165_CLK` se mueve a
+GPIO14 o GPIO21. Se cambia **el header y este documento a la vez**, nunca solo
+uno de los dos.
+
+Del lado de los sensores, los nueve `AO` quedan **sin conectar**.
+
 ## Arquitectura DO-only
 
 ```text
