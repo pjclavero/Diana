@@ -2,7 +2,7 @@ import { Autoplayer, type AutoplayerOptions } from './autoplayer/autoplayer.js';
 import type { Clock } from './clock.js';
 import { Coordinator, type StartGameOptions } from './domain/coordinator.js';
 import { ModuleSimulator } from './domain/moduleSimulator.js';
-import type { ModulePosition, ModuleRotation, SelectorPosition } from './domain/types.js';
+import type { DetectionMethod, ModulePosition, ModuleRotation, SelectorPosition } from './domain/types.js';
 import { Rng } from './rng.js';
 import { MemoryBroker } from './transport/memoryBroker.js';
 import { MemoryTransport } from './transport/memoryTransport.js';
@@ -15,6 +15,12 @@ export interface ModuleTopologyEntry {
   rotation?: ModuleRotation;
   selector?: SelectorPosition;
   firmwareVersion?: string;
+  /**
+   * ADR-0007 · perfil de detección del módulo. Por defecto 'analog_envelope'.
+   * Con 'digital_threshold' el módulo simula el prototipo DO-only y NO emite
+   * amplitude/threshold/noise_floor, porque no tiene ADC con el que medirlos.
+   */
+  detectionMethod?: DetectionMethod;
 }
 
 export interface SimulationOptions {
@@ -119,6 +125,7 @@ export class Simulation {
       selector: entry.selector ?? 'SATELITE',
       position: entry.position ?? null,
       rotation: entry.rotation ?? 0,
+      detectionMethod: entry.detectionMethod,
       onGameContext: () => this.activeGameContext,
     });
     this.modules.set(entry.moduleId, module);

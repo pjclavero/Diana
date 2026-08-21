@@ -46,6 +46,29 @@ export function countsForScore(classification: HitClassification): boolean {
   return classification === 'valid_hit';
 }
 
+/**
+ * Cómo detectó el módulo el impacto (ADR-0007, `hit-event.schema.json`).
+ *
+ * - `analog_envelope`: envolvente por ADC. Trae `amplitude` y `threshold`.
+ * - `digital_threshold`: salida DO del módulo comercial. NO hay ADC: la
+ *   sensibilidad la fija un potenciómetro físico y no existe amplitud que
+ *   medir. Rellenar `amplitude` con 0 para "que pase" está PROHIBIDO: sería un
+ *   dato falso poniendo verde una comprobación.
+ */
+export type DetectionMethod = 'analog_envelope' | 'digital_threshold';
+
+/**
+ * ¿Este impacto trae medida analógica? Es la única pregunta que deben hacerse
+ * los consumidores antes de leer `amplitude`/`threshold`. Se responde con el
+ * DISCRIMINADOR, no con la ausencia del campo: la ausencia sola no distingue
+ * un módulo DO-only de un productor averiado (`CONTRACT_GAP-DO-ONLY`).
+ */
+export function hasAnalogMeasurement(record: {
+  detectionMethod: DetectionMethod;
+}): boolean {
+  return record.detectionMethod === 'analog_envelope';
+}
+
 export interface HitEventPayload {
   schema_version: number;
   event_id: string;
@@ -69,10 +92,19 @@ export interface HitEventPayload {
     clock_offset_us: number;
     offset_uncertainty_us?: number;
   } | null;
-  amplitude: number;
-  threshold: number;
+  /**
+   * ADR-0007 · discriminador de perfil de detección. AUSENTE equivale a
+   * `analog_envelope` (productores v1 anteriores al ADR), nunca a "digital":
+   * el esquema exige `amplitude`/`threshold` salvo que el evento se declare
+   * `digital_threshold` de forma explícita.
+   */
+  detection_method?: DetectionMethod;
+  /** Sólo en perfil analógico. En `digital_threshold` el esquema la PROHÍBE. */
+  amplitude?: number;
+  /** Sólo en perfil analógico. En `digital_threshold` el esquema lo PROHÍBE. */
+  threshold?: number;
   noise_floor?: number;
-  neighbours?: Array<{ target_index: number; amplitude: number; delta_us: number }>;
+  neighbours?: Array<{ target_index: number; amplitude?: number; delta_us: number }>;
   target_state_before: string;
   classification: HitClassification;
   classification_reason?: string;
@@ -113,8 +145,17 @@ export interface HitRecord {
   // T3 · única marca temporal que aporta el backend en la ingesta
   receivedAt: Date;
 
-  amplitude: number;
-  threshold: number;
+  /**
+   * Perfil de detección resuelto (ADR-0007). Nunca es null: si el payload no
+   * lo trae, es `analog_envelope`, que es lo que el esquema le ha exigido.
+   * Es lo que permite leer un `amplitude` nulo como "este hardware no mide"
+   * en vez de como "se perdió el dato".
+   */
+  detectionMethod: DetectionMethod;
+  /** null SÓLO cuando `detectionMethod` es `digital_threshold`. */
+  amplitude: number | null;
+  /** null SÓLO cuando `detectionMethod` es `digital_threshold`. */
+  threshold: number | null;
   noiseFloor: number | null;
   neighbours: unknown;
   targetStateBefore: string;
@@ -168,8 +209,9 @@ export function toHitRecord(payload: HitEventPayload, receivedAt: Date): HitReco
 
     receivedAt,
 
-    amplitude: payload.amplitude,
-    threshold: payload.threshold,
+    detectionMethod: payload.detection_method ?? 'analog_envelope',
+    amplitude: payload.amplitude ?? null,
+    threshold: payload.threshold ?? null,
     noiseFloor: payload.noise_floor ?? null,
     neighbours: payload.neighbours ?? null,
     targetStateBefore: payload.target_state_before,

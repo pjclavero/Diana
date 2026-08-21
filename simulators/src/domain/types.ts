@@ -62,6 +62,9 @@ export interface CoordinatorTime {
   offset_uncertainty_us?: number;
 }
 
+/** ADR-0007 · cómo detectó el módulo el impacto. */
+export type DetectionMethod = 'analog_envelope' | 'digital_threshold';
+
 export interface HitEventPayload {
   schema_version: 1;
   event_id: string;
@@ -75,10 +78,15 @@ export interface HitEventPayload {
   local_sequence: number;
   device: DeviceTime;
   coordinator: CoordinatorTime | null;
-  amplitude: number;
-  threshold: number;
+  /**
+   * ADR-0007 · perfil de detección. Ausente ⇒ analógico, y entonces el esquema
+   * EXIGE amplitude y threshold. Sólo con 'digital_threshold' pueden faltar.
+   */
+  detection_method?: DetectionMethod;
+  amplitude?: number;
+  threshold?: number;
   noise_floor?: number;
-  neighbours?: { target_index: number; amplitude: number; delta_us: number }[];
+  neighbours?: { target_index: number; amplitude?: number; delta_us: number }[];
   target_state_before: TargetState;
   classification: HitClassification;
   classification_reason?: string;

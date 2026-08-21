@@ -24,6 +24,7 @@ const HIT_COLUMNS = [
   'persisted_at',
   'out_of_window',
   'replay',
+  'detection_method',
   'amplitude',
   'threshold',
   'firmware_version',
@@ -83,6 +84,10 @@ export class ExportsService {
         persisted_at: row.persistedAt,
         out_of_window: row.outOfWindow,
         replay: row.replay,
+        // ADR-0007: la columna del perfil viaja SIEMPRE, y va antes que las
+        // medidas. Quien audite el CSV debe poder distinguir una amplitud
+        // vacía "porque el hardware no mide" de una vacía por pérdida de dato.
+        detection_method: row.detectionMethod,
         amplitude: row.amplitude,
         threshold: row.threshold,
         firmware_version: row.firmwareVersion,

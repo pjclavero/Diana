@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://diana.seccionnueve/contracts/mqtt/hit-event.schema.json",
   "title": "Evento de impacto",
-  "description": "targets/v1/module/{module_id}/hit · QoS 1 · retain=false. Lo publica SIEMPRE el módulo que detecta el impacto, y sólo él: ningún módulo escribe nunca en el tópico de otro. El bloque 'coordinator' (T2) sólo viene relleno cuando el detector es el propio coordinador; para los impactos de un satélite, T2 viaja en game-event (kind=target_hit) enlazado por hit_event_id.",
+  "description": "targets/v1/module/{module_id}/hit · QoS 1 · retain=false. Lo publica SIEMPRE el módulo que detecta el impacto, y sólo él: ningún módulo escribe nunca en el tópico de otro. El bloque 'coordinator' (T2) sólo viene relleno cuando el detector es el propio coordinador; para los impactos de un satélite, T2 viaja en game-event (kind=target_hit) enlazado por hit_event_id. PERFILES DE DETECCIÓN (ADR-0007): 'detection_method' discrimina explícitamente el perfil analógico (envolvente por ADC) del perfil digital DO-only (salida DO del módulo comercial, sensibilidad por potenciómetro físico). Ausencia de campo NO es discriminador: un evento sin amplitude que no se declare digital es un productor defectuoso y se rechaza.",
   "type": "object",
   "properties": {
     "schema_version": { "$ref": "../schemas/common.schema.json#/$defs/schemaVersion" },
@@ -23,28 +23,33 @@
       ],
       "description": "null cuando el satélite publica el evento crudo; relleno por el principal al consolidar."
     },
+    "detection_method": {
+      "type": "string",
+      "enum": ["analog_envelope", "digital_threshold"],
+      "description": "Como se detecto el impacto. DISCRIMINADOR EXPLICITO (ADR-0007): distingue 'perfil digital, no hay ADC' de 'productor defectuoso que se dejo campos'. Ausente equivale a analog_envelope por compatibilidad con los productores v1 anteriores al ADR-0007; en ese caso amplitude y threshold siguen siendo OBLIGATORIOS. Con digital_threshold, amplitude/threshold/noise_floor NO pueden aparecer: no existen medidas, y rellenarlas con 0 o con el umbral nominal seria un dato falso."
+    },
     "amplitude": {
       "type": "integer",
       "minimum": 0,
       "maximum": 65535,
-      "description": "Lectura de la envolvente por el ADC, en cuentas crudas. Ausente en perfiles digitales DO-only."
+      "description": "Lectura de la envolvente por el ADC, en cuentas crudas. Obligatoria salvo que detection_method sea digital_threshold, donde queda PROHIBIDA."
     },
     "threshold": {
       "type": "integer",
       "minimum": 0,
       "maximum": 65535,
-      "description": "Umbral analogico aplicado. Ausente en perfiles digitales DO-only con sensibilidad por potenciometro fisico."
+      "description": "Umbral analogico aplicado. Obligatorio salvo que detection_method sea digital_threshold (sensibilidad por potenciometro fisico), donde queda PROHIBIDO."
     },
     "noise_floor": {
       "type": "integer",
       "minimum": 0,
       "maximum": 65535,
-      "description": "Ruido analogico estimado. Ausente en perfiles digitales DO-only."
+      "description": "Ruido analogico estimado. Opcional en el perfil analogico; PROHIBIDO con detection_method=digital_threshold."
     },
     "neighbours": {
       "type": "array",
       "maxItems": 8,
-      "description": "Canales vecinos activados dentro de la ventana de agrupación, para auditar la decisión de crosstalk.",
+      "description": "Canales vecinos activados dentro de la ventana de agrupación, para auditar la decisión de crosstalk. En el perfil analógico cada vecino DEBE traer su amplitud (es lo que sostiene la decisión); con detection_method=digital_threshold no hay amplitud que comparar y sólo viaja el desfase.",
       "items": {
         "type": "object",
         "properties": {
@@ -52,7 +57,7 @@
           "amplitude": { "type": "integer", "minimum": 0, "maximum": 65535 },
           "delta_us": { "type": "integer" }
         },
-        "required": ["target_index", "amplitude", "delta_us"],
+        "required": ["target_index", "delta_us"],
         "additionalProperties": false
       }
     },
@@ -84,6 +89,42 @@
         "required": ["classification"]
       },
       "then": { "required": ["classification_reason"] }
+    },
+    {
+      "$comment": "ADR-0007 · perfil ANALÓGICO. Se aplica tanto si detection_method viene como analog_envelope como si NO VIENE (productor v1 anterior al ADR): amplitude y threshold son obligatorios y cada vecino debe traer su amplitud. Un evento analógico sin amplitude es un PRODUCTOR DEFECTUOSO y se rechaza; la relajación de b883da0 lo dejaba pasar.",
+      "if": {
+        "not": {
+          "properties": { "detection_method": { "const": "digital_threshold" } },
+          "required": ["detection_method"]
+        }
+      },
+      "then": {
+        "required": ["amplitude", "threshold"],
+        "properties": {
+          "neighbours": {
+            "items": { "required": ["target_index", "amplitude", "delta_us"] }
+          }
+        }
+      }
+    },
+    {
+      "$comment": "ADR-0007 · perfil DIGITAL DO-only: el umbral lo fija un potenciómetro físico y no hay ADC. amplitude, threshold y noise_floor quedan PROHIBIDOS (`false` = la propiedad no puede aparecer), igual que la amplitud de cada vecino. Un evento que se declare digital y traiga medidas analógicas es INCOHERENTE y se rechaza.",
+      "if": {
+        "properties": { "detection_method": { "const": "digital_threshold" } },
+        "required": ["detection_method"]
+      },
+      "then": {
+        "properties": {
+          "amplitude": false,
+          "threshold": false,
+          "noise_floor": false,
+          "neighbours": {
+            "items": {
+              "properties": { "amplitude": false }
+            }
+          }
+        }
+      }
     }
   ]
 }
