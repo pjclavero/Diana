@@ -138,6 +138,19 @@ def check_enums(cv) -> list[str]:
                                                      "oneOf", 0, "properties", "result"),
     }
 
+    # module-diagnostic · allOf[kind=command_rejected] -> detail.reason.
+    # Lista CERRADA: el firmware no puede publicar un motivo que no este aqui.
+    diag = json.loads((CONTRACTS / "mqtt" / "module-diagnostic.schema.json").read_text())
+    for branch in diag.get("allOf", []):
+        reason = (branch.get("then", {}).get("properties", {})
+                        .get("detail", {}).get("properties", {}).get("reason"))
+        if isinstance(reason, dict) and "enum" in reason:
+            expected["diana_command_reject_reason_str"] = reason["enum"]
+            break
+    else:
+        failures.append("[enum] no se encontro detail.reason de command_rejected "
+                        "en module-diagnostic.schema.json")
+
     hit = json.loads((CONTRACTS / "mqtt" / "hit-event.schema.json").read_text())
     if "detection_method" in hit.get("properties", {}):
         expected["diana_detection_method_str"] = \

@@ -283,8 +283,12 @@ void diana_handle_message(diana_app *a, const diana_platform_rx *rx)
             char msg[DIANA_MESSAGE_MAXLEN];
             snprintf(msg, sizeof(msg), "comando %s rechazado: %s",
                      diana_command_action_str(cmd.action), v.detail);
-            diana_publish_diagnostic(a, DIANA_DIAG_COMMAND_REJECTED,
-                                     DIANA_SEV_WARNING, msg);
+            /* El rechazo viaja correlado con la orden que lo causo y con el
+             * motivo del vocabulario cerrado del contrato. Si el command_id no
+             * fuese un UUID valido no hay nada con que correlar: entonces esto
+             * NO es un command_rejected, sino un sobre mal formado, y se emite
+             * como schema_rejected en vez de inventar un identificador. */
+            diana_publish_command_rejected(a, cmd.command_id, v.reason, msg);
         }
         remember_verdict(a, cmd.command_id, v);
     }

@@ -128,6 +128,23 @@ typedef struct {
 typedef struct {
     diana_command_result result;
     char detail[121];   /* last_command.detail maxLength 120 */
+    /*
+     * Motivo del rechazo en el vocabulario CERRADO del contrato
+     * (module-diagnostic detail.reason). Solo es significativo si
+     * result != ACCEPTED. Se elige en el punto de rechazo, no se deduce
+     * despues leyendo `detail`: deducirlo seria adivinar.
+     *
+     * AVISO DE FIDELIDAD: la lista cerrada se escribio para el canal de
+     * mantenimiento (module-maintenance-command) y no cubre con exactitud dos
+     * rechazos de ESTE canal. Estan marcados en command.c donde se asignan:
+     *   - nonce no monotonico -> `duplicate` (es un reenvio de una secuencia ya
+     *     consumida, pero no el mismo command_id);
+     *   - issued_at_ms en el futuro -> `expired` (misma familia de ventana de
+     *     validez, distinto sentido del error).
+     * La explicacion exacta viaja intacta en `detail` y en el `message` del
+     * diagnostico, que no tienen vocabulario acotado.
+     */
+    diana_command_reject_reason reason;
 } diana_command_verdict;
 
 /**

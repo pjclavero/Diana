@@ -139,6 +139,25 @@ typedef enum {
     DIANA_DIAG_KIND_COUNT
 } diana_diagnostic_kind;
 
+/**
+ * module-diagnostic.schema.json · allOf[kind=command_rejected] ->
+ * detail.reason. LISTA CERRADA del contrato: un motivo que no este aqui no se
+ * puede publicar, y no se "aproxima por parecido".
+ *
+ * El motivo se elige EN EL PUNTO DE RECHAZO, no se deduce despues a partir del
+ * texto: deducirlo seria adivinar. La explicacion literal y completa sigue
+ * viajando en `message`, que no esta acotado a vocabulario.
+ */
+typedef enum {
+    DIANA_REJECT_EXPIRED = 0,
+    DIANA_REJECT_MODULE_MISMATCH,
+    DIANA_REJECT_UNKNOWN_COMMAND,
+    DIANA_REJECT_GAME_IN_PROGRESS,
+    DIANA_REJECT_DUPLICATE,
+    DIANA_REJECT_PARAMS_OUT_OF_RANGE,
+    DIANA_REJECT_REASON_COUNT
+} diana_command_reject_reason;
+
 typedef enum {
     DIANA_SEV_INFO = 0,
     DIANA_SEV_WARNING,
@@ -218,6 +237,7 @@ const char *diana_hit_classification_str(diana_hit_classification v);
 const char *diana_selector_str(diana_selector_position v);
 const char *diana_role_str(diana_module_role v);
 const char *diana_detection_method_str(diana_detection_method v);
+const char *diana_command_reject_reason_str(diana_command_reject_reason v);
 const char *diana_diagnostic_kind_str(diana_diagnostic_kind v);
 const char *diana_severity_str(diana_severity v);
 const char *diana_command_action_str(diana_command_action v);

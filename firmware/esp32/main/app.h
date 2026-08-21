@@ -70,6 +70,15 @@ void diana_task_telemetry(void *arg);
 /* Publicacion de mensajes. */
 void diana_publish_presence(diana_app *a, diana_presence_reason reason);
 void diana_publish_status(diana_app *a);
+/**
+ * Publica un kind=command_rejected CORRELADO con la orden rechazada. Si
+ * command_id no es un UUID valido, publica schema_rejected en su lugar: un
+ * rechazo incorrelable no se disfraza de rechazo correlado.
+ */
+void diana_publish_command_rejected(diana_app *a, const char *command_id,
+                                    diana_command_reject_reason reason,
+                                    const char *message);
+
 void diana_publish_diagnostic(diana_app *a, diana_diagnostic_kind kind,
                               diana_severity sev, const char *message);
 void diana_publish_config_reported(diana_app *a);
