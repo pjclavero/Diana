@@ -120,6 +120,9 @@ export interface ModuleTelemetry {
   device: DeviceTime;
 }
 
+/** ADR-0007 · cómo detectó el módulo el impacto. */
+export type DetectionMethod = "analog_envelope" | "digital_threshold";
+
 export interface HitEvent {
   event_id: string;
   system_id: Identifier;
@@ -132,10 +135,17 @@ export interface HitEvent {
   local_sequence: number;
   device: DeviceTime;
   coordinator: CoordinatorTime;
-  amplitude: number;
-  threshold: number;
-  noise_floor: number;
-  neighbours: { target_index: number; amplitude: number; delta_us: number }[];
+  /**
+   * ADR-0007 · perfil de detección. Ausente ⇒ `analog_envelope` (productor v1
+   * anterior al ADR). Es lo que hay que mirar antes de pintar una amplitud:
+   * en `digital_threshold` no hay ADC y no existe amplitud que enseñar. La UI
+   * NO debe pintar 0 ni «—» sin decir por qué (ADR-0006: no inventar datos).
+   */
+  detection_method?: DetectionMethod;
+  amplitude?: number | null;
+  threshold?: number | null;
+  noise_floor?: number | null;
+  neighbours: { target_index: number; amplitude?: number | null; delta_us: number }[];
   target_state_before: TargetState;
   classification: HitClassification;
   firmware_version: string;

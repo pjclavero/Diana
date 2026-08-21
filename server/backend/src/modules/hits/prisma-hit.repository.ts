@@ -46,6 +46,7 @@ export class PrismaHitRepository implements HitRepositoryPort {
 
           receivedAt: record.receivedAt,
 
+          detectionMethod: record.detectionMethod as never,
           amplitude: record.amplitude,
           threshold: record.threshold,
           noiseFloor: record.noiseFloor,
@@ -118,6 +119,7 @@ export class PrismaHitRepository implements HitRepositoryPort {
       clockOffsetUs: row.clockOffsetUs,
       offsetUncertaintyUs: row.offsetUncertaintyUs,
       receivedAt: row.receivedAt,
+      detectionMethod: row.detectionMethod as HitRecord['detectionMethod'],
       amplitude: row.amplitude,
       threshold: row.threshold,
       noiseFloor: row.noiseFloor,

@@ -7,6 +7,7 @@ import { classifyHit } from './classify.js';
 import { neighboursOf } from './topology.js';
 import { topics } from './topics.js';
 import type {
+  DetectionMethod,
   DeviceTime,
   HitClassification,
   HitEventPayload,
@@ -43,6 +44,14 @@ export interface ModuleSimulatorOptions {
   neighbourRatio?: number;
   threshold?: number;
   noiseFloor?: number;
+  /**
+   * ADR-0007 · perfil de detección del módulo simulado. 'analog_envelope'
+   * (por defecto) reproduce la placa con ADC. 'digital_threshold' reproduce el
+   * prototipo DO-only: NO hay ADC, así que el simulador NO emite amplitude,
+   * threshold ni noise_floor, ni amplitud de vecino. Inventar esos números
+   * "para que el escenario quede bonito" es justo lo que el ADR prohíbe.
+   */
+  detectionMethod?: DetectionMethod;
   onGameContext?: () => { gameId?: string; roundId?: string } | undefined;
 }
 
@@ -179,6 +188,7 @@ export class ModuleSimulator {
   private readonly threshold: number;
   private readonly noiseFloor: number;
   private readonly neighbourRatio: number;
+  private readonly detectionMethod: DetectionMethod;
 
   private readonly hitQueue: HitEventPayload[] = [];
   private connected = false;
@@ -224,6 +234,7 @@ export class ModuleSimulator {
     this.threshold = opts.threshold ?? 900;
     this.noiseFloor = opts.noiseFloor ?? 140;
     this.neighbourRatio = opts.neighbourRatio ?? 0.35;
+    this.detectionMethod = opts.detectionMethod ?? 'analog_envelope';
     this.onGameContext = opts.onGameContext;
     this.bootId = seededUuid(this.rng.fork(`boot-${this.moduleId}-0`));
     this.bootStartedAtUs = this.clock.nowUs();
@@ -411,6 +422,30 @@ export class ModuleSimulator {
   }
 
   /**
+   * Bloque de medida analógica del payload (ADR-0007).
+   *
+   * En el perfil DO-only devuelve un objeto VACÍO en vez de ceros: el módulo
+   * comercial no tiene ADC y el contrato PROHÍBE que `amplitude`, `threshold`
+   * o `noise_floor` aparezcan cuando `detection_method` es `digital_threshold`.
+   */
+  private analogBlock(amplitude: number): Partial<HitEventPayload> {
+    if (this.detectionMethod === 'digital_threshold') return {};
+    return { amplitude, threshold: this.threshold, noise_floor: this.noiseFloor };
+  }
+
+  /** Vecino con amplitud sólo si el perfil la puede medir (ADR-0007). */
+  private neighbourEntry(
+    targetIndex: number,
+    amplitude: number,
+    deltaUs: number,
+  ): { target_index: number; amplitude?: number; delta_us: number } {
+    if (this.detectionMethod === 'digital_threshold') {
+      return { target_index: targetIndex, delta_us: deltaUs };
+    }
+    return { target_index: targetIndex, amplitude, delta_us: deltaUs };
+  }
+
+  /**
    * Simula el impacto físico de una bola sobre `targetIndex`, incluida la
    * vibración cruzada en los canales vecinos (dosier §9.6): el canal
    * golpeado registra amplitud alta; los vecinos registran una fracción y
@@ -467,14 +502,17 @@ export class ModuleSimulator {
       local_sequence: this.localSequence,
       device: this.deviceTime(eventUs),
       coordinator: null,
-      amplitude,
-      threshold: this.threshold,
-      noise_floor: this.noiseFloor,
-      neighbours: neighbours.map((n) => ({
-        target_index: n,
-        amplitude: Math.round(amplitude * this.rng.float(0.05, this.neighbourRatio * 0.9)),
-        delta_us: this.rng.int(50, 900) * (this.rng.chance(0.5) ? 1 : -1),
-      })),
+      ...(this.detectionMethod === 'digital_threshold'
+        ? { detection_method: 'digital_threshold' as const }
+        : {}),
+      ...this.analogBlock(amplitude),
+      neighbours: neighbours.map((n) =>
+        this.neighbourEntry(
+          n,
+          Math.round(amplitude * this.rng.float(0.05, this.neighbourRatio * 0.9)),
+          this.rng.int(50, 900) * (this.rng.chance(0.5) ? 1 : -1),
+        ),
+      ),
       target_state_before: stateBefore,
       classification,
       ...(reason ? { classification_reason: reason } : {}),
@@ -524,11 +562,12 @@ export class ModuleSimulator {
         local_sequence: this.localSequence,
         device: this.deviceTime(eventUs + this.rng.int(50, 900)),
         coordinator: null,
-        amplitude,
-        threshold: this.threshold,
-        noise_floor: this.noiseFloor,
+        ...(this.detectionMethod === 'digital_threshold'
+          ? { detection_method: 'digital_threshold' as const }
+          : {}),
+        ...this.analogBlock(amplitude),
         neighbours: [
-          { target_index: mainIndex, amplitude: mainAmplitude, delta_us: this.rng.int(-900, -50) },
+          this.neighbourEntry(mainIndex, mainAmplitude, this.rng.int(-900, -50)),
         ],
         target_state_before: slot.state,
         classification: 'crosstalk_rejected',
