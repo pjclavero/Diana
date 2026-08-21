@@ -71,6 +71,38 @@ int run_do_only(void)
     CHECK(true, "sin DIANA_ADC_CH_MUX");
 #endif
 
+    /* --------------------------------------------------------------------
+     * ADR-0007 · CONTRACT_GAP-FW-DETECTION-METHOD.
+     * -------------------------------------------------------------------- */
+    SECTION("el perfil de deteccion sale de la PLACA y coincide con la ruta");
+    CHECK_EQ_INT(DIANA_DETECTION_PROFILE, DIANA_DETECT_DIGITAL_THRESHOLD,
+                 "la placa fisica DO-only se declara digital_threshold");
+    CHECK_EQ_STR(diana_detection_method_str(DIANA_DETECTION_PROFILE),
+                 "digital_threshold",
+                 "literal EXACTO del enum de hit-event.schema.json (ADR-0007)");
+    CHECK_EQ_STR(diana_detection_method_str(DIANA_DETECT_ANALOG_ENVELOPE),
+                 "analog_envelope", "literal EXACTO del perfil analogico");
+    {
+        /* La ruta que detecta ESTAMPA el perfil. Si la placa dijera una cosa y
+         * la ruta hiciera otra, el discriminador seria una etiqueta decorativa. */
+        diana_sensor_state pst;
+        diana_sensor_state_init(&pst);
+        diana_hit_group pg;
+        diana_do_process_snapshot(&pst, &cfg, bit_for_target(1),
+                                  DIANA_DO_ACTIVE_HIGH, 1500000, &pg);
+        CHECK_EQ_INT(pg.detection_method, DIANA_DETECTION_PROFILE,
+                     "la ruta 74HC165 estampa el perfil que declara la placa");
+
+        /* Y la ruta analogica estampa el otro, tambien sin preguntar a nadie. */
+        diana_config acfg2;
+        diana_config_defaults(&acfg2);
+        diana_piezo_trigger atrig = {3, 900, 2500};
+        diana_hit_group agrp;
+        diana_sensor_classify(&acfg2, &atrig, 1, &agrp);
+        CHECK_EQ_INT(agrp.detection_method, DIANA_DETECT_ANALOG_ENVELOPE,
+                     "la ruta con ADC estampa analog_envelope");
+    }
+
     SECTION("D1-D9 mapean a bit0-bit8 con polaridad active-high");
     for (uint8_t target = 1; target <= DIANA_TARGET_COUNT; ++target) {
         diana_do_snapshot s;
@@ -355,7 +387,10 @@ int run_do_only(void)
     CHECK(n > 0, "evento digital serializado");
     CHECK(strstr(json, "\"amplitude\"") == NULL, "sin campo amplitude");
     CHECK(strstr(json, "\"threshold\"") == NULL, "sin campo threshold");
-    dump_message("hit-event.schema.json", "hit_digital_do", json);
+    /* ADR-0007: este payload lleva detection_method y por tanto SOLO es valido
+     * contra el contrato reconciliado. Se valida en su propio pase; el contrato
+     * congelado de esta base no conoce el campo. */
+    dump_message_adr0007("hit-event.schema.json", "hit_digital_do", json);
 
     /* --------------------------------------------------------------------
      * RESCATE desde hw/do-only-v1: prueba ANTIRREGRESION del ADC.
@@ -406,6 +441,96 @@ int run_do_only(void)
                  "ANTIRREGRESION: serializar tampoco lee el ADC");
     CHECK(strstr(ajson, "\"amplitude\"") == NULL,
           "ANTIRREGRESION: el JSON no lleva amplitude, ni con valor cero");
+
+    SECTION("ADR-0007: coherencia perfil <-> medidas, impuesta por construccion");
+    {
+        /* 1. El evento digital NO puede nacer con medidas analogicas, aunque el
+         *    grupo las traiga por un error aguas arriba. */
+        diana_sensor_state cst2;
+        diana_sensor_state_init(&cst2);
+        diana_hit_group dirty;
+        diana_do_process_snapshot(&cst2, &cfg, bit_for_target(2),
+                                  DIANA_DO_ACTIVE_HIGH, 8000000, &dirty);
+        CHECK(dirty.accepted, "impacto digital aceptado");
+        dirty.has_amplitude = true;   /* contaminacion deliberada del grupo */
+        dirty.amplitude = 1234;
+        dirty.has_threshold = true;
+        dirty.threshold = 900;
+        dirty.has_noise_floor = true;
+        dirty.noise_floor = 12;
+
+        diana_hit_event dev;
+        diana_hit_event_build(&dev, &hal, &id, &dirty, DIANA_TARGET_ACTIVE,
+                              8000010);
+        CHECK_EQ_INT(dev.detection_method, DIANA_DETECT_DIGITAL_THRESHOLD,
+                     "el evento hereda el perfil digital");
+        CHECK(!dev.has_amplitude,
+              "el build DESCARTA la amplitud en el perfil digital");
+        CHECK(!dev.has_threshold, "y el umbral");
+        CHECK(!dev.has_noise_floor, "y el suelo de ruido");
+        CHECK_EQ_INT(dev.amplitude, 0,
+                     "el valor se limpia, no se arrastra escondido");
+        CHECK(diana_hit_event_profile_coherent(&dev), "el evento es coherente");
+        CHECK_EQ_INT(diana_hit_event_check(&dev), DIANA_HAL_OK,
+                     "y pasa la comprobacion previa a publicar");
+
+        char djson[DIANA_HIT_JSON_MAX];
+        size_t dn = diana_hit_event_to_json(&dev, djson, sizeof(djson));
+        CHECK(dn > 0, "el evento digital se serializa");
+        CHECK(strstr(djson, "\"detection_method\":\"digital_threshold\"") != NULL,
+              "el JSON lleva el discriminador con el literal exacto");
+        CHECK(strstr(djson, "\"amplitude\"") == NULL,
+              "PROHIBIDO: sin amplitude en el perfil digital");
+        CHECK(strstr(djson, "\"threshold\"") == NULL, "sin threshold");
+        CHECK(strstr(djson, "\"noise_floor\"") == NULL, "sin noise_floor");
+
+        /* 2. Un evento INCOHERENTE forzado a mano no se puede serializar. */
+        diana_hit_event bad = dev;
+        bad.has_amplitude = true;
+        bad.amplitude = 777;
+        CHECK(!diana_hit_event_profile_coherent(&bad),
+              "digital + amplitud = incoherente");
+        CHECK_EQ_INT(diana_hit_event_check(&bad),
+                     DIANA_ERR_CONTRACT_PROFILE_MISMATCH,
+                     "codigo de error propio, distinguible de evento invalido");
+        CHECK(diana_hit_event_check(&bad) != DIANA_HAL_ERR_INVALID,
+              "no se confunde con un evento mal formado");
+        char bjson[DIANA_HIT_JSON_MAX];
+        CHECK_EQ_INT(diana_hit_event_to_json(&bad, bjson, sizeof(bjson)), 0,
+                     "el serializador se NIEGA: un payload incoherente no existe");
+
+        /* 3. Simetria: un analogico SIN amplitud tampoco es coherente. Es el
+         *    productor averiado que ADR-0007 vuelve a hacer detectable. */
+        diana_hit_event lame = dev;
+        lame.detection_method = DIANA_DETECT_ANALOG_ENVELOPE;
+        lame.has_amplitude = false;
+        lame.has_threshold = false;
+        CHECK(!diana_hit_event_profile_coherent(&lame),
+              "analogico sin amplitud = productor averiado, no DO-only");
+        CHECK_EQ_INT(diana_hit_event_to_json(&lame, bjson, sizeof(bjson)), 0,
+                     "tampoco se serializa");
+
+        /* 4. El perfil analogico legitimo sigue funcionando y NO emite el
+         *    discriminador: la ausencia ya equivale a analog_envelope y los
+         *    payloads v1 anteriores al ADR no cambian ni un byte. */
+        diana_config acfg3;
+        diana_config_defaults(&acfg3);
+        diana_piezo_trigger atrig3 = {4, 900, 2600};
+        diana_hit_group agrp3;
+        diana_sensor_classify(&acfg3, &atrig3, 1, &agrp3);
+        diana_hit_event aev3;
+        diana_hit_event_build(&aev3, &hal, &id, &agrp3, DIANA_TARGET_ACTIVE, 900);
+        CHECK_EQ_INT(aev3.detection_method, DIANA_DETECT_ANALOG_ENVELOPE,
+                     "la ruta con ADC produce un evento analogico");
+        CHECK(aev3.has_amplitude, "que SI lleva amplitud");
+        CHECK_EQ_INT(diana_hit_event_check(&aev3), DIANA_HAL_OK, "y es coherente");
+        size_t an3 = diana_hit_event_to_json(&aev3, bjson, sizeof(bjson));
+        CHECK(an3 > 0, "el evento analogico se serializa");
+        CHECK(strstr(bjson, "detection_method") == NULL,
+              "el analogico NO emite el discriminador: ausencia == analogico");
+        CHECK(strstr(bjson, "\"amplitude\"") != NULL,
+              "y su amplitud sigue siendo obligatoria");
+    }
 
     /* Y la via analogica (PCB futura) sigue intacta: SI lee el ADC.
      * Esto demuestra que el contador funciona y que la comprobacion de arriba

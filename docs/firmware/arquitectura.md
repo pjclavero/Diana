@@ -205,3 +205,51 @@ el contrato. **Pendiente de ratificar en el contrato** (ver README del firmware)
   lee y se reporta, pero la negociación es de otro paquete.
 - No hay sincronización de reloj entre módulos (`clock_offset_us` se transporta,
   pero nadie lo calcula todavía).
+
+## Perfil de deteccion y discriminador `detection_method` (ADR-0007)
+
+Cierra `CONTRACT_GAP-FW-DETECTION-METHOD`. Antes, el firmware DO-only omitia
+`amplitude`/`threshold` **sin declarar por que**: un impacto legitimo del
+prototipo era indistinguible de un productor analogico averiado que hubiera
+perdido los campos. El contrato reconciliado por ADR-0007 anade el campo
+opcional `detection_method` con enum cerrado `analog_envelope` |
+`digital_threshold`, y la **ausencia equivale a analogico**.
+
+Como lo implementa el firmware:
+
+| Pieza | Responsabilidad |
+| --- | --- |
+| `boards/*.h` · `DIANA_DETECTION_PROFILE` | Cada placa DECLARA su perfil. `esp32s3_proto_do_w5500.h` (fisica) es `DIANA_DETECT_DIGITAL_THRESHOLD`; `esp32s3_w5500_protoA.h` es `DIANA_DETECT_ANALOG_ENVELOPE` |
+| `diana_hit_group.detection_method` | Lo ESTAMPA la ruta que detecto: `diana_do_process_snapshot()` (74HC165) pone digital, `diana_sensor_classify()` (ADC) pone analogico. El discriminador no puede desmentir a los datos que lo acompanan |
+| `diana_hit_event_build()` | En perfil digital DESCARTA amplitud, umbral y suelo de ruido aunque el grupo los traiga. No los sustituye por 0: eso seria un dato falso |
+| `diana_hit_event_profile_coherent()` | Invariante: digital sin medidas, analogico con `amplitude` y `threshold` |
+| `diana_hit_event_to_json()` | Se NIEGA a serializar (devuelve 0) un evento incoherente, y omite la amplitud de vecino en perfil digital. Un payload incoherente no llega a existir |
+| `diana_hit_event_check()` | Devuelve `DIANA_ERR_CONTRACT_PROFILE_MISMATCH` (-20), distinto de `DIANA_HAL_ERR_INVALID`: contradecirse no es lo mismo que estar mal formado |
+
+El literal se emite desde `diana_detection_method_str()`, cuya tabla se compara
+en cada ejecucion contra el `enum` real del esquema
+(`properties.detection_method.enum`). Escribir `digital` en vez de
+`digital_threshold` pone rojo el test de conformidad y la validacion del payload.
+
+**El analogico no emite el campo.** La ausencia ya significa analogico, asi que
+los payloads v1 anteriores al ADR no cambian ni un byte.
+
+### Como se valida sin tener el contrato en este arbol
+
+`contracts/**` es propiedad de otro carril, y el contrato congelado de esta base
+no conoce `detection_method` (tiene `additionalProperties: false`). Por eso:
+
+- los payloads que llevan el discriminador se vuelcan a un directorio aparte
+  (`DIANA_MSG_DIR_ADR0007`) y se validan contra el contrato reconciliado,
+  extraido a `/tmp` desde la rama de ese carril: `make -C firmware contracts-adr0007`;
+- el resto sigue validandose contra el contrato congelado del repo;
+- `make test` ejecuta **los dos pases**. Ninguno se esconde.
+
+Verificacion adicional util (manual): validar tambien los payloads analogicos
+contra el contrato reconciliado, para comprobar que el ADR no los rompe.
+
+```sh
+python3 firmware/esp32/tools/validate_messages.py \
+  --dir firmware/esp32/build-host/messages \
+  --contracts /tmp/diana-contracts-adr0007-$(id -u)/contracts
+```

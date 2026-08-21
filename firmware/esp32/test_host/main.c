@@ -22,9 +22,36 @@ static const char *out_dir(void)
     return d ? d : "out/messages";
 }
 
+/*
+ * Segundo directorio de volcado, para los mensajes que solo son validos contra
+ * el contrato RECONCILIADO por ADR-0007 (detection_method). El contrato
+ * congelado de esta base no conoce ese campo y tiene additionalProperties:false,
+ * asi que validar ahi un hit DO-only seria comparar contra un esquema que el
+ * propio ADR declara superado. Se validan por separado y AMBOS se ejecutan:
+ * no se esconde ninguno.
+ */
+static const char *out_dir_adr0007(void)
+{
+    const char *d = getenv("DIANA_MSG_DIR_ADR0007");
+    return d ? d : "out/messages-adr0007";
+}
+
+static void dump_to(const char *dir, const char *schema, const char *name,
+                    const char *json);
+
 void dump_message(const char *schema, const char *name, const char *json)
 {
-    const char *dir = out_dir();
+    dump_to(out_dir(), schema, name, json);
+}
+
+void dump_message_adr0007(const char *schema, const char *name, const char *json)
+{
+    dump_to(out_dir_adr0007(), schema, name, json);
+}
+
+static void dump_to(const char *dir, const char *schema, const char *name,
+                    const char *json)
+{
     mkdir(dir, 0777);
 
     char path[512];

@@ -14,7 +14,19 @@
 #define DIANA_BOARD_NAME       "proto-do-w5500"
 #define DIANA_HARDWARE_REV     "PROTO_DO_W5500"
 
-/* Banco 2026-08-23: sensores medidos en reposo a 0 V; impacto sube a 5 V. */
+/* ADR-0007 · perfil de deteccion de ESTA placa. No es una etiqueta: decide que
+ * campos puede llevar el hit-event. Esta placa no tiene ADC en la ruta de
+ * impacto, luego digital_threshold y nada de amplitud/umbral/suelo de ruido. */
+#define DIANA_DETECTION_PROFILE DIANA_DETECT_DIGITAL_THRESHOLD
+
+/* Banco 2026-08-23: sensores medidos en reposo a 0 V; impacto sube a 5 V.
+ *
+ * SUSTITUYE a la lectura del 2026-08-20, que daba "reposo alto / activo bajo".
+ * Aquella se tomo sobre un 74HC165 averiado y SIN adaptacion de nivel: el
+ * "reposo alto" era el sintoma de la averia, no la polaridad del sensor. La
+ * medida vigente se hizo con registros nuevos y divisor resistivo en D1-D3, y
+ * esta confirmada por dos vias independientes: voltimetro (0 V reposo, ~5 V al
+ * impacto) y monitor serie (D1=0x0001, D2=0x0002, D3=0x0004, reposo 0x0000). */
 #define DIANA_DO_POLARITY      DIANA_DO_ACTIVE_HIGH
 #define DIANA_SELECTOR_PROFILE DIANA_SELECTOR_2_POSITION
 #define DIANA_HC165_POLL_MS    2

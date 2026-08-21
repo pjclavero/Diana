@@ -57,6 +57,13 @@ typedef struct {
     bool     has_amplitude;
     bool     has_threshold;
     bool     has_noise_floor;
+    /**
+     * ADR-0007. Lo estampa la RUTA que detecto el impacto, no una constante
+     * suelta: diana_sensor_classify() (ADC) pone analog_envelope y
+     * diana_do_process_snapshot() (74HC165) pone digital_threshold. Asi el
+     * discriminador no puede desmentir a los datos que lo acompanan.
+     */
+    diana_detection_method detection_method;
     uint16_t raw_bitmap;                    /* snapshot HC165 crudo, DO-only */
     uint16_t active_bitmap;                 /* bit 0=D1 ... bit 8=D9 */
     uint8_t  active_count;

@@ -63,6 +63,8 @@ extern const char *g_current_suite;
  * lo valida despues contra el JSON Schema real.
  */
 void dump_message(const char *schema, const char *name, const char *json);
+/* Volcado para el contrato RECONCILIADO (ADR-0007). Ver main.c. */
+void dump_message_adr0007(const char *schema, const char *name, const char *json);
 
 int run_module_fsm(void);
 int run_target_fsm(void);

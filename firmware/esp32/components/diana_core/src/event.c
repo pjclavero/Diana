@@ -65,12 +65,26 @@ void diana_hit_event_build(diana_hit_event *ev, const diana_hal *hal,
     fill_common(ev, hal, id, now_us, group->t_us);
 
     ev->target_index = group->target_index;
+    /* ADR-0007: el perfil viene de la RUTA que detecto, no de una constante. */
+    ev->detection_method = group->detection_method;
     ev->has_amplitude = group->has_amplitude;
     ev->amplitude = group->amplitude;
     ev->has_threshold = group->has_threshold;
     ev->threshold = group->threshold;
     ev->has_noise_floor = group->has_noise_floor;
     ev->noise_floor = group->noise_floor;
+    if (ev->detection_method == DIANA_DETECT_DIGITAL_THRESHOLD) {
+        /* En el perfil digital estas medidas NO EXISTEN. No se copian aunque
+         * el grupo las traiga por un error aguas arriba: el evento no puede
+         * nacer incoherente. Y no se sustituyen por 0: eso seria un dato
+         * falso, no una ausencia. */
+        ev->has_amplitude = false;
+        ev->amplitude = 0;
+        ev->has_threshold = false;
+        ev->threshold = 0;
+        ev->has_noise_floor = false;
+        ev->noise_floor = 0;
+    }
     ev->target_state_before = state_before;
     ev->classification = group->classification;
     copyz(ev->classification_reason, sizeof(ev->classification_reason),
@@ -146,11 +160,29 @@ int diana_hit_event_check(const diana_hit_event *ev)
         if (ev->position_x < -1 || ev->position_x > 1) return DIANA_HAL_ERR_INVALID;
         if (ev->position_y < -1 || ev->position_y > 1) return DIANA_HAL_ERR_INVALID;
     }
+    /* ADR-0007. Se comprueba AL FINAL y con codigo propio: un evento
+     * incoherente con su perfil no es "invalido", es un productor que se
+     * contradice, y el operador tiene que poder distinguir los dos casos. */
+    if (!diana_hit_event_profile_coherent(ev))
+        return DIANA_ERR_CONTRACT_PROFILE_MISMATCH;
     return DIANA_HAL_OK;
+}
+
+bool diana_hit_event_profile_coherent(const diana_hit_event *ev)
+{
+    if (!ev) return false;
+    if (ev->detection_method == DIANA_DETECT_DIGITAL_THRESHOLD) {
+        return !ev->has_amplitude && !ev->has_threshold && !ev->has_noise_floor;
+    }
+    if (ev->detection_method != DIANA_DETECT_ANALOG_ENVELOPE) return false;
+    return ev->has_amplitude && ev->has_threshold;
 }
 
 size_t diana_hit_event_to_json(const diana_hit_event *ev, char *buf, size_t cap)
 {
+    /* ADR-0007: un payload incoherente con su perfil no llega a existir. */
+    if (!diana_hit_event_profile_coherent(ev)) return 0;
+
     diana_json j;
     diana_json_init(&j, buf, cap);
 
@@ -196,6 +228,15 @@ size_t diana_hit_event_to_json(const diana_hit_event *ev, char *buf, size_t cap)
         diana_json_null(&j, "coordinator");
     }
 
+    /* ADR-0007. El literal sale de diana_detection_method_str(), que el test
+     * de conformidad compara contra el enum del esquema. Se omite en el perfil
+     * analogico: la ausencia equivale a analog_envelope y asi los payloads v1
+     * anteriores al ADR siguen siendo byte a byte los mismos. */
+    if (ev->detection_method == DIANA_DETECT_DIGITAL_THRESHOLD) {
+        diana_json_str(&j, "detection_method",
+                       diana_detection_method_str(ev->detection_method));
+    }
+
     if (ev->has_amplitude) diana_json_int(&j, "amplitude", ev->amplitude);
     if (ev->has_threshold) diana_json_int(&j, "threshold", ev->threshold);
     if (ev->has_noise_floor) diana_json_int(&j, "noise_floor", ev->noise_floor);
@@ -206,7 +247,11 @@ size_t diana_hit_event_to_json(const diana_hit_event *ev, char *buf, size_t cap)
         for (uint8_t i = 0; i < ev->neighbour_count; ++i) {
             diana_json_arr_obj_open(&j);
             diana_json_int(&j, "target_index", ev->neighbours[i].target_index);
-            diana_json_int(&j, "amplitude", ev->neighbours[i].amplitude);
+            /* ADR-0007: en el perfil digital la amplitud del vecino esta
+             * PROHIBIDA. Sin ADC no hay intensidad que comparar; solo tiempo. */
+            if (ev->detection_method != DIANA_DETECT_DIGITAL_THRESHOLD) {
+                diana_json_int(&j, "amplitude", ev->neighbours[i].amplitude);
+            }
             diana_json_int(&j, "delta_us", ev->neighbours[i].delta_us);
             diana_json_obj_close(&j);
         }

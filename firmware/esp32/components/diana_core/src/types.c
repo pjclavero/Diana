@@ -31,6 +31,12 @@ STR_TABLE(diana_selector_str, diana_selector_position,
 STR_TABLE(diana_role_str, diana_module_role,
           "principal", "satellite", "auto")
 
+/* ADR-0007. Literales copiados de contracts/mqtt/hit-event.schema.json
+ * (properties.detection_method.enum). Si divergen, el test de conformidad de
+ * enumerados lo detecta. */
+STR_TABLE(diana_detection_method_str, diana_detection_method,
+          "analog_envelope", "digital_threshold")
+
 STR_TABLE(diana_diagnostic_kind_str, diana_diagnostic_kind,
           "boot", "reset_reason", "sensor_error", "led_chain_error",
           "low_voltage", "over_temperature", "queue_overflow", "mqtt_disconnect",
