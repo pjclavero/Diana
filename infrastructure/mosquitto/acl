@@ -1,138 +1,173 @@
 # ==============================================================================
-# Diana · ACL de Mosquitto
+# Diana · ACL de Mosquitto — GENERADO. NO EDITAR A MANO.
 # ==============================================================================
-# Implementa EXACTAMENTE contracts/mqtt/README.md sección 8 "Seguridad"
-# (versión corregida: la ACL de un módulo se enumera TÓPICO A TÓPICO, no como
-# un comodín de escritura sobre module/{su_id}/#; ese comodín permitiría a un
-# módulo comprometido escribirse su propio config/desired o publicar en su
-# canal ota, que deben ser sólo-lectura para el módulo).
+# Fuente única: infrastructure/mosquitto/identities.json
+# Regenerar:   node infrastructure/mosquitto/generate-identities.mjs
+# Verificar:   node infrastructure/mosquitto/generate-identities.mjs --check
 #
-#   - Mosquitto sin acceso anónimo (ver mosquitto.conf: allow_anonymous false).
-#   - Un usuario por módulo, cuyo nombre es EXACTAMENTE el module_id (sin
-#     prefijo "module-"), generado con ./generate-users.sh (mosquitto_passwd,
-#     sin contraseñas embebidas aquí).
-#     *** F-02 (crítico, cerrado aquí): antes el usuario llevaba el prefijo
-#     "module-{module_id}" mientras el client_id (sin prefijo) era el que
-#     usaba la ACL vía %c, y el client_id lo elige libremente el cliente —
-#     con las credenciales de un módulo cualquiera y client_id ajeno se
-#     suplantaba a otro módulo (confirmado en vivo el 2026-07-21, ver
-#     docs/security/findings.md). La corrección alinea usuario = client_id =
-#     module_id y mosquitto.conf activa `use_username_as_clientid true`, que
-#     hace que el broker REESCRIBA el client_id del cliente con su usuario
-#     autenticado antes de evaluar la ACL: el cliente ya no puede elegir un
-#     client_id distinto del suyo, así que %c vuelve a ser tan fiable como
-#     %u sin tener que tocar ni un patrón de tópico de este fichero. ***
-#   - El client_id MQTT de un módulo, tras la reescritura de arriba, es
-#     siempre igual a su module_id. La ACL se apoya en esa igualdad mediante
-#     el patrón %c para acotar cada módulo a su propio subárbol sin
-#     necesidad de un usuario/ACL distinto por módulo.
-#   - El backend es el ÚNICO con permiso de escritura sobre system/#,
-#     .../config/desired, .../ota y .../maintenance/command (canal de
-#     mantenimiento, separado del canal de juego module/+/command — ver
-#     bloque "Backend" más abajo. El backend NUNCA tiene, ni tendrá, permiso
-#     de escritura sobre module/+/command).
-#   - El coordinador (el módulo con rol PRINCIPAL) puede además escribir
-#     module/+/command y system/…/game/* — ver bloque "Coordinador" más abajo,
-#     que requiere una entrada específica por module_id (rol dinámico, no
-#     expresable con el patrón genérico %c).
+# MP0-A — la autorización se apoya en la IDENTIDAD AUTENTICADA:
+#   Este fichero NO contiene ni `%c` ni `%u`. Cada regla nombra al usuario
+#   autenticado (`user <username>`) y lleva el module_id LITERAL en el
+#   tópico. El `client_id` lo elige el cliente y por tanto no autoriza
+#   nada: un módulo puede conectar con el client_id que quiera (incluso
+#   uno ajeno o aleatorio) y sus permisos son exactamente los de su
+#   usuario.
 #
-# Requisito operativo: "backend", "system" y "healthcheck" quedan reservados
-# y no deben usarse como module_id de un módulo real (evita colisión de
-# patrón/usuario).
+# F-02 (CERRADO, no se reabre) — DOS barreras independientes:
+#   1. esta ACL no autoriza por client_id (no hay %c ni %u), y
+#   2. usuario == module_id + `use_username_as_clientid true` en
+#      mosquitto.conf, que fue el cierre original del hallazgo.
+#   Se conservan las dos. Retirar cualquiera de ellas debe hacer fallar
+#   simulators/test/identidades-no-se-mezclan.test.ts.
 #
-# RESUELTO (2026-08-06): contracts/mqtt/README.md sección 8 ya describe el
-# usuario SIN prefijo, coincidiendo con lo que implementa este fichero, y
-# explica por qué usuario y client_id deben coincidir letra a letra: el broker
-# reescribe el client_id con el usuario autenticado antes de evaluar la ACL, así
-# que si dejan de coincidir la autorización vuelve a apoyarse en un valor que
-# elige el propio cliente — que era exactamente F-02. Detalle del cierre en
-# docs/security/evidence/mqtt-acl.md.
-#
-# Esta nota se conserva porque la advertencia importa más que el aviso: si
-# alguien devuelve el prefijo "module-" en un lado y no en el otro, reabre el
-# agujero sin que falle nada visible.
+# Escritura tópico a tópico, nunca un comodín sobre module/<id>/#: un
+# comodín dejaría a un módulo comprometido escribirse su config/desired
+# o su ota, que son sólo-lectura para el módulo.
 # ==============================================================================
 
-# ------------------------------------------------------------------------------
-# Backend: único cliente con escritura sobre system/#, config/desired y ota
-# de cualquier módulo. Lectura total: es el consumidor/agregador de todo el
-# árbol de tópicos (presence, status, telemetry, hit, diagnostic, game/event...).
-# Usuario definido por MQTT_BACKEND_USERNAME en .env (por defecto "backend").
-# ------------------------------------------------------------------------------
+# --- Backend: único emisor de system/#, config/desired, ota y
+#     maintenance/command. Lectura total (es el agregador). NUNCA module/+/command:
+#     el canal de juego es autoridad exclusiva del coordinador.
 user backend
 topic read #
 topic write targets/v1/system/#
 topic write targets/v1/module/+/config/desired
 topic write targets/v1/module/+/ota
-# Canal de mantenimiento (separación de autoridad por dominio, no por
-# disponibilidad — decisión de arquitectura del operador): el backend puede
-# ordenar mantenimiento (reboot, set_maintenance, start_calibration...) sobre
-# CUALQUIER módulo, pero NUNCA sobre module/+/command (el canal de juego, que
-# el §8 asigna en exclusiva al coordinador). No existe ni existirá un puente
-# que dé al backend permiso de escritura sobre module/+/command: darle ese
-# permiso equivaldría a darle autoridad para cualquier orden de juego, porque
-# el broker no puede mirar el contenido del mensaje, sólo el tópico. La
-# lectura de targets/v1/module/+/diagnostic ya la cubre "topic read #" de
-# arriba; no hace falta una línea aparte.
 topic write targets/v1/module/+/maintenance/command
 
-# ------------------------------------------------------------------------------
-# Módulos: reglas genéricas aplicadas a CUALQUIER cliente autenticado, usando
-# el patrón %c (client_id de la conexión MQTT). Con `use_username_as_clientid
-# true` en mosquitto.conf el broker fuerza client_id = usuario autenticado,
-# así que %c aquí equivale de hecho a %u — pero sin tener que reescribir los
-# patrones, porque el usuario ya se llama igual que el module_id (F-02). No
-# se listan usuarios individuales aquí: cada módulo nuevo sólo necesita
-# usuario+contraseña vía generate-users.sh, la ACL ya le aplica.
-#
-# Escritura: únicamente los 6 tópicos que el módulo tiene permiso de publicar
-# (contracts/mqtt/README.md sección 8, tabla). NO se concede un comodín sobre
-# todo el subárbol.
-# ------------------------------------------------------------------------------
-pattern write targets/v1/module/%c/presence
-pattern write targets/v1/module/%c/status
-pattern write targets/v1/module/%c/telemetry
-pattern write targets/v1/module/%c/hit
-pattern write targets/v1/module/%c/diagnostic
-pattern write targets/v1/module/%c/config/reported
+# --- Módulos: una regla explícita por identidad autenticada -----------------
+# module-01 → module_id module-01
+user module-01
+topic write targets/v1/module/module-01/presence
+topic write targets/v1/module/module-01/status
+topic write targets/v1/module/module-01/telemetry
+topic write targets/v1/module/module-01/hit
+topic write targets/v1/module/module-01/diagnostic
+topic write targets/v1/module/module-01/config/reported
+topic read targets/v1/module/module-01/command
+topic read targets/v1/module/module-01/maintenance/command
+topic read targets/v1/module/module-01/config/desired
+topic read targets/v1/module/module-01/ota
+topic read targets/v1/system/+/game/state
 
-# Lectura: únicamente los 4 tópicos que la sección 8 autoriza. command,
-# config/desired y ota son SÓLO LECTURA para el módulo (los escribe el
-# backend, ver arriba); un módulo nunca tiene permiso de escritura sobre
-# ellos, ni siquiera sobre su propia copia.
-pattern read targets/v1/module/%c/command
-pattern read targets/v1/module/%c/maintenance/command
-pattern read targets/v1/module/%c/config/desired
-pattern read targets/v1/module/%c/ota
-pattern read targets/v1/system/+/game/state
+# module-02 → module_id module-02
+user module-02
+topic write targets/v1/module/module-02/presence
+topic write targets/v1/module/module-02/status
+topic write targets/v1/module/module-02/telemetry
+topic write targets/v1/module/module-02/hit
+topic write targets/v1/module/module-02/diagnostic
+topic write targets/v1/module/module-02/config/reported
+topic read targets/v1/module/module-02/command
+topic read targets/v1/module/module-02/maintenance/command
+topic read targets/v1/module/module-02/config/desired
+topic read targets/v1/module/module-02/ota
+topic read targets/v1/system/+/game/state
 
-# ------------------------------------------------------------------------------
-# Coordinador (rol PRINCIPAL, dosier §6.3): además de los permisos genéricos
-# de módulo de arriba, el módulo elegido como coordinador puede escribir
-# module/+/command (para reenviar órdenes a los satélites) y system/…/game/*
-# (game/state y game/event, de los que es autoridad — contracts/mqtt/README.md
-# sección 2). Esto NO es expresable con el patrón %c genérico porque el rol
-# de coordinador es una asignación de despliegue (puede recaer en cualquier
-# módulo físico y puede cambiar), no una propiedad derivable del client_id.
-#
-# NO EDITAR ESTE BLOQUE A MANO. Se activa/reasigna/desactiva con
-# ./set-coordinator.sh (ver docs/deployment/procedimiento.md, sección
-# "Rol de coordinador"), que reescribe exactamente el contenido entre los
-# marcadores COORDINATOR-BLOCK de abajo y no toca el resto del fichero.
-# Estado por defecto (el de este repositorio en git): SIN coordinador activo,
-# que es el estado seguro — ningún módulo tiene permiso de escribir
-# game/state/game/event/module/+/command hasta que un despliegue concreto
-# ejecute el script para su module_id PRINCIPAL.
+# module-03 → module_id module-03
+user module-03
+topic write targets/v1/module/module-03/presence
+topic write targets/v1/module/module-03/status
+topic write targets/v1/module/module-03/telemetry
+topic write targets/v1/module/module-03/hit
+topic write targets/v1/module/module-03/diagnostic
+topic write targets/v1/module/module-03/config/reported
+topic read targets/v1/module/module-03/command
+topic read targets/v1/module/module-03/maintenance/command
+topic read targets/v1/module/module-03/config/desired
+topic read targets/v1/module/module-03/ota
+topic read targets/v1/system/+/game/state
+
+# module-04 → module_id module-04
+user module-04
+topic write targets/v1/module/module-04/presence
+topic write targets/v1/module/module-04/status
+topic write targets/v1/module/module-04/telemetry
+topic write targets/v1/module/module-04/hit
+topic write targets/v1/module/module-04/diagnostic
+topic write targets/v1/module/module-04/config/reported
+topic read targets/v1/module/module-04/command
+topic read targets/v1/module/module-04/maintenance/command
+topic read targets/v1/module/module-04/config/desired
+topic read targets/v1/module/module-04/ota
+topic read targets/v1/system/+/game/state
+
+# module-05 → module_id module-05
+user module-05
+topic write targets/v1/module/module-05/presence
+topic write targets/v1/module/module-05/status
+topic write targets/v1/module/module-05/telemetry
+topic write targets/v1/module/module-05/hit
+topic write targets/v1/module/module-05/diagnostic
+topic write targets/v1/module/module-05/config/reported
+topic read targets/v1/module/module-05/command
+topic read targets/v1/module/module-05/maintenance/command
+topic read targets/v1/module/module-05/config/desired
+topic read targets/v1/module/module-05/ota
+topic read targets/v1/system/+/game/state
+
+# module-06 → module_id module-06
+user module-06
+topic write targets/v1/module/module-06/presence
+topic write targets/v1/module/module-06/status
+topic write targets/v1/module/module-06/telemetry
+topic write targets/v1/module/module-06/hit
+topic write targets/v1/module/module-06/diagnostic
+topic write targets/v1/module/module-06/config/reported
+topic read targets/v1/module/module-06/command
+topic read targets/v1/module/module-06/maintenance/command
+topic read targets/v1/module/module-06/config/desired
+topic read targets/v1/module/module-06/ota
+topic read targets/v1/system/+/game/state
+
+# module-07 → module_id module-07
+user module-07
+topic write targets/v1/module/module-07/presence
+topic write targets/v1/module/module-07/status
+topic write targets/v1/module/module-07/telemetry
+topic write targets/v1/module/module-07/hit
+topic write targets/v1/module/module-07/diagnostic
+topic write targets/v1/module/module-07/config/reported
+topic read targets/v1/module/module-07/command
+topic read targets/v1/module/module-07/maintenance/command
+topic read targets/v1/module/module-07/config/desired
+topic read targets/v1/module/module-07/ota
+topic read targets/v1/system/+/game/state
+
+# module-08 → module_id module-08
+user module-08
+topic write targets/v1/module/module-08/presence
+topic write targets/v1/module/module-08/status
+topic write targets/v1/module/module-08/telemetry
+topic write targets/v1/module/module-08/hit
+topic write targets/v1/module/module-08/diagnostic
+topic write targets/v1/module/module-08/config/reported
+topic read targets/v1/module/module-08/command
+topic read targets/v1/module/module-08/maintenance/command
+topic read targets/v1/module/module-08/config/desired
+topic read targets/v1/module/module-08/ota
+topic read targets/v1/system/+/game/state
+
+# module-09 → module_id module-09
+user module-09
+topic write targets/v1/module/module-09/presence
+topic write targets/v1/module/module-09/status
+topic write targets/v1/module/module-09/telemetry
+topic write targets/v1/module/module-09/hit
+topic write targets/v1/module/module-09/diagnostic
+topic write targets/v1/module/module-09/config/reported
+topic read targets/v1/module/module-09/command
+topic read targets/v1/module/module-09/maintenance/command
+topic read targets/v1/module/module-09/config/desired
+topic read targets/v1/module/module-09/ota
+topic read targets/v1/system/+/game/state
+
+# --- Coordinador (rol PRINCIPAL): lo gestiona ./set-coordinator.sh ----------
+# Estado por defecto en git: SIN coordinador activo (estado seguro).
 # >>> COORDINATOR-BLOCK (generado por set-coordinator.sh; no editar a mano)
 # (inactivo: ejecuta ./set-coordinator.sh <module_id> para activarlo)
 # <<< COORDINATOR-BLOCK
-# ------------------------------------------------------------------------------
 
-# ------------------------------------------------------------------------------
-# Healthcheck: usuario de sólo prueba de conectividad usado por el healthcheck
-# de Docker del propio contenedor mosquitto (ver compose.yml). Vive fuera del
-# espacio de nombres targets/v1 y no tiene ningún permiso sobre él. Generar
-# con: infrastructure/mosquitto/generate-users.sh healthcheck
-# ------------------------------------------------------------------------------
+# --- Healthcheck: sólo prueba de conectividad, fuera de targets/v1 ---------
 user healthcheck
 topic readwrite _health/probe

@@ -6,11 +6,20 @@
 # mosquitto_passwd. NUNCA escribe contraseñas en claro en git: el fichero
 # `passwd` está en .gitignore (ver /.gitignore, patrón `mosquitto/passwd`).
 #
+# MP0-A · IDENTITY_GENERATOR = UNIQUE: este script YA NO decide qué identidades
+# existen. La única autoridad es infrastructure/mosquitto/identities.json; aquí
+# sólo se crea el SECRETO de una identidad ya declarada allí. Un usuario que no
+# esté en la fuente única se rechaza: crearlo produciría credenciales válidas
+# para el broker sin ninguna regla de ACL asociada (o, peor, alineadas con un
+# module_id que ningún artefacto conoce).
+#
 # Uso:
-#   ./generate-users.sh backend               # crea/rota el usuario del backend
-#   ./generate-users.sh m1                    # crea/rota un usuario de módulo (module_id=m1)
-#   ./generate-users.sh m1 --print-only        # genera contraseña y la imprime
-#                                               # una sola vez, sin guardar eco
+#   ./generate-users.sh --all                  # crea/rota TODAS las identidades
+#                                              #   declaradas en identities.json
+#   ./generate-users.sh backend                # crea/rota el usuario del backend
+#   ./generate-users.sh module-01              # crea/rota un usuario de módulo
+#   ./generate-users.sh module-01 --print-only # genera contraseña y la imprime
+#                                              #   una sola vez, sin guardar eco
 #
 # Requisitos: el paquete `mosquitto-clients` (que trae mosquitto_passwd) debe
 # estar disponible en el host o dentro del contenedor mosquitto:
@@ -43,28 +52,47 @@ export LC_ALL=C
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PASSWD_FILE="${SCRIPT_DIR}/passwd"
+GEN="${SCRIPT_DIR}/generate-identities.mjs"
+
+# Fuente única de identidades. Si no se puede leer, no se genera nada: es
+# preferible fallar a crear una credencial que ninguna ACL respalda.
+mapfile -t SOURCE_USERS < <(node "$GEN" --list-users) || {
+  echo "ERROR: no se pudo leer la fuente única (${GEN} --list-users)." >&2
+  exit 1
+}
+[[ ${#SOURCE_USERS[@]} -gt 0 ]] || {
+  echo "ERROR: la fuente única no declara ninguna identidad." >&2
+  exit 1
+}
+
+is_declared() { printf '%s\n' "${SOURCE_USERS[@]}" | grep -qx "$1"; }
 
 usage() {
-  echo "Uso: $0 <usuario> [--print-only]" >&2
+  echo "Uso: $0 --all | <usuario> [--print-only]" >&2
+  echo "  Identidades declaradas en la fuente única: ${SOURCE_USERS[*]}" >&2
   echo "  usuario: 'backend', 'healthcheck' o '{module_id}' (p.ej. m1) — el usuario de" >&2
   echo "  un módulo es EXACTAMENTE su module_id, sin prefijo (F-02)." >&2
   exit 1
 }
 
 [[ $# -ge 1 ]] || usage
+
+if [[ "$1" == "--all" ]]; then
+  for u in "${SOURCE_USERS[@]}"; do
+    "$0" "$u"
+  done
+  echo "Creadas/rotadas ${#SOURCE_USERS[@]} identidades de la fuente única." >&2
+  exit 0
+fi
+
 USERNAME="$1"
 PRINT_ONLY="${2:-}"
 
-if [[ "$USERNAME" != "backend" && "$USERNAME" != "healthcheck" \
-      && ! "$USERNAME" =~ ^[a-z0-9][a-z0-9-]{2,62}$ ]]; then
-  echo "ERROR: el usuario debe ser 'backend', 'healthcheck' o un module_id conforme a" \
-       "^[a-z0-9][a-z0-9-]{2,62}\$ (contracts/mqtt/README.md sección 1)." >&2
-  exit 1
-fi
-
-if [[ "$USERNAME" == "system" ]]; then
-  echo "ERROR: 'system' es un module_id reservado (infrastructure/mosquitto/acl), no puede" \
-       "usarse como usuario de módulo." >&2
+if ! is_declared "$USERNAME"; then
+  echo "ERROR: '$USERNAME' no está declarado en infrastructure/mosquitto/identities.json." >&2
+  echo "       La fuente única es la ÚNICA autoridad de identidad (MP0-A). Añádelo allí y" >&2
+  echo "       regenera con 'node ${GEN}' antes de crear su contraseña." >&2
+  echo "       Identidades declaradas: ${SOURCE_USERS[*]}" >&2
   exit 1
 fi
 
