@@ -1,0 +1,22 @@
+{
+  "_schema": "hit-event.schema.json",
+  "_reason": "detection_method fuera del enum del contrato. Un metodo de deteccion desconocido no se interpreta 'por parecido': se rechaza. El ejemplo trae amplitude y threshold A PROPOSITO, para que el UNICO motivo de rechazo sea el enum y la prueba quede calibrada (si sobrase un segundo motivo, abrir el enum no pondria roja ninguna comprobacion).",
+  "schema_version": 1,
+  "event_id": "70819203-0415-40d6-91e7-829304152637",
+  "system_id": "system-a",
+  "module_id": "module-05",
+  "target_index": 3,
+  "local_sequence": 95,
+  "device": {
+    "boot_id": "2b3c4d5e-6f70-4b81-9c92-3d4e5f607182",
+    "uptime_us": 51202300,
+    "event_us": 51202110
+  },
+  "coordinator": null,
+  "detection_method": "piezo_magic",
+  "target_state_before": "active",
+  "classification": "valid_hit",
+  "firmware_version": "0.2.0",
+  "amplitude": 2710,
+  "threshold": 920
+}

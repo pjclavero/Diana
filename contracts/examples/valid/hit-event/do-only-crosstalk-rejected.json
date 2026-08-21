@@ -1,0 +1,27 @@
+{
+  "_schema": "hit-event.schema.json",
+  "schema_version": 1,
+  "event_id": "3c4d5e6f-7081-4c92-9da3-4e5f60718293",
+  "system_id": "system-a",
+  "module_id": "module-05",
+  "target_index": 4,
+  "local_sequence": 92,
+  "device": {
+    "boot_id": "2b3c4d5e-6f70-4b81-9c92-3d4e5f607182",
+    "uptime_us": 51200950,
+    "event_us": 51200760
+  },
+  "coordinator": null,
+  "detection_method": "digital_threshold",
+  "neighbours": [
+    {
+      "target_index": 3,
+      "delta_us": -650
+    }
+  ],
+  "target_state_before": "active",
+  "classification": "crosstalk_rejected",
+  "classification_reason": "canal 3 disparo 650 us antes dentro de la ventana de agrupacion; sin ADC no hay amplitud que comparar",
+  "firmware_version": "0.2.0",
+  "replay": false
+}

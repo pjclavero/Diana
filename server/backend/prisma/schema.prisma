@@ -619,6 +619,14 @@ model Participant {
 // 5. Eventos de impacto (ADR-0002 y ADR-0003)
 // ---------------------------------------------------------------------------
 
+/// ADR-0007 · cómo detectó el módulo el impacto.
+enum DetectionMethod {
+  /// Envolvente analógica por ADC. Trae amplitude y threshold.
+  analog_envelope
+  /// Salida digital DO del módulo comercial: sin ADC, sin amplitud medible.
+  digital_threshold
+}
+
 enum HitClassification {
   valid_hit
   hit_on_safe
@@ -677,8 +685,14 @@ model HitEvent {
   receivedAt  DateTime @map("received_at") @db.Timestamptz(6)
   persistedAt DateTime @default(now()) @map("persisted_at") @db.Timestamptz(6)
 
-  amplitude            Int
-  threshold            Int
+  /// ADR-0007 · perfil de detección declarado por el módulo. Sin esta columna,
+  /// un `amplitude` nulo sería ambiguo entre "hardware DO-only sin ADC" y
+  /// "dato perdido"; con ella, la lectura es inequívoca.
+  detectionMethod      DetectionMethod   @default(analog_envelope) @map("detection_method")
+  /// NULL sólo si detectionMethod = digital_threshold (no hay ADC que medir).
+  amplitude            Int?
+  /// NULL sólo si detectionMethod = digital_threshold (umbral por potenciómetro).
+  threshold            Int?
   noiseFloor           Int?              @map("noise_floor")
   neighbours           Json?
   targetStateBefore    TargetState       @map("target_state_before")

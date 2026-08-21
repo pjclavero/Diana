@@ -19,11 +19,18 @@ describe('vibración cruzada (dosier §9.6)', () => {
 
     const main = hits.find((h) => h.target_index === 5);
     expect(main?.classification).toBe('valid_hit');
+    // ADR-0007: este módulo es analógico (perfil por defecto), así que la
+    // amplitud DEBE existir. Si dejara de venir, la comparación de crosstalk
+    // de abajo compararía contra undefined en vez de fallar, y eso es
+    // exactamente lo que el discriminador existe para impedir.
+    expect(main?.detection_method).toBeUndefined();
+    expect(typeof main?.amplitude).toBe('number');
 
     const crosstalk = hits.filter((h) => h.classification === 'crosstalk_rejected');
     expect(crosstalk.length).toBeGreaterThan(0);
     for (const c of crosstalk) {
-      expect(c.amplitude).toBeLessThan(main!.amplitude);
+      expect(typeof c.amplitude).toBe('number');
+      expect(c.amplitude!).toBeLessThan(main!.amplitude!);
       expect(c.classification_reason).toBeTruthy();
       expect(c.neighbours?.some((n) => n.target_index === 5)).toBe(true);
     }
