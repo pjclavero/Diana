@@ -499,6 +499,27 @@ int run_do_only(void)
         CHECK_EQ_INT(diana_hit_event_to_json(&bad, bjson, sizeof(bjson)), 0,
                      "el serializador se NIEGA: un payload incoherente no existe");
 
+        /* 2b. Vecinos en perfil digital: pueden viajar con su desfase temporal,
+         *     pero su AMPLITUD esta prohibida. Hoy la ruta DO-only no produce
+         *     vecinos; se fuerza a mano para que la rama del serializador no
+         *     sea una afirmacion sin prueba. */
+        diana_hit_event nb = dev;
+        nb.neighbour_count = 1;
+        nb.neighbours[0].target_index = 3;
+        nb.neighbours[0].amplitude = 4242;
+        nb.neighbours[0].delta_us = -180;
+        char njson[DIANA_HIT_JSON_MAX];
+        size_t nn = diana_hit_event_to_json(&nb, njson, sizeof(njson));
+        CHECK(nn > 0, "el evento digital con vecino se serializa");
+        CHECK(strstr(njson, "\"delta_us\":-180") != NULL,
+              "el desfase temporal del vecino SI viaja: es lo unico que queda");
+        CHECK(strstr(njson, "4242") == NULL,
+              "PROHIBIDO: la amplitud del vecino no aparece en perfil digital");
+        CHECK(strstr(njson, "\"amplitude\"") == NULL,
+              "ni la clave amplitude en ninguna parte del payload digital");
+        dump_message_adr0007("hit-event.schema.json", "hit_digital_neighbour",
+                             njson);
+
         /* 3. Simetria: un analogico SIN amplitud tampoco es coherente. Es el
          *    productor averiado que ADR-0007 vuelve a hacer detectable. */
         diana_hit_event lame = dev;
