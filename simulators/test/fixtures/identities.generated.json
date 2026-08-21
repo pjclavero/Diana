@@ -1,0 +1,53 @@
+{
+  "_generated_from": "infrastructure/mosquitto/identities.json",
+  "_warning": "GENERADO — no editar a mano.",
+  "topic_root": "targets/v1",
+  "identities": [
+    {
+      "username": "module-01",
+      "moduleId": "module-01",
+      "expectedClientId": "module-01"
+    },
+    {
+      "username": "module-02",
+      "moduleId": "module-02",
+      "expectedClientId": "module-02"
+    },
+    {
+      "username": "module-03",
+      "moduleId": "module-03",
+      "expectedClientId": "module-03"
+    },
+    {
+      "username": "module-04",
+      "moduleId": "module-04",
+      "expectedClientId": "module-04"
+    },
+    {
+      "username": "module-05",
+      "moduleId": "module-05",
+      "expectedClientId": "module-05"
+    },
+    {
+      "username": "module-06",
+      "moduleId": "module-06",
+      "expectedClientId": "module-06"
+    },
+    {
+      "username": "module-07",
+      "moduleId": "module-07",
+      "expectedClientId": "module-07"
+    },
+    {
+      "username": "module-08",
+      "moduleId": "module-08",
+      "expectedClientId": "module-08"
+    },
+    {
+      "username": "module-09",
+      "moduleId": "module-09",
+      "expectedClientId": "module-09"
+    }
+  ],
+  "backendUsername": "backend"
+}
