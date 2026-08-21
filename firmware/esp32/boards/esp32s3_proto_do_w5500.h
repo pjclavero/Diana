@@ -14,6 +14,11 @@
 #define DIANA_BOARD_NAME       "proto-do-w5500"
 #define DIANA_HARDWARE_REV     "PROTO_DO_W5500"
 
+/* ADR-0007 · perfil de deteccion de ESTA placa. No es una etiqueta: decide que
+ * campos puede llevar el hit-event. Esta placa no tiene ADC en la ruta de
+ * impacto, luego digital_threshold y nada de amplitud/umbral/suelo de ruido. */
+#define DIANA_DETECTION_PROFILE DIANA_DETECT_DIGITAL_THRESHOLD
+
 /* Banco 2026-08-20: sensores en reposo alto; impacto activa a nivel bajo. */
 #define DIANA_DO_POLARITY      DIANA_DO_ACTIVE_LOW
 #define DIANA_SELECTOR_PROFILE DIANA_SELECTOR_2_POSITION

@@ -64,6 +64,9 @@ void diana_sensor_classify(const diana_config *cfg,
                            diana_hit_group *out)
 {
     memset(out, 0, sizeof(*out));
+    /* ADR-0007: esta ruta mide amplitud de envolvente por ADC. Perfil
+     * analogico, con las medidas obligatorias que eso implica. */
+    out->detection_method = DIANA_DETECT_ANALOG_ENVELOPE;
     if (count == 0) {
         out->accepted = false;
         out->classification = DIANA_HIT_AMBIGUOUS;
@@ -199,6 +202,9 @@ void diana_do_decode(uint16_t raw_bitmap, diana_do_polarity polarity,
 static void do_empty_group(diana_hit_group *out, uint16_t raw, uint16_t active)
 {
     memset(out, 0, sizeof(*out));
+    /* ADR-0007: esta ruta es el 74HC165. No hay ADC en ella, luego el perfil
+     * es digital SIEMPRE, sea cual sea el resultado. */
+    out->detection_method = DIANA_DETECT_DIGITAL_THRESHOLD;
     out->raw_bitmap = raw;
     out->active_bitmap = active;
     out->classification = DIANA_HIT_AMBIGUOUS;

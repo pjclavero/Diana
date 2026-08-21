@@ -25,6 +25,12 @@
 #define DIANA_BOARD_ESP32S3_W5500_PROTOA_H
 
 #define DIANA_BOARD_NAME       "esp32s3-w5500-protoA"
+
+/* ADR-0007 · perfil de deteccion. Esta placa SI mide amplitud de envolvente por
+ * ADC, luego analog_envelope: amplitude y threshold son obligatorios en su
+ * hit-event. (Emitirlo es opcional: la ausencia del campo ya equivale a
+ * analogico, y asi los payloads previos al ADR no cambian ni un byte.) */
+#define DIANA_DETECTION_PROFILE DIANA_DETECT_ANALOG_ENVELOPE
 #define DIANA_HARDWARE_REV     "protoA"
 
 /* --- SPI del W5500 (5 GPIO) ------------------------------------------------ */

@@ -91,6 +91,28 @@ typedef enum {
     DIANA_SELECTOR_COUNT
 } diana_selector_position;
 
+/**
+ * hit-event.schema.json#/properties/detection_method (ADR-0007).
+ *
+ * DISCRIMINADOR EXPLICITO del perfil de deteccion. No es informativo: decide
+ * que campos PUEDEN aparecer en el payload.
+ *
+ *   analog_envelope   -> amplitude y threshold OBLIGATORIOS, y cada vecino
+ *                        debe traer su amplitud.
+ *   digital_threshold -> amplitude, threshold y noise_floor PROHIBIDOS, igual
+ *                        que la amplitud de cada vecino. No estan "ausentes
+ *                        por cortesia": no pueden aparecer.
+ *
+ * La AUSENCIA del campo en el JSON equivale a analog_envelope, nunca a
+ * digital: un productor v1 anterior al ADR sigue obligado a medir. Un modulo
+ * DO-only tiene que DECLARARSE; el silencio no le sirve de excusa.
+ */
+typedef enum {
+    DIANA_DETECT_ANALOG_ENVELOPE = 0,
+    DIANA_DETECT_DIGITAL_THRESHOLD,
+    DIANA_DETECT_METHOD_COUNT
+} diana_detection_method;
+
 /** common.schema.json#/$defs/moduleRole. 'auto' nunca es un rol resuelto. */
 typedef enum {
     DIANA_ROLE_PRINCIPAL = 0,
@@ -195,6 +217,7 @@ const char *diana_module_state_str(diana_module_state v);
 const char *diana_hit_classification_str(diana_hit_classification v);
 const char *diana_selector_str(diana_selector_position v);
 const char *diana_role_str(diana_module_role v);
+const char *diana_detection_method_str(diana_detection_method v);
 const char *diana_diagnostic_kind_str(diana_diagnostic_kind v);
 const char *diana_severity_str(diana_severity v);
 const char *diana_command_action_str(diana_command_action v);

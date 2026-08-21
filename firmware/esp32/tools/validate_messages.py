@@ -32,6 +32,19 @@ CONTRACTS = REPO / "contracts"
 TYPES_C = HERE.parents[1] / "components" / "diana_core" / "src" / "types.c"
 
 
+def set_contracts(path: Path) -> None:
+    """
+    Apunta la validacion a OTRO arbol de contratos.
+
+    Existe por ADR-0007: el discriminador `detection_method` vive en el contrato
+    reconciliado por otro carril, que este worktree no puede contener
+    (`contracts/**` no es propiedad de este carril). El arbol alternativo se
+    extrae FUERA del repositorio y se valida contra el, sin copiar nada aqui.
+    """
+    global CONTRACTS
+    CONTRACTS = path.resolve()
+
+
 def load_contract_module():
     spec = importlib.util.spec_from_file_location(
         "diana_contracts_validate", CONTRACTS / "validate.py"
@@ -125,6 +138,13 @@ def check_enums(cv) -> list[str]:
                                                      "oneOf", 0, "properties", "result"),
     }
 
+    hit = json.loads((CONTRACTS / "mqtt" / "hit-event.schema.json").read_text())
+    if "detection_method" in hit.get("properties", {}):
+        expected["diana_detection_method_str"] = \
+            hit["properties"]["detection_method"]["enum"]
+    else:
+        print("  --   detection_method no existe en este contrato: sin comprobar")
+
     actual = firmware_enum_strings()
 
     for fn, want in expected.items():
@@ -145,7 +165,13 @@ def check_enums(cv) -> list[str]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dir", required=True, help="directorio con los mensajes volcados")
+    ap.add_argument("--contracts", default=None,
+                    help="arbol de contratos alternativo (por defecto, el del repo)")
     args = ap.parse_args()
+
+    if args.contracts:
+        set_contracts(Path(args.contracts))
+        print(f"\n  contratos: {CONTRACTS}")
 
     cv = load_contract_module()
 

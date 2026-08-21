@@ -78,6 +78,11 @@ typedef struct {
     diana_device_time device;
     bool     has_coordinator;
     diana_coordinator_time coordinator;
+    /**
+     * ADR-0007 · discriminador del perfil de deteccion. Se hereda del grupo,
+     * que a su vez lo estampa la ruta que detecto el impacto.
+     */
+    diana_detection_method detection_method;
     bool     has_amplitude;
     uint16_t amplitude;
     bool     has_threshold;
@@ -92,6 +97,17 @@ typedef struct {
     char     firmware_version[DIANA_SEMVER_MAXLEN];
     bool     replay;
 } diana_hit_event;
+
+/**
+ * ADR-0007 · el evento se declara digital y ademas trae medidas analogicas
+ * (amplitud, umbral, suelo de ruido o amplitud de vecino), o al reves. Es una
+ * INCOHERENCIA del productor, no un evento mal formado: se distingue de
+ * DIANA_HAL_ERR_INVALID a proposito.
+ *
+ * Rellenar amplitude con 0, con -1 o con el umbral nominal para que un
+ * validador se ponga verde esta PROHIBIDO: seria un dato falso.
+ */
+#define DIANA_ERR_CONTRACT_PROFILE_MISMATCH (-20)
 
 /** Tamano de buffer suficiente para el peor caso de un hit-event. */
 #define DIANA_HIT_JSON_MAX 1600
@@ -137,6 +153,17 @@ bool diana_hit_event_attach_coordinator(diana_hit_event *ev,
  * Devuelve la longitud escrita, o 0 si no cabe (nunca trunca en silencio).
  */
 size_t diana_hit_event_to_json(const diana_hit_event *ev, char *buf, size_t cap);
+
+/**
+ * ADR-0007 · true si el evento es COHERENTE con su perfil de deteccion:
+ *   analog_envelope   -> amplitude y threshold presentes, y todo vecino con
+ *                        amplitud (has_neighbour_amplitude).
+ *   digital_threshold -> amplitude, threshold, noise_floor y amplitud de
+ *                        vecino AUSENTES.
+ * El serializador se niega a producir JSON si esto es false, para que un
+ * payload incoherente no pueda llegar a existir.
+ */
+bool diana_hit_event_profile_coherent(const diana_hit_event *ev);
 
 /**
  * Comprobacion local previa a publicar: verifica los invariantes que el
