@@ -91,15 +91,17 @@ if [[ "$ARG" == "--none" ]]; then
   DESC="desactivado (estado seguro)"
 else
   MODULE_ID="$ARG"
-  if [[ ! "$MODULE_ID" =~ ^[a-z0-9][a-z0-9-]{2,62}$ ]]; then
-    echo "ERROR: module_id '$MODULE_ID' no cumple ^[a-z0-9][a-z0-9-]{2,62}\$" \
-         "(contracts/mqtt/README.md sección 1)." >&2
+  # MP0-A: el coordinador debe ser una identidad DECLARADA en la fuente única.
+  # Antes bastaba con cumplir la regex, así que se podía activar el rol para un
+  # module_id que no existe en el broker: la ACL quedaba con un `user` inerte y
+  # la prueba del coordinador daba un falso negativo indistinguible.
+  USERNAME_OF="$(node "${SCRIPT_DIR}/generate-identities.mjs" --username-of "$MODULE_ID" 2>/dev/null || true)"
+  if [[ -z "$USERNAME_OF" ]]; then
+    echo "ERROR: module_id '$MODULE_ID' no está declarado en" \
+         "infrastructure/mosquitto/identities.json (fuente única de identidad)." >&2
     exit 1
   fi
-  if [[ "$MODULE_ID" == "backend" || "$MODULE_ID" == "system" || "$MODULE_ID" == "healthcheck" ]]; then
-    echo "ERROR: '$MODULE_ID' es un module_id reservado, no puede ser coordinador." >&2
-    exit 1
-  fi
+  MODULE_ID="$USERNAME_OF"
   NEW_BODY="user ${MODULE_ID}
 topic write targets/v1/module/+/command
 topic write targets/v1/system/+/game/state

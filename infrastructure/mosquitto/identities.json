@@ -1,0 +1,47 @@
+{
+  "_comment": [
+    "MP0-A · FUENTE ÚNICA DE IDENTIDADES MQTT (IDENTITY_GENERATOR = UNIQUE).",
+    "",
+    "Ningún artefacto derivado se edita a mano: todos se regeneran con",
+    "  node infrastructure/mosquitto/generate-identities.mjs",
+    "y se verifican con --check (que sale 1 si algún derivado está desincronizado).",
+    "Derivados: acl, users.generated.txt, modules.generated.json,",
+    "identities.generated.env.example y simulators/test/fixtures/identities.generated.json.",
+    "",
+    "Aquí NO hay contraseñas y nunca las habrá: las contraseñas las crea",
+    "generate-users.sh con mosquitto_passwd sobre infrastructure/mosquitto/passwd,",
+    "que está en .gitignore.",
+    "",
+    "F-02 (crítico, CERRADO — no se puede reabrir): el usuario MQTT de un módulo",
+    "es EXACTAMENTE su module_id. mosquitto.conf mantiene use_username_as_clientid",
+    "true, de modo que el broker reescribe el client_id con el usuario autenticado.",
+    "Además, la ACL generada por este generador enumera reglas explícitas",
+    "`user <username>` con el module_id LITERAL en el tópico: no contiene %c ni %u,",
+    "así que la autorización se apoya en la identidad autenticada aunque alguien",
+    "retirase la directiva. Son dos barreras independientes; se conservan las dos.",
+    "",
+    "identity_equals_module_id=true declara la invariante F-02 de forma explícita:",
+    "el generador la comprueba y aborta si algún par username/module_id la rompe.",
+    "",
+    "Las 11 identidades son las medidas en el broker real: backend, healthcheck y",
+    "module-01..module-09, coherentes con tests/fixtures/topology.json."
+  ],
+  "topic_root": "targets/v1",
+  "identity_equals_module_id": true,
+  "service_identities": {
+    "backend": { "username": "backend" },
+    "healthcheck": { "username": "healthcheck", "topic": "_health/probe" }
+  },
+  "reserved_module_ids": ["backend", "system", "healthcheck"],
+  "modules": [
+    { "username": "module-01", "module_id": "module-01" },
+    { "username": "module-02", "module_id": "module-02" },
+    { "username": "module-03", "module_id": "module-03" },
+    { "username": "module-04", "module_id": "module-04" },
+    { "username": "module-05", "module_id": "module-05" },
+    { "username": "module-06", "module_id": "module-06" },
+    { "username": "module-07", "module_id": "module-07" },
+    { "username": "module-08", "module_id": "module-08" },
+    { "username": "module-09", "module_id": "module-09" }
+  ]
+}

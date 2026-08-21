@@ -27,7 +27,8 @@ ENV_EXAMPLE   := .env.example
 
 .PHONY: help bootstrap dev test lint build up down deploy backup restore \
         reset-dev simulate logs ps contracts-test config config-dev \
-        mosquitto-users firmware-host-test check-ports load-test api-contract
+        mosquitto-users identities identities-check firmware-host-test check-ports \
+        load-test api-contract
 
 help: ## Muestra esta ayuda
 	@echo "Diana · objetivos disponibles:"
@@ -44,11 +45,18 @@ bootstrap: ## Prepara un entorno local: copia .env.example -> .env si no existe
 	@echo "Genera credenciales MQTT con: make mosquitto-users"
 
 mosquitto-users: ## Genera usuarios MQTT (backend, healthcheck, módulos) con mosquitto_passwd
-	@echo "Uso: ./infrastructure/mosquitto/generate-users.sh <usuario>"
-	@echo "Ejemplos:"
+	@echo "Las identidades las declara la FUENTE ÚNICA infrastructure/mosquitto/identities.json;"
+	@echo "generate-users.sh sólo crea el SECRETO de una identidad ya declarada allí."
+	@echo "Uso:"
+	@echo "  ./infrastructure/mosquitto/generate-users.sh --all        # las 11 identidades"
 	@echo "  ./infrastructure/mosquitto/generate-users.sh backend"
-	@echo "  ./infrastructure/mosquitto/generate-users.sh healthcheck"
-	@echo "  ./infrastructure/mosquitto/generate-users.sh module-m1"
+	@echo "  ./infrastructure/mosquitto/generate-users.sh module-01"
+
+identities: ## Regenera los 5 artefactos derivados de infrastructure/mosquitto/identities.json
+	node infrastructure/mosquitto/generate-identities.mjs
+
+identities-check: ## Falla si algún artefacto derivado está desincronizado de la fuente única
+	node infrastructure/mosquitto/generate-identities.mjs --check
 
 dev: ## Levanta el stack en modo desarrollo (compose.yml + compose.dev.yml, perfil dev)
 	$(COMPOSE_DEV) --profile dev up --build

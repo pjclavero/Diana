@@ -1,0 +1,14 @@
+# GENERADO desde identities.json — no editar a mano.
+# Un usuario por línea. Crear/rotar todos con:
+#   ./generate-users.sh --all
+backend
+healthcheck
+module-01
+module-02
+module-03
+module-04
+module-05
+module-06
+module-07
+module-08
+module-09
