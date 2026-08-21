@@ -253,3 +253,38 @@ python3 firmware/esp32/tools/validate_messages.py \
   --dir firmware/esp32/build-host/messages \
   --contracts /tmp/diana-contracts-adr0007-$(id -u)/contracts
 ```
+
+## `command_rejected`: correlación obligatoria (contrato v1.1)
+
+`module-diagnostic.schema.json` exige `request_id` y `detail{accepted,reason}`
+**solo** para `kind=command_rejected`, con este motivo escrito en el propio
+esquema: *«un rechazo sin request_id es, por definición, incorrelable»*. El
+firmware emitía el `kind` y no propagaba ninguno de los dos, teniéndolos a mano.
+
+| Pieza | Responsabilidad |
+| --- | --- |
+| `diana_command_reject_reason` (`types.h`) | Lista CERRADA del contrato: `expired`, `module_mismatch`, `unknown_command`, `game_in_progress`, `duplicate`, `params_out_of_range` |
+| `diana_command_verdict.reason` | El motivo se elige EN EL PUNTO DE RECHAZO, no se deduce despues leyendo el texto |
+| `diana_diagnostic_command_rejected()` | Constructor UNICO: exige el UUID de la orden y el motivo. Devuelve `false` si el `command_id` no es un UUID |
+| `diana_diagnostic_json()` | Se NIEGA (devuelve 0) si un `command_rejected` no lleva correlacion. No hay camino alternativo |
+| `diana_publish_command_rejected()` | Si no hay UUID con que correlar, publica `schema_rejected` diciendo lo que es, en vez de inventar un `request_id` |
+
+La explicación literal del rechazo sigue viajando entera en `message`, que no
+tiene vocabulario acotado. Los diagnósticos espontáneos (`boot`,
+`sensor_error`, `low_voltage`…) **no** emiten `request_id`: no responden a
+ninguna orden y el campo no se rellena por cortesía.
+
+### CONTRACT_GAP anotado (no corregido aquí)
+
+La lista cerrada de `reason` se escribió para el canal de mantenimiento
+(`module-maintenance-command`, que el firmware aún no implementa) y no cubre
+con exactitud dos rechazos del canal `module/{id}/command`:
+
+| Rechazo real | `reason` emitido | Por qué es imperfecto |
+| --- | --- | --- |
+| `nonce <= último aceptado` | `duplicate` | Es un reenvío de una secuencia ya consumida, pero no el mismo `command_id` |
+| `issued_at_ms` en el futuro | `expired` | Mismo fallo de ventana de validez, sentido contrario |
+
+Ambos están marcados en `command.c` donde se asignan. **No se ha tocado el
+esquema**: si hiciera falta un motivo propio (`replay` / `clock_skew`), es
+decisión del carril dueño de `contracts/**`.

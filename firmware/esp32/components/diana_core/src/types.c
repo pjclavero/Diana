@@ -37,6 +37,13 @@ STR_TABLE(diana_role_str, diana_module_role,
 STR_TABLE(diana_detection_method_str, diana_detection_method,
           "analog_envelope", "digital_threshold")
 
+/* Literales copiados de module-diagnostic.schema.json
+ * (allOf[kind=command_rejected].then.properties.detail.properties.reason.enum).
+ * El test de conformidad los compara contra el contrato en cada ejecucion. */
+STR_TABLE(diana_command_reject_reason_str, diana_command_reject_reason,
+          "expired", "module_mismatch", "unknown_command", "game_in_progress",
+          "duplicate", "params_out_of_range")
+
 STR_TABLE(diana_diagnostic_kind_str, diana_diagnostic_kind,
           "boot", "reset_reason", "sensor_error", "led_chain_error",
           "low_voltage", "over_temperature", "queue_overflow", "mqtt_disconnect",

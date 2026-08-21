@@ -117,6 +117,17 @@ typedef struct {
     diana_diagnostic_kind kind;
     diana_severity severity;
     char message[DIANA_MESSAGE_MAXLEN];
+    /*
+     * Correlacion con la orden que provoco el diagnostico. El contrato la
+     * exige para kind=command_rejected: "un rechazo sin request_id es, por
+     * definicion, incorrelable". Para los diagnosticos espontaneos (boot,
+     * sensor_error, low_voltage, ...) no existe ninguna orden y el campo NO se
+     * emite: no se rellena con un UUID inventado ni con una cadena vacia.
+     */
+    bool has_request_id;
+    char request_id[DIANA_UUID_LEN];
+    bool has_reject_reason;
+    diana_command_reject_reason reject_reason;
     /* detail: pares clave/valor simples, suficientes para los kinds actuales.
      * Sin secretos ni credenciales (contrato). */
     const char *detail_keys[8];
@@ -129,6 +140,28 @@ typedef struct {
 void diana_diagnostic_init(diana_diagnostic *d, const diana_hal *hal,
                            diana_diagnostic_kind kind, diana_severity sev,
                            const char *message);
+
+/**
+ * Constructor UNICO del diagnostico kind=command_rejected.
+ *
+ * Existe para que sea IMPOSIBLE emitir un rechazo sin correlacion: pide el
+ * identificador de la orden rechazada y el motivo del contrato como argumentos
+ * obligatorios. diana_diagnostic_json() se niega a serializar un
+ * command_rejected que no los lleve, asi que no hay camino alternativo.
+ *
+ * @param command_id UUID de la orden RECHAZADA (module-command.command_id).
+ *                   Debe ser el de ESA orden: un rechazo correlado con otra
+ *                   cosa es peor que uno sin correlar, porque miente.
+ * @param reason     motivo de la lista CERRADA del contrato, elegido en el
+ *                   punto de rechazo.
+ * @param message    explicacion literal, sin vocabulario acotado.
+ * @return false si command_id no es un UUID valido: en ese caso el diagnostico
+ *         NO queda construido y no se puede publicar.
+ */
+bool diana_diagnostic_command_rejected(diana_diagnostic *d, const diana_hal *hal,
+                                       const char *command_id,
+                                       diana_command_reject_reason reason,
+                                       const char *message);
 
 size_t diana_diagnostic_json(const diana_diagnostic *d, const diana_identity *id,
                              uint64_t uptime_us, char *buf, size_t cap);

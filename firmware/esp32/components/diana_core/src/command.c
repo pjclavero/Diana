@@ -81,10 +81,13 @@ static void remember(diana_command_guard *g, const char *command_id)
     if (g->used < DIANA_CMD_CACHE) g->used++;
 }
 
-static diana_command_verdict verdict(diana_command_result r, const char *detail)
+static diana_command_verdict verdict_r(diana_command_result r,
+                                      diana_command_reject_reason reason,
+                                      const char *detail)
 {
     diana_command_verdict v;
     v.result = r;
+    v.reason = reason;
     v.detail[0] = '\0';
     if (detail) {
         size_t n = strlen(detail);
@@ -93,6 +96,13 @@ static diana_command_verdict verdict(diana_command_result r, const char *detail)
         v.detail[n] = '\0';
     }
     return v;
+}
+
+/* Aceptacion: `reason` no es significativo. Se fija a un valor determinista
+ * para no dejar basura en la pila, no porque signifique nada. */
+static diana_command_verdict verdict(diana_command_result r, const char *detail)
+{
+    return verdict_r(r, DIANA_REJECT_PARAMS_OUT_OF_RANGE, detail);
 }
 
 /** Comprueba los params obligatorios de cada accion (hallazgo H-07). */
@@ -130,43 +140,43 @@ diana_command_verdict diana_command_validate(diana_command_guard *g,
     /* --- 1. Version de esquema (contrato §7) ------------------------------ */
     if (cmd->schema_version > DIANA_SCHEMA_VERSION) {
         g->rejected_schema++;
-        return verdict(DIANA_CMD_RESULT_REJECTED,
+        return verdict_r(DIANA_CMD_RESULT_REJECTED, DIANA_REJECT_UNKNOWN_COMMAND,
                        "schema_version superior a la soportada");
     }
     if (cmd->schema_version != DIANA_SCHEMA_VERSION) {
         g->rejected_schema++;
-        return verdict(DIANA_CMD_RESULT_REJECTED, "schema_version desconocida");
+        return verdict_r(DIANA_CMD_RESULT_REJECTED, DIANA_REJECT_UNKNOWN_COMMAND, "schema_version desconocida");
     }
 
     /* --- 2. Sobre bien formado ------------------------------------------- */
     if (!diana_is_uuid(cmd->command_id)) {
         g->rejected_invalid++;
-        return verdict(DIANA_CMD_RESULT_REJECTED, "command_id no es un UUID");
+        return verdict_r(DIANA_CMD_RESULT_REJECTED, DIANA_REJECT_PARAMS_OUT_OF_RANGE, "command_id no es un UUID");
     }
     if ((int)cmd->issuer < 0 || cmd->issuer >= DIANA_ISSUER_COUNT) {
         g->rejected_invalid++;
-        return verdict(DIANA_CMD_RESULT_REJECTED, "issuer desconocido");
+        return verdict_r(DIANA_CMD_RESULT_REJECTED, DIANA_REJECT_PARAMS_OUT_OF_RANGE, "issuer desconocido");
     }
     if ((int)cmd->action < 0 || cmd->action >= DIANA_CMD_ACTION_COUNT) {
         g->rejected_invalid++;
-        return verdict(DIANA_CMD_RESULT_REJECTED, "accion desconocida");
+        return verdict_r(DIANA_CMD_RESULT_REJECTED, DIANA_REJECT_UNKNOWN_COMMAND, "accion desconocida");
     }
     /* Mensaje dirigido a otro modulo o a otra instalacion (dosier 23.3). */
     if (own_module_id && own_module_id[0] &&
         strcmp(cmd->module_id, own_module_id) != 0) {
         g->rejected_invalid++;
-        return verdict(DIANA_CMD_RESULT_REJECTED, "module_id no coincide");
+        return verdict_r(DIANA_CMD_RESULT_REJECTED, DIANA_REJECT_MODULE_MISMATCH, "module_id no coincide");
     }
     if (cmd->expires_in_ms < 100 || cmd->expires_in_ms > 600000) {
         g->rejected_invalid++;
-        return verdict(DIANA_CMD_RESULT_REJECTED, "expires_in_ms fuera de rango");
+        return verdict_r(DIANA_CMD_RESULT_REJECTED, DIANA_REJECT_PARAMS_OUT_OF_RANGE, "expires_in_ms fuera de rango");
     }
 
     /* --- 3. Params obligatorios por accion (H-07) ------------------------- */
     const char *miss = missing_params(cmd);
     if (miss) {
         g->rejected_params++;
-        return verdict(DIANA_CMD_RESULT_REJECTED, miss);
+        return verdict_r(DIANA_CMD_RESULT_REJECTED, DIANA_REJECT_PARAMS_OUT_OF_RANGE, miss);
     }
 
     /* --- 4. Techo de validez para acciones criticas (H-05 c) -------------- */
@@ -177,13 +187,13 @@ diana_command_verdict diana_command_validate(diana_command_guard *g,
         snprintf(d, sizeof(d), "accion critica con expires_in_ms %u > techo %u",
                  (unsigned)cmd->expires_in_ms,
                  (unsigned)DIANA_CMD_CRITICAL_MAX_EXPIRES_MS);
-        return verdict(DIANA_CMD_RESULT_REJECTED, d);
+        return verdict_r(DIANA_CMD_RESULT_REJECTED, DIANA_REJECT_PARAMS_OUT_OF_RANGE, d);
     }
 
     /* --- 5. Duplicado por command_id -------------------------------------- */
     if (diana_command_seen(g, cmd->command_id)) {
         g->rejected_duplicate++;
-        return verdict(DIANA_CMD_RESULT_DUPLICATE, "command_id ya ejecutado");
+        return verdict_r(DIANA_CMD_RESULT_DUPLICATE, DIANA_REJECT_DUPLICATE, "command_id ya ejecutado");
     }
 
     /* --- 6. Nonce monotonico por emisor, PERSISTIDO ----------------------- */
@@ -194,7 +204,8 @@ diana_command_verdict diana_command_validate(diana_command_guard *g,
                  (unsigned long long)cmd->nonce,
                  (unsigned long long)g->last_nonce[cmd->issuer],
                  diana_issuer_str(cmd->issuer));
-        return verdict(DIANA_CMD_RESULT_REJECTED, d);
+        /* MAPEO IMPERFECTO: el contrato no tiene un motivo para "nonce reenviado". Es un reenvio de una secuencia ya consumida, luego duplicate es lo mas cercano; el texto exacto viaja en detail. CONTRACT_GAP anotado. */
+        return verdict_r(DIANA_CMD_RESULT_REJECTED, DIANA_REJECT_DUPLICATE, d);
     }
 
     /* --- 7. Caducidad ------------------------------------------------------
@@ -209,7 +220,7 @@ diana_command_verdict diana_command_validate(diana_command_guard *g,
         snprintf(d, sizeof(d), "retenido %llu ms en el modulo > expires_in_ms %u",
                  (unsigned long long)(held_us / 1000ULL),
                  (unsigned)cmd->expires_in_ms);
-        return verdict(DIANA_CMD_RESULT_EXPIRED, d);
+        return verdict_r(DIANA_CMD_RESULT_EXPIRED, DIANA_REJECT_EXPIRED, d);
     }
 
     bool clock_ok = (clock->epoch_ms > 0);
@@ -221,7 +232,8 @@ diana_command_verdict diana_command_validate(diana_command_guard *g,
             snprintf(d, sizeof(d),
                      "issued_at_ms %llu ms en el futuro respecto al modulo",
                      (unsigned long long)(cmd->issued_at_ms - clock->epoch_ms));
-            return verdict(DIANA_CMD_RESULT_REJECTED, d);
+            /* MAPEO IMPERFECTO: "emitido en el futuro" no es "caducado", pero es el mismo fallo de ventana de validez y el contrato no ofrece otro. CONTRACT_GAP anotado. */
+            return verdict_r(DIANA_CMD_RESULT_REJECTED, DIANA_REJECT_EXPIRED, d);
         }
         uint64_t age_ms = (clock->epoch_ms > cmd->issued_at_ms)
                               ? (clock->epoch_ms - cmd->issued_at_ms)
@@ -232,7 +244,7 @@ diana_command_verdict diana_command_validate(diana_command_guard *g,
             snprintf(d, sizeof(d),
                      "caducado: %llu ms desde issued_at_ms > expires_in_ms %u",
                      (unsigned long long)age_ms, (unsigned)cmd->expires_in_ms);
-            return verdict(DIANA_CMD_RESULT_EXPIRED, d);
+            return verdict_r(DIANA_CMD_RESULT_EXPIRED, DIANA_REJECT_EXPIRED, d);
         }
     }
 

@@ -228,9 +228,37 @@ void diana_diagnostic_init(diana_diagnostic *d, const diana_hal *hal,
     }
 }
 
+bool diana_diagnostic_command_rejected(diana_diagnostic *d, const diana_hal *hal,
+                                       const char *command_id,
+                                       diana_command_reject_reason reason,
+                                       const char *message)
+{
+    if (!d) return false;
+    /* Sin UUID valido NO hay diagnostico. No se inventa uno ni se publica un
+     * rechazo incorrelable: el contrato lo prohibe y ademas no serviria. */
+    if (!command_id || !diana_is_uuid(command_id)) return false;
+    if ((int)reason < 0 || reason >= DIANA_REJECT_REASON_COUNT) return false;
+
+    diana_diagnostic_init(d, hal, DIANA_DIAG_COMMAND_REJECTED,
+                          DIANA_SEV_WARNING, message);
+    d->has_request_id = true;
+    snprintf(d->request_id, sizeof(d->request_id), "%s", command_id);
+    d->has_reject_reason = true;
+    d->reject_reason = reason;
+    return true;
+}
+
 size_t diana_diagnostic_json(const diana_diagnostic *d, const diana_identity *id,
                              uint64_t uptime_us, char *buf, size_t cap)
 {
+    /* El contrato exige request_id y detail{accepted,reason} cuando
+     * kind=command_rejected. Un rechazo sin ellos no se serializa: no puede
+     * llegar a existir un payload incorrelable. */
+    if (d->kind == DIANA_DIAG_COMMAND_REJECTED &&
+        (!d->has_request_id || !d->has_reject_reason)) {
+        return 0;
+    }
+
     diana_json j;
     diana_json_init(&j, buf, cap);
     diana_json_obj_open(&j);
@@ -248,9 +276,20 @@ size_t diana_diagnostic_json(const diana_diagnostic *d, const diana_identity *id
     diana_json_uint(&j, "event_us", uptime_us);
     diana_json_obj_close(&j);
 
-    if (d->detail_count > 0) {
+    if (d->has_request_id) diana_json_str(&j, "request_id", d->request_id);
+
+    if (d->detail_count > 0 || d->has_reject_reason) {
         diana_json_key(&j, "detail");
         diana_json_obj_open(&j);
+        if (d->has_reject_reason) {
+            /* Forma cerrada del rechazo (contrato v1.1). El request_id se
+             * repite aqui a proposito: 'detail' es el cuerpo que consumen los
+             * paneles sin tener que leer fuera de el. */
+            diana_json_str(&j, "request_id", d->request_id);
+            diana_json_bool(&j, "accepted", false);
+            diana_json_str(&j, "reason",
+                           diana_command_reject_reason_str(d->reject_reason));
+        }
         for (uint8_t i = 0; i < d->detail_count && i < 8; ++i) {
             if (d->detail_str[i])
                 diana_json_str(&j, d->detail_keys[i], d->detail_str[i]);
