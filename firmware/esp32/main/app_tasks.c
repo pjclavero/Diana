@@ -104,6 +104,29 @@ void diana_publish_diagnostic(diana_app *a, diana_diagnostic_kind kind,
     if (n) publish(a, a->topic_diagnostic, buf, n, DIANA_TOPIC_DIAGNOSTIC);
 }
 
+void diana_publish_command_rejected(diana_app *a, const char *command_id,
+                                   diana_command_reject_reason reason,
+                                   const char *message)
+{
+    diana_diagnostic d;
+    if (!diana_diagnostic_command_rejected(&d, &a->hal, command_id, reason,
+                                           message)) {
+        /* Sin UUID con que correlar esto no es un rechazo de comando, es un
+         * sobre mal formado. Se dice lo que es en vez de inventar un
+         * request_id para que el validador se ponga verde. */
+        diana_publish_diagnostic(a, DIANA_DIAG_SCHEMA_REJECTED,
+                                 DIANA_SEV_WARNING,
+                                 "comando rechazado sin command_id valido: "
+                                 "incorrelable");
+        return;
+    }
+    char buf[DIANA_MSG_JSON_MAX];
+    size_t n = diana_diagnostic_json(&d, &a->id,
+                                     a->hal.now_us(a->hal.ctx) - a->boot_us,
+                                     buf, sizeof(buf));
+    if (n) publish(a, a->topic_diagnostic, buf, n, DIANA_TOPIC_DIAGNOSTIC);
+}
+
 void diana_publish_config_reported(diana_app *a)
 {
     char buf[DIANA_MSG_JSON_MAX];
