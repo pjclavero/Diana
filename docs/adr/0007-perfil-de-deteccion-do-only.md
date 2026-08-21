@@ -7,15 +7,29 @@
 
 ## Contexto
 
+> **Nota de procedencia (obligatoria para leer este ADR).** El estado del firmware que se
+> describe abajo es el de **`b883da0`**, el FIRMWARE_BASE canónico verificado físicamente.
+> La rama `hw/do-only-v1` es una línea **DESCARTADA** por el operador —escrita sin
+> hardware, hoy sólo cantera de rescate— y **nada de lo que contiene describe el producto
+> vigente**. Toda cita a esa rama en este documento va marcada como tal.
+
 El prototipo V1 no lleva la PCB con ADC que asumía el contrato original. Lleva módulos
 piezoeléctricos comerciales con **salida digital (DO)**: la sensibilidad la fija un
 potenciómetro físico en la propia placa del sensor y el ESP32 sólo ve un flanco. En ese
-hardware **no existe** una amplitud que medir ni un umbral que reportar: el firmware lo
-declara sin ambigüedad en `diana_detection_method` (`ANALOG_ENVELOPE` /
-`DIGITAL_THRESHOLD`) y llega a definir un código de error propio,
-`DIANA_ERR_CONTRACT_NO_AMPLITUDE`, con esta nota: rellenar `amplitude` con 0, 1, −1 o el
-umbral nominal para pasar la validación está PROHIBIDO, porque sería un dato falso
-poniendo verde una comprobación.
+hardware **no existe** una amplitud que medir ni un umbral que reportar.
+
+El firmware de `b883da0` ya asume esa realidad **en la serialización**: el evento lleva
+banderas `has_amplitude` / `has_threshold` / `has_noise_floor`
+(`firmware/esp32/components/diana_core/include/diana/event.h:81-86`) y el serializador
+omite cada campo cuando su bandera es falsa —
+`if (ev->has_amplitude) diana_json_int(&j, "amplitude", …)`,
+`firmware/esp32/components/diana_core/src/event.c:199-201`.
+
+Lo que ese firmware **NO** hace es emitir ningún discriminador: `b883da0` no contiene
+`diana_detection_method` ni ningún equivalente (comprobado con
+`git grep -n "detection_method" b883da0 -- firmware`, sin resultados). Ése —y no ninguna
+otra cosa— es el hecho que motiva este ADR: **el productor omite los campos, pero no dice
+por qué los omite**, y el receptor no puede reconstruir esa intención.
 
 El commit `b883da0` resolvió ese bloqueo por el camino corto: quitó `amplitude` y
 `threshold` de la lista `required` del esquema y añadió descripciones que dicen «ausente
@@ -40,15 +54,18 @@ insuficiente como contrato.
 | Opción | Por qué no / por qué sí |
 |---|---|
 | **A. Dejarlo como está** (ausencia = perfil digital) | Rechazada. Confunde «no hay ADC» con «productor defectuoso»; pierde la capacidad de detectar un firmware analógico roto, que es un fallo real y silencioso. |
-| **B. Rellenar `amplitude: 0` en DO-only** | Rechazada, y prohibida explícitamente por el firmware. Un 0 es un dato: dice «midió cero», no «no mide». Contradice ADR-0006, cuya regla es no inventar un número donde no se conoce. |
+| **B. Rellenar `amplitude: 0` en DO-only** | Rechazada por ADR-0006: no se inventa un número donde no se conoce. Un 0 es un dato: dice «midió cero», no «no mide». (El firmware de `b883da0` no prohíbe esto de forma explícita; el veto es de este ADR y de ADR-0006. El firmware de rescate sí lo escribió después — ver «Estado del firmware».) |
 | **C. Tópico nuevo `.../hit/digital`** | Rechazada. Los 14 `TopicKind` están CONGELADOS y su cabecera exige v2 + ADR para tocarlos. Además, duplicar el canal por perfil de hardware obligaría a duplicar ACL, ingesta y consultas para el mismo evento de dominio. |
 | **D. `schema_version: 2`** | Rechazada. El cambio es *aditivo* y compatible: todo payload analógico v1 previo sigue validando sin tocar nada. Quemar una versión de esquema para un campo opcional encarece el despliegue mixto (módulos viejos y nuevos a la vez) sin ganar nada. |
 | **E. Discriminador explícito `detection_method`** | **ELEGIDA.** Ver abajo. |
 
 ## Decisión
 
-Se añade al payload `hit-event` un campo **opcional** `detection_method`, con el mismo
-vocabulario que ya usa el firmware:
+Se añade al payload `hit-event` un campo **opcional** `detection_method`. El vocabulario
+se tomó de la rama descartada `hw/do-only-v1` (que había explorado el problema sin
+hardware) por ser un nombre ya pensado, **no porque el firmware vigente lo usara**: en
+`b883da0` no existía. Desde entonces el carril de firmware lo ha adoptado en
+`mp0s/do-only-salvage`, así que hoy productor y contrato comparten vocabulario de verdad:
 
 ```jsonc
 "detection_method": "analog_envelope" | "digital_threshold"
@@ -100,12 +117,35 @@ válido deja de serlo.
   debe consultar el perfil antes de pintar una amplitud; pintar `0` o un `—` mudo sería
   reintroducir la ambigüedad en la última capa.
 
-**Firmware** (NO se toca en este carril; es propiedad de otro carril activo)
-- Queda pendiente que el productor emita `detection_method: "digital_threshold"` en el
-  perfil DO-only. Registrado como `CONTRACT_GAP-FW-DETECTION-METHOD`. Hasta que lo haga,
-  un módulo DO-only real seguirá siendo rechazado por la ingesta — y eso es lo correcto:
-  con este ADR, un hit sin `amplitude` y sin discriminador es indistinguible de un
-  productor averiado, y el contrato no debe adivinar.
+**Firmware** (NO se toca desde este carril; `firmware/**` es propiedad del carril MP0-S)
+
+Estado por rama, que es la distinción que importa:
+
+| Rama | ¿Emite discriminador? | Nota |
+|---|---|---|
+| **`b883da0`** · FIRMWARE_BASE canónico, verificado físicamente | **NO.** Omite los campos con `has_amplitude`/`has_threshold` pero no declara el perfil | Es el hueco que motiva este ADR |
+| **`hw/do-only-v1`** · **DESCARTADA** por el operador, escrita sin hardware | Definió `diana_detection_method` y `DIANA_ERR_CONTRACT_NO_AMPLITUDE (-20)`, pero **el enum nunca viajaba en el JSON** | **No es el producto.** Cantera de rescate; no citar como capacidad vigente |
+| **`mp0s/do-only-salvage` @ `15f5622`** · carril MP0-S | **SÍ** | Cierra el hueco: ver abajo |
+
+El carril MP0-S ya implementa la emisión del discriminador en `mp0s/do-only-salvage`
+(`15f5622`): `diana_hit_event` gana un campo `detection_method` heredado del grupo
+detector (`.../include/diana/event.h:85`) y el guardián de contrato pasa a llamarse
+**`DIANA_ERR_CONTRACT_PROFILE_MISMATCH (-20)`** (`:110`).
+
+El cambio de nombre es deliberado y merece constar aquí, porque la semántica es distinta
+de la del código de la rama descartada. `DIANA_ERR_CONTRACT_NO_AMPLITUDE` significaba
+«falta la amplitud» — una carencia, y en una sola dirección. `PROFILE_MISMATCH` significa
+**«el productor se contradice»** y cubre las **dos** direcciones: un evento digital que
+trae medidas analógicas (amplitud, umbral, suelo de ruido o amplitud de vecino) y un
+evento analógico que no las trae. Es exactamente la simetría de las dos ramas
+condicionales del esquema, así que productor y contrato rechazan lo mismo por el mismo
+motivo, en vez de que el firmware detecte la mitad del problema.
+
+`CONTRACT_GAP-FW-DETECTION-METHOD` queda por tanto **CERRADO** por MP0-S, no pendiente. Lo
+que sigue siendo cierto es la regla de transición: un módulo cuyo firmware aún no emita el
+discriminador y omita `amplitude` será rechazado por la ingesta, y eso es lo correcto —
+ese mensaje es indistinguible del de un productor averiado, y el contrato no debe
+adivinar.
 
 ## Lo que este ADR NO hace
 
