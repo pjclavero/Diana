@@ -51,8 +51,22 @@ condición del 9001:
 > y nombrar el `module_id` literal, deniega la suplantación **por sí sola**. La
 > defensa en profundidad de MP0-A queda demostrada, no afirmada.
 
-Aun así, **falta la directiva en el 9001 y debe añadirse**: la barrera 2 la cubre
-hoy, pero depender de una sola barrera no es lo acordado.
+**CORREGIDO en MP0-C** (misma composición): el listener 9001 declara ya
+`use_username_as_clientid true`, y una regresión vigila la propiedad **por
+listener** — `simulators/test/listener-identity-binding.test.ts`. No comprueba
+que la directiva «aparezca en el fichero», porque esa comprobación seguiría verde
+al borrarla de uno solo de los listeners, que es justo el defecto encontrado.
+Calibrada con cuatro mutaciones, todas rojas:
+
+| mutación | resultado |
+|---|---|
+| quitar la directiva del 1883 | 2 fallan |
+| quitar **sólo** la del 9001 (queda 1 ocurrencia en el fichero) | 2 fallan |
+| declararla una vez antes del primer listener | 3 fallan |
+| reintroducir `%c` en la ACL (barrera 2) | 1 falla |
+
+Verificado además que el broker **arranca** con la configuración endurecida y
+abre los dos listeners.
 
 ### Calibración del medidor
 
