@@ -1,8 +1,10 @@
 # MP0 · Evidencia del laboratorio aislado
 
 Ejecutado el **2026-08-23** sobre `mp0/integration`, base `b883da0`
-(`FIRMWARE_BASE`). **VM109 no se tocó en ningún momento**; `diana_it` no se
-reconstruyó; cero credenciales de producción.
+(`FIRMWARE_BASE`). **La infraestructura de producción no se tocó en ningún
+momento** y su entorno de integración no se reconstruyó; cero credenciales de
+producción. Todo lo descrito aquí ocurrió en contenedores efímeros de la máquina
+de desarrollo, destruidos al terminar.
 
 ## Entorno
 
