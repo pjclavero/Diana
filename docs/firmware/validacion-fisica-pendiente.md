@@ -15,6 +15,7 @@ debe tratarse como calibrado.
 | Flash/monitor | ejecutado en COM6 sobre ESP32-S3 `10:20:ba:4b:b7:04` |
 | LED | 9 aros conectados; firmware en 3 cadenas de 72 LED, test RGB/slots ejecutado |
 | Sensores DO | D1-D3 montados con divisor resistivo; reposo `raw=0x0000`; D1/D2/D3 validados |
+| Red W5500 | bloqueada en SPI: `VERSIONR=0x00` incluso con reset firmware y SPI a 5 MHz |
 | Bloqueo físico | 74HC165 sustituidos y level converter instalado; falta validar 1 h sin reinicios |
 | Umbrales piezoeléctricos | no aplican en DO-only; debounce/refractory pendientes |
 
@@ -103,6 +104,17 @@ Si la latencia de la ISR resulta ser mayor que la ventana de agrupación, el
 diseño de agrupación hay que replantearlo, no ajustarlo.
 
 ## 3. Red
+
+Estado 2026-08-23: el W5500 se probo conectado al switch LAN del servidor y con
+alimentacion externa. El firmware flasheado fuerza reset del W5500 antes de la
+sonda SPI y baja la sonda a 5 MHz, pero el registro `VERSIONR` sigue leyendo
+`0x00` en vez de `0x04`; por tanto no se llega a enlace, DHCP, SNTP ni MQTT.
+Revisar primero `MOSI/MISO/SCK/CS/RST/GND/VCC` y el modelo exacto del modulo.
+
+Desde el PC de banco, `192.168.1.209` respondio a ping, pero no acepto TCP en
+`1883`, `8080`, `80`, `22`, `443`, `8443` ni `9001`. Aunque el W5500 quede
+arreglado, MQTT real requiere levantar/exponer el broker en `1883` o cambiar
+`CONFIG_DIANA_BROKER_HOST/PORT` al servicio disponible.
 
 | Qué | Criterio |
 |---|---|

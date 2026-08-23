@@ -65,7 +65,7 @@ Prueba parcial con hardware revisado:
 | Polaridad DO | `DIANA_DO_ACTIVE_HIGH` |
 | Lectura validada | Reposo `raw=0x0000`; D1=`0x0001`; D2=`0x0002`; D3=`0x0004` |
 | LED | 9 aros conectados; firmware inicializa 3 cadenas de 72 LED y ejecuta test RGB/slots de 24 LED |
-| W5500 | SPI sigue sin responder: `VERSIONR=0x00`, `LINK=DOWN`, `IP=0.0.0.0` |
+| W5500 | Conectado a switch LAN y alimentado; SPI sigue sin responder: `VERSIONR=0x00`, `LINK=DOWN`, `IP=0.0.0.0` |
 | Selector | `GPIO15=1`, `GPIO16=1`, estado `INVALID_SELECTOR` |
 
 El cambio de polaridad viene de la medida electrica real: los sensores no quedan
@@ -76,6 +76,16 @@ El conversor bidireccional MOSFET se probo y no se deja en sensores DO: sus
 pull-ups llevan LV a 3.3 V y HV a 5 V en reposo si el sensor no hunde la linea.
 Para DO activo-alto se usa divisor resistivo por canal: reposo 0 V, impacto 5 V
 atenuado a nivel seguro para el 74HC165.
+
+La prueba de red del 2026-08-23 no llego a DHCP ni MQTT porque el firmware no
+puede leer el registro `VERSIONR` del W5500. Se flasheo una imagen de banco que
+fuerza `RST` del W5500 antes de la sonda SPI y baja `DIANA_ETH_SPI_HZ` a 5 MHz;
+el resultado siguio siendo `0x00` en lugar de `0x04`. El fallo queda acotado a
+alimentacion/cableado/pines SPI/RST/CS/GND del modulo W5500 o modulo no
+compatible, no a broker MQTT. Desde el PC de banco, `192.168.1.209` respondio a
+ping, pero no acepto TCP en `1883`, `8080`, `80`, `22`, `443`, `8443` ni
+`9001`, asi que el servidor tambien queda pendiente de levantar/exponer antes
+de validar MQTT real.
 
 ## No usado en este prototipo
 

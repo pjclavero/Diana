@@ -19,7 +19,12 @@ los sensores se midieron en reposo `0 V` e impacto hasta `5 V`, asi que el
 perfil queda `DIANA_DO_ACTIVE_HIGH`. La lectura serie quedo en reposo
 `raw=0x0000`; se capturaron impactos reales D1=`0x0001`, D2=`0x0002` y
 D3=`0x0004` sin reinicio. Los 9 aros WS2812B estan conectados y el test de
-bring-up recorre RGB y slots de 24 LED en las 3 cadenas de 72 LED. Ver
+bring-up recorre RGB y slots de 24 LED en las 3 cadenas de 72 LED. Red sigue
+pendiente: con W5500 conectado al switch LAN y alimentado, incluso tras reset
+explicito por firmware y SPI a 5 MHz, `VERSIONR` lee `0x00` en vez de `0x04`;
+no hay `LINK`, DHCP ni MQTT. Desde el PC de banco, `192.168.1.209` responde a
+ping pero no acepta TCP en los puertos probados (`1883`, `8080`, `80`, `22`,
+`443`, `8443`, `9001`). Ver
 `docs/firmware/pinout-definitivo.md`,
 `docs/hardware/prototipo-do-only.md` y
 `docs/firmware/validacion-fisica-pendiente.md`.
