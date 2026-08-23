@@ -1,5 +1,9 @@
 # Validación física pendiente
 
+> STATUS: LEGACY PARCIAL. El estado vivo consolidado esta en
+> [`docs/hardware/current/validacion.md`](../hardware/current/validacion.md) y
+> [`docs/hardware/current/pendientes.md`](../hardware/current/pendientes.md).
+
 **Este documento existe para separar lo implementado de lo validado en banco.**
 Parte del firmware ya se ha compilado, flasheado y observado sobre hardware real,
 pero la validación física completa sigue abierta. Ningún valor de este documento

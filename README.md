@@ -1,12 +1,15 @@
-# Diana · Sistema modular de dianas electrónicas 3×3
+# Diana · Sistema modular de dianas electronicas 3x3
 
 Plataforma de entrenamiento y juego con dianas luminosas modulares para proyectiles
-ligeros. Cada módulo agrupa **3×3 dianas** con sensor piezoeléctrico y ocho LED RGB por
-diana, gobernadas por un **ESP32-S3** con Ethernet **W5500**. Hasta nueve módulos forman
-una matriz lógica de **9×9 (81 dianas)** coordinada por MQTT contra un servidor Docker.
+ligeros. El prototipo fisico actual agrupa **3x3 dianas** gobernadas por un
+**ESP32-S3**, sensores comerciales por salida digital `DO`, **9 aros WS2812B de
+24 LED** y un modulo Ethernet **W5500** en bring-up. Hasta nueve modulos forman
+una matriz logica de **9x9 (81 dianas)** coordinada por MQTT contra un servidor
+Docker.
 
 > Requisitos, arquitectura y fases: [`dosier_tecnico_matriz_dianas_modulares.md`](dosier_tecnico_matriz_dianas_modulares.md).
-> Ese documento es la fuente normativa del proyecto.
+> Ese documento es la fuente normativa del producto. Para el montaje fisico real
+> de banco manda [`docs/hardware/current/README.md`](docs/hardware/current/README.md).
 
 ---
 
@@ -40,6 +43,27 @@ docs/             arquitectura, ADR, API, MQTT, firmware, hardware, despliegue,
 El código del ESP32 vive **exclusivamente** bajo `firmware/esp32/`. Los contratos no se
 copian a mano entre firmware y backend: ambos derivan de `contracts/`.
 
+## Hardware real actual
+
+La fuente de verdad del prototipo montado esta en
+[`docs/hardware/current/README.md`](docs/hardware/current/README.md).
+
+Resumen de banco:
+
+- MCU: ESP32-S3, firmware `PROTO_DO_W5500`, flasheado y observado por COM6.
+- LED: 9 aros WS2812B de 24 LED, total 216 LED en 3 cadenas de 72.
+- Sensores: ruta DO-only; D1-D3 montados con divisor resistivo y validados como
+  activos-alto; D4-D9 pendientes con sensores reales.
+- Registro DO: 2 x 74HC165 a 3.3 V.
+- Selector: SPDT de 2 posiciones esperado; estado actual observado invalido
+  hasta corregir cableado/posicion.
+- Ethernet: W5500 cableado por SPI, pero aun no validado; `VERSIONR=0x00`,
+  `LINK=DOWN`, LEDs RJ45 apagados.
+
+Documentacion anterior y disenos de PCB quedan clasificados como legado o futuro
+en [`docs/hardware/legacy/README.md`](docs/hardware/legacy/README.md) y
+[`docs/hardware/future/README.md`](docs/hardware/future/README.md).
+
 ## Arranque rápido
 
 ```bash
@@ -58,13 +82,13 @@ python3 contracts/validate.py --verbose
 
 ## Estado del proyecto
 
-**A 2026-07-26:** el stack está desplegado y sano en la VM 109 (`develop` @ `045fdd1`, 8/8
-contenedores `healthy`) con panel, autenticación real, propiedad de módulos, ciclo de firmware
-y OTA del lado del servidor, modos de juego, marcador y detección de caída de módulo. **Lo que
-todavía no ha ocurrido nunca:** que alguien juegue una partida completa desde el panel con
-credenciales reales, que el firmware se compile con ESP-IDF, y que exista una PCB. Además hay
-hallazgos de seguridad abiertos y serios (suplantación de módulo por `client_id` **confirmada
-en vivo**, y sin TLS en ninguna capa).
+**A 2026-08-24:** el stack de servidor ya existia como banco de software y el
+firmware ESP32-S3 del prototipo DO-only se ha compilado, flasheado y observado en
+hardware real. No existe PCB fabricada. El prototipo fisico actual aun tiene
+validacion parcial: LED OK en los 9 aros, sensores D1-D3 OK con divisor
+resistivo, sensores D4-D9 pendientes, W5500 pendiente por fallo SPI/link y
+partida completa real pendiente. Siguen abiertos hallazgos de seguridad de la
+plataforma, incluida suplantacion de modulo por `client_id` y ausencia de TLS.
 
 El estado vivo de cada paquete de trabajo está en
 [`docs/coordination/STATUS.md`](docs/coordination/STATUS.md); el plan, en

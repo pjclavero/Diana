@@ -1,5 +1,8 @@
 # Pinout definitivo del prototipo DO-only
 
+> STATUS: LEGACY PARCIAL. El pinout consolidado del hardware real esta en
+> [`docs/hardware/current/pinout.md`](../hardware/current/pinout.md).
+
 Perfil de firmware:
 
 ```text

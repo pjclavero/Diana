@@ -1,5 +1,9 @@
 # Conexionado del prototipo DO-only
 
+> STATUS: LEGACY PARCIAL. Usar
+> [`docs/hardware/current/conexionado.md`](current/conexionado.md) y
+> [`docs/hardware/current/pinout.md`](current/pinout.md) como conexionado activo.
+
 Montaje valido para `DIANA_BOARD_PROTO_DO_W5500`.
 
 ## ESP32 a W5500

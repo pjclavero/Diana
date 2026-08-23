@@ -1,5 +1,8 @@
 # Pinout preliminar y presupuesto de GPIO
 
+> STATUS: OBSOLETO / FUTURO. No usar para cablear el prototipo fisico actual.
+> La fuente vigente es [`docs/hardware/current/pinout.md`](../hardware/current/pinout.md).
+
 > **OBSOLETO PARA EL PROTOTIPO FISICO ACTUAL.** Para el montaje DO-only real,
 > usar `docs/firmware/pinout-definitivo.md`. Este documento queda como referencia
 > historica de una propuesta analogica/preliminar.

@@ -1,5 +1,9 @@
 # Calibracion fisica de sensores DO
 
+> STATUS: LEGACY PARCIAL. Para el montaje actual usar
+> [`docs/hardware/current/sensores-do.md`](current/sensores-do.md) y
+> [`docs/hardware/current/validacion.md`](current/validacion.md).
+
 Este prototipo usa modulos piezo comerciales con pines `V`, `G`, `AO`, `DO`.
 Solo se usa `DO`. La sensibilidad se calibra con el potenciometro fisico de
 cada modulo.

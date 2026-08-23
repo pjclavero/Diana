@@ -1,5 +1,9 @@
 # Prototipo DO-only con W5500
 
+> STATUS: LEGACY PARCIAL. Este documento conserva la cronologia de banco, pero
+> la fuente consolidada del prototipo actual es
+> [`docs/hardware/current/README.md`](current/README.md).
+
 Este documento describe el modulo Diana que esta montado ahora en banco. Es la
 fuente de verdad para el perfil de firmware `DIANA_BOARD_PROTO_DO_W5500`.
 
