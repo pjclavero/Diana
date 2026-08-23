@@ -258,4 +258,22 @@ diana_module_role diana_role_from_selector(diana_selector_position sel);
 #ifdef __cplusplus
 }
 #endif
+/**
+ * commandEnvelope.command_plane / common.schema.json#/$defs/commandPlane
+ * (contrato v1.4, ver docs/coordination/DECISION-PLANOS-DE-AUTORIDAD.md).
+ * const por canal: GAME solo en module/{id}/command, MAINTENANCE solo en
+ * module/{id}/maintenance/command. El firmware IMPONE esa constancia, no
+ * confia en que el emisor la respete (ver diana_check_command_envelope()).
+ */
+typedef enum {
+    DIANA_PLANE_GAME = 0,
+    DIANA_PLANE_MAINTENANCE,
+    DIANA_PLANE_DEVICE_MANAGEMENT,
+    DIANA_PLANE_COUNT
+} diana_command_plane;
+
+/* D1b: añadido de forma ADITIVA sobre la base fisica. NO se ha sustituido
+ * este fichero por el de ola/h3-fw, que es anterior al trabajo DO-only y a
+ * ADR-0007 y revertiria el discriminador de perfil de deteccion. */
+
 #endif /* DIANA_TYPES_H */
