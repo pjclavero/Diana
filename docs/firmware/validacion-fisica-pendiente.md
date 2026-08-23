@@ -14,7 +14,7 @@ debe tratarse como calibrado.
 | Compilación con ESP-IDF | ejecutada con ESP-IDF v5.5 |
 | Flash/monitor | ejecutado en COM6 sobre ESP32-S3 `10:20:ba:4b:b7:04` |
 | LED | 9 aros conectados; firmware en 3 cadenas de 72 LED, test RGB/slots ejecutado |
-| Sensores DO | D1-D3 montados; reposo `raw=0x0000`; firmware en `DIANA_DO_ACTIVE_HIGH` |
+| Sensores DO | D1-D3 montados con divisor resistivo; reposo `raw=0x0000`; D1/D2/D3 validados |
 | Bloqueo físico | 74HC165 sustituidos y level converter instalado; falta validar 1 h sin reinicios |
 | Umbrales piezoeléctricos | no aplican en DO-only; debounce/refractory pendientes |
 
@@ -23,21 +23,21 @@ debe tratarse como calibrado.
 El usuario reportó que el primer 74HC165 estaba muy caliente y que D1 parecía
 activo permanente. Se retiró alimentación.
 
-El 2026-08-23 se sustituyeron los 74HC165 y se instaló un conversor
-bidireccional MOSFET 3.3 V/5 V para D1-D3. Los sensores medidos entregan
-`DO=0 V` en reposo y hasta `DO=5 V` al impacto. En firmware se cambió a
-`DIANA_DO_ACTIVE_HIGH`; el monitor confirmó D1=`0x0001` y D2=`0x0002`, ambos
-volviendo a reposo `0x0000`, sin nuevo desbordamiento de pila tras ampliar
-`diana_sens`.
+El 2026-08-23 se sustituyeron los 74HC165. El conversor bidireccional MOSFET
+3.3 V/5 V se descarto para DO porque sus pull-ups dejaban la linea alta en
+reposo; se instalaron divisores resistivos en D1-D3. Los sensores medidos
+entregan `DO=0 V` en reposo y hasta `DO=5 V` al impacto. En firmware se cambió
+a `DIANA_DO_ACTIVE_HIGH`; el monitor confirmó D1=`0x0001`, D2=`0x0002` y
+D3=`0x0004`, todos volviendo a reposo `0x0000`, sin nuevo desbordamiento de
+pila tras ampliar `diana_sens`.
 
 Antes de cerrar validación:
 
-1. Capturar D3=`0x0004` en monitor serie.
-2. Completar D4-D9 con sensores reales y comprobar bit único por diana.
-3. Hacer una prueba de 1 h con 9 sensores y 216 LED sin reinicios.
-4. Confirmar que los 74HC165 permanecen fríos con todos los canales conectados.
-5. Medir DO cargado por el conversor si el LED del módulo sensor queda encendido
-   permanente al conectarlo.
+1. Completar D4-D9 con sensores reales y comprobar bit único por diana.
+2. Hacer una prueba de 1 h con 9 sensores y 216 LED sin reinicios.
+3. Confirmar que los 74HC165 permanecen fríos con todos los canales conectados.
+4. Medir cada divisor instalado: reposo cerca de 0 V e impacto dentro de nivel
+   alto seguro para 3.3 V.
 
 ## 1. Ruta analógica histórica: NO aplica al perfil DO-only
 

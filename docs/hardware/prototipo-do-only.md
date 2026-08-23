@@ -25,7 +25,7 @@ Hardware efectivo:
 | Selector | SPDT 2 posiciones, COM a GND |
 | Identificacion | Pulsador NA a GND |
 | LED | 9 aros WS2812B en 3 cadenas |
-| Level shift DO | Conversor bidireccional MOSFET 3.3 V/5 V para D1-D3 |
+| Level shift DO | Divisor resistivo por canal en D1-D3 |
 | Level shift LED | Pendiente de cerrar como solucion definitiva |
 
 ## Estado de banco 2026-08-20
@@ -59,10 +59,11 @@ Prueba parcial con hardware revisado:
 | Sensores instalados | Solo D1, D2 y D3 cableados |
 | Entradas sin sensor | D4-D9 fijadas a GND |
 | 74HC165 | Sustituidos por componentes nuevos antes de reanudar |
-| Adaptacion DO | Conversor bidireccional MOSFET; HV=5 V, LV=3.3 V |
+| Adaptacion DO | El conversor MOSFET bidireccional se descarta para DO; pull-ups dejan la linea alta |
+| Adaptacion instalada | Divisor resistivo por sensor en D1-D3 |
 | Medida DO sensor | Reposo `0 V`, impacto hasta `5 V` |
 | Polaridad DO | `DIANA_DO_ACTIVE_HIGH` |
-| Lectura validada | Reposo `raw=0x0000`; D1=`0x0001`; D2=`0x0002`; D3 queda pendiente de captura |
+| Lectura validada | Reposo `raw=0x0000`; D1=`0x0001`; D2=`0x0002`; D3=`0x0004` |
 | LED | 9 aros conectados; firmware inicializa 3 cadenas de 72 LED y ejecuta test RGB/slots de 24 LED |
 | W5500 | SPI sigue sin responder: `VERSIONR=0x00`, `LINK=DOWN`, `IP=0.0.0.0` |
 | Selector | `GPIO15=1`, `GPIO16=1`, estado `INVALID_SELECTOR` |
@@ -70,6 +71,11 @@ Prueba parcial con hardware revisado:
 El cambio de polaridad viene de la medida electrica real: los sensores no quedan
 altos en reposo, sino que suben al impacto. D4-D9 a GND son por tanto entradas
 inactivas en el banco parcial.
+
+El conversor bidireccional MOSFET se probo y no se deja en sensores DO: sus
+pull-ups llevan LV a 3.3 V y HV a 5 V en reposo si el sensor no hunde la linea.
+Para DO activo-alto se usa divisor resistivo por canal: reposo 0 V, impacto 5 V
+atenuado a nivel seguro para el 74HC165.
 
 ## No usado en este prototipo
 

@@ -12,10 +12,11 @@ software ni lectura de envolvente.
 Durante banco, el primer 74HC165 fue reportado muy caliente y D1 aparecia
 activo de forma permanente. Se retiro alimentacion.
 
-El 2026-08-23 se reemplazaron los 74HC165, se instalo un conversor de nivel
-bidireccional MOSFET 3.3 V/5 V para D1-D3 y se reanudo la prueba con el ESP32
+El 2026-08-23 se reemplazaron los 74HC165 y se reanudo la prueba con el ESP32
 por USB. Los sensores medidos entregan `DO=0 V` en reposo y hasta `DO=5 V` al
-impacto, por lo que el perfil actual usa `DIANA_DO_ACTIVE_HIGH`.
+impacto, por lo que el perfil actual usa `DIANA_DO_ACTIVE_HIGH`. El conversor
+bidireccional MOSFET 3.3 V/5 V se descarto para DO porque sus pull-ups dejaban
+las lineas altas en reposo; D1-D3 quedan con divisor resistivo por sensor.
 
 Comprobaciones antes de volver a alimentar:
 
@@ -80,9 +81,9 @@ D1, D2 y D3. D4-D9 quedan fijadas a GND, correcto para `DIANA_DO_ACTIVE_HIGH`.
 No considerar validado el mapa completo hasta probar impactos reales en D4-D9.
 
 Con el conversor bidireccional MOSFET, un canal sin sensor puede quedar tirado a
-HV=5 V y LV=3.3 V por las resistencias de pull-up del propio modulo. El sensor
-DO conectado debe poder llevar la linea a 0 V en reposo; si el LED del modulo
-sensor queda encendido permanente, medir la linea DO cargada antes de continuar.
+HV=5 V y LV=3.3 V por las resistencias de pull-up del propio modulo. No usarlo
+para estos DO activo-alto. Con divisor resistivo, la prueba de monitor capturo:
+D1=`0x0001`, D2=`0x0002`, D3=`0x0004`, todos volviendo a reposo `0x0000`.
 
 Los tiempos de debounce y refractory del firmware son valores de desarrollo
 `PENDING_PHYSICAL_TUNING`. Deben medirse en banco:
