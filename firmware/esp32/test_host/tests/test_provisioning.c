@@ -793,9 +793,131 @@ static void test_vocabulary(void)
 
 /* ------------------------------------------------------------- runner ----- */
 
+
+/* ===========================================================================
+ * SEQ_GUARD_D1B_USED_PATHS
+ * ===========================================================================
+ * seq_guard entra en el arbol como DEPENDENCIA de D1b, pero su suite propia
+ * (test_seq_guard.c) NO se ha integrado: depende de diana/calibration.h (A3/B5,
+ * fuera de este gate) y recortarla obligaria a eliminar tambien su mutante M5,
+ * es decir a mutilar el bloque que demuestra que sabe ponerse roja.
+ *
+ * Para no meter codigo con la etiqueta de "ya se probara despues", aqui se
+ * ejerce EXACTAMENTE la superficie que provisioning.c invoca de verdad:
+ *
+ *     diana_seq_guard_set_init   ·  diana_prov_set_guards
+ *     diana_seq_guard_reprovision (sobre las 9 combinaciones issuer x plane)
+ *     diana_seq_guard_has_epoch
+ *
+ * NO se cubre aqui, y NO debe atribuirsele a MP0, el motor de ventana
+ * deslizante — check, cache_result, max_seq, init_slot — que D1b no ejecuta y
+ * que pertenece al filtrado por plano de A3/B5:
+ *
+ *     SEQ_GUARD_FULL_ANTI_REPLAY = DEFERRED_TO_A3_B5
+ * =========================================================================== */
+
+/** UUID textual -> 16 bytes, para poder comparar QUE epoch quedo, no solo que
+ *  haya uno. Sin esto la prueba diria "tiene epoch" y pasaria aunque hubiera
+ *  quedado el epoch ANTERIOR, que es justo el fallo que importa. */
+static bool uuid_bytes_local(const char *u, uint8_t out[16])
+{
+    size_t n = 0;
+    for (const char *p = u; *p && n < 16; ++p) {
+        if (*p == '-') continue;
+        int hi = (*p >= '0' && *p <= '9') ? *p - '0'
+               : (*p >= 'a' && *p <= 'f') ? *p - 'a' + 10 : -1;
+        ++p;
+        if (!*p) return false;
+        int lo = (*p >= '0' && *p <= '9') ? *p - '0'
+               : (*p >= 'a' && *p <= 'f') ? *p - 'a' + 10 : -1;
+        if (hi < 0 || lo < 0) return false;
+        out[n++] = (uint8_t)((hi << 4) | lo);
+    }
+    return n == 16;
+}
+
+static int guards_con_epoch(const diana_seq_guard_set *g)
+{
+    int n = 0;
+    for (int i = 0; i < SEQ_GUARD_ISSUER_COUNT; ++i)
+        for (int p = 0; p < SEQ_GUARD_PLANE_COUNT; ++p)
+            if (diana_seq_guard_has_epoch(&g->entry[i][p])) ++n;
+    return n;
+}
+
+static int guards_con_epoch_igual_a(const diana_seq_guard_set *g, const uint8_t e[16])
+{
+    int n = 0;
+    for (int i = 0; i < SEQ_GUARD_ISSUER_COUNT; ++i)
+        for (int p = 0; p < SEQ_GUARD_PLANE_COUNT; ++p)
+            if (memcmp(g->entry[i][p].state.epoch, e, 16) == 0) ++n;
+    return n;
+}
+
+static void test_seq_guard_d1b_used_paths(void)
+{
+    const int TODAS = SEQ_GUARD_ISSUER_COUNT * SEQ_GUARD_PLANE_COUNT;
+
+    SECTION("SEQ_GUARD_D1B_USED_PATHS: reprovision cambia el epoch y limpia la ventana");
+    {
+        fixture f; fixture_init(&f);
+        diana_seq_guard g;
+        diana_seq_guard_init(&g, &f.hal);
+        CHECK(!diana_seq_guard_has_epoch(&g), "recien iniciada no tiene epoch");
+
+        uint8_t e1[16]; memset(e1, 0xA1, sizeof(e1));
+        diana_seq_guard_reprovision(&g, e1);
+        CHECK(diana_seq_guard_has_epoch(&g), "tras reprovision tiene epoch");
+        CHECK(memcmp(g.state.epoch, e1, 16) == 0, "el epoch es EL QUE SE PASO");
+
+        /* La ventana se puebla A MANO antes de reprovisionar. Sin esto la
+         * comprobacion siguiente seria decorativa: una guarda recien creada ya
+         * tiene max_seq=0, asi que pasaria aunque reprovision no limpiara nada.
+         * Se detecto porque la mutacion que quita la limpieza NO se ponia roja. */
+        g.state.max_seq = 4242;
+        g.state.has_seq = true;
+        memset(g.state.bitmap, 0xFF, sizeof(g.state.bitmap));
+        CHECK_EQ_INT((int)diana_seq_guard_max_seq(&g), 4242, "la ventana queda poblada antes de reprovisionar");
+
+        uint8_t e2[16]; memset(e2, 0xB2, sizeof(e2));
+        diana_seq_guard_reprovision(&g, e2);
+        CHECK(memcmp(g.state.epoch, e2, 16) == 0, "un segundo reprovision SUSTITUYE el epoch");
+        CHECK_EQ_INT((int)diana_seq_guard_max_seq(&g), 0,
+                     "reprovision limpia la ventana: no arrastra secuencias del epoch anterior");
+        CHECK(!g.state.has_seq, "reprovision borra la marca de secuencia vista");
+    }
+
+    SECTION("SEQ_GUARD_D1B_USED_PATHS: COMMIT reprovisiona las nueve con el epoch NUEVO");
+    {
+        fixture f; diana_prov_outcome o; fixture_init(&f);
+        static diana_seq_guard_set guards;
+        diana_seq_guard_set_init(&guards, &f.hal);
+        diana_prov_set_guards(&f.prov, &guards);
+        CHECK_EQ_INT(guards_con_epoch(&guards), 0, "de fabrica ninguna guarda tiene epoch");
+
+        run_order(&f, "provision_ok", &PV_DELEGS[0], false, &o);
+        uint8_t tras_prov[16];
+        CHECK(uuid_bytes_local(f.prov.st.active_epoch, tras_prov), "epoch activo legible tras PROVISION");
+        CHECK_EQ_INT(guards_con_epoch_igual_a(&guards, tras_prov), TODAS,
+                     "las nueve llevan EL epoch activo tras PROVISION, no uno cualquiera");
+
+        run_order(&f, "prepare_ok", &PV_DELEGS[0], false, &o);
+        run_order(&f, "commit_ok", &PV_DELEGS[0], false, &o);
+        uint8_t tras_commit[16];
+        CHECK(uuid_bytes_local(f.prov.st.active_epoch, tras_commit), "epoch activo legible tras COMMIT");
+        CHECK(memcmp(tras_prov, tras_commit, 16) != 0,
+              "COMMIT promueve un epoch DISTINTO del anterior (si no, la prueba siguiente no probaria nada)");
+        CHECK_EQ_INT(guards_con_epoch_igual_a(&guards, tras_commit), TODAS,
+                     "COMMIT reprovisiona las nueve con el epoch nuevo: ninguna se queda en el viejo");
+        CHECK_EQ_INT(guards_con_epoch_igual_a(&guards, tras_prov), 0,
+                     "ninguna guarda conserva el epoch anterior tras COMMIT");
+    }
+}
+
 int run_provisioning(void)
 {
     TEST_SUITE("provisioning");
+    test_seq_guard_d1b_used_paths();
     int before = g_tests_failed;
 
     test_base64url();
