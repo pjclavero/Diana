@@ -32,7 +32,7 @@
 #define DIANA_PIN_ETH_SCLK     12
 #define DIANA_PIN_ETH_MISO     13
 #define DIANA_ETH_SPI_HOST     SPI2_HOST
-#define DIANA_ETH_SPI_HZ       (20 * 1000 * 1000)
+#define DIANA_ETH_SPI_HZ       (5 * 1000 * 1000)
 
 /* --- Selector SPDT actual ------------------------------------------------- */
 #define DIANA_PIN_SELECTOR_A   15

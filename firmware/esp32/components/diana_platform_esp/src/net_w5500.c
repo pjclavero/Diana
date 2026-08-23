@@ -15,6 +15,7 @@
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_netif_sntp.h"
+#include "esp_rom_sys.h"
 
 static const char *TAG = "diana.eth";
 
@@ -114,6 +115,25 @@ static esp_err_t read_w5500_version(const spi_device_interface_config_t *devcfg,
     return err;
 }
 
+static esp_err_t reset_w5500(void)
+{
+    gpio_config_t rst = {
+        .pin_bit_mask = (1ULL << DIANA_PIN_ETH_RST),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    esp_err_t err = gpio_config(&rst);
+    if (err != ESP_OK) return err;
+
+    gpio_set_level(DIANA_PIN_ETH_RST, 0);
+    esp_rom_delay_us(5000);
+    gpio_set_level(DIANA_PIN_ETH_RST, 1);
+    esp_rom_delay_us(50000);
+    return ESP_OK;
+}
+
 int diana_pf_net_init(struct diana_platform *p)
 {
     p->eth_ready = false;
@@ -153,6 +173,12 @@ int diana_pf_net_init(struct diana_platform *p)
         return -4;
     }
 
+    err = reset_w5500();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "reset W5500 fallo: %s", esp_err_to_name(err));
+        return -5;
+    }
+
     spi_device_interface_config_t devcfg = {
         .mode = 0,
         .clock_speed_hz = DIANA_ETH_SPI_HZ,
@@ -164,12 +190,12 @@ int diana_pf_net_init(struct diana_platform *p)
     err = read_w5500_version(&devcfg, &version);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "lectura VERSIONR W5500 fallo: %s", esp_err_to_name(err));
-        return -5;
+        return -6;
     }
     if (version != 0x04) {
         ESP_LOGE(TAG, "W5500 VERSIONR invalido: esperado 0x04, leido 0x%02x",
                  (unsigned)version);
-        return -6;
+        return -7;
     }
 
     eth_w5500_config_t w5500_cfg = ETH_W5500_DEFAULT_CONFIG(DIANA_ETH_SPI_HOST, &devcfg);
@@ -182,35 +208,35 @@ int diana_pf_net_init(struct diana_platform *p)
 
     esp_eth_mac_t *mac = esp_eth_mac_new_w5500(&w5500_cfg, &mac_cfg);
     esp_eth_phy_t *phy = esp_eth_phy_new_w5500(&phy_cfg);
-    if (!mac || !phy) return -7;
+    if (!mac || !phy) return -8;
 
     esp_eth_config_t eth_cfg = ETH_DEFAULT_CONFIG(mac, phy);
     err = esp_eth_driver_install(&eth_cfg, &p->eth);
     if (err != ESP_OK) {
         p->eth = NULL;
         ESP_LOGE(TAG, "W5500 no detectado: %s", esp_err_to_name(err));
-        return -8;
+        return -9;
     }
 
     /* El W5500 no trae MAC de fabrica utilizable: se deriva de la eFuse del
      * ESP32-S3, que si es unica por chip (dosier 8.3 "direccion MAC unica"). */
     uint8_t mac_addr[6];
     err = esp_read_mac(mac_addr, ESP_MAC_ETH);
-    if (err != ESP_OK) return -9;
-    err = esp_eth_ioctl(p->eth, ETH_CMD_S_MAC_ADDR, mac_addr);
     if (err != ESP_OK) return -10;
+    err = esp_eth_ioctl(p->eth, ETH_CMD_S_MAC_ADDR, mac_addr);
+    if (err != ESP_OK) return -11;
 
     p->glue = esp_eth_new_netif_glue(p->eth);
-    if (!p->glue) return -11;
+    if (!p->glue) return -12;
     err = esp_netif_attach(p->netif, p->glue);
-    if (err != ESP_OK) return -12;
+    if (err != ESP_OK) return -13;
 
     err = esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID,
                                      eth_event_handler, p);
-    if (err != ESP_OK) return -13;
+    if (err != ESP_OK) return -14;
     err = esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP,
                                      got_ip_handler, p);
-    if (err != ESP_OK) return -14;
+    if (err != ESP_OK) return -15;
     p->eth_ready = true;
     return 0;
 }
