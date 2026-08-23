@@ -14,10 +14,12 @@ Firmware de los módulos de dianas 3×3. Implementa WP-04.
 | Umbrales piezoelectricos | No aplican al perfil DO-only; debounce/refractory quedan `PENDING_PHYSICAL_TUNING` |
 
 Validacion fisica parcial de banco, no completa: ESP32-S3 flashea y arranca por
-COM6, los dos aros WS2812B de 24 LED se encendieron tras configurar 72 LED por
-fila, y el reposo DO se observo activo-bajo. El primer 74HC165 fue reportado muy
-caliente y D1 aparecia activo permanente: no alimentar de nuevo hasta revisar
-niveles y cableado. Ver
+COM6. El 2026-08-23, con 74HC165 sustituidos y conversor bidireccional MOSFET
+3.3 V/5 V en D1-D3, los sensores se midieron en reposo `0 V` e impacto hasta
+`5 V`, asi que el perfil queda `DIANA_DO_ACTIVE_HIGH`. La lectura serie quedo
+en reposo `raw=0x0000`; se capturaron impactos reales D1=`0x0001` y
+D2=`0x0002` sin reinicio. Los 9 aros WS2812B estan conectados y el test de
+bring-up recorre RGB y slots de 24 LED en las 3 cadenas de 72 LED. Ver
 `docs/firmware/pinout-definitivo.md`,
 `docs/hardware/prototipo-do-only.md` y
 `docs/firmware/validacion-fisica-pendiente.md`.

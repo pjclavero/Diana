@@ -25,7 +25,8 @@ Hardware efectivo:
 | Selector | SPDT 2 posiciones, COM a GND |
 | Identificacion | Pulsador NA a GND |
 | LED | 9 aros WS2812B en 3 cadenas |
-| Level shift LED | 74AHCT125 seleccionado, pendiente de instalar |
+| Level shift DO | Conversor bidireccional MOSFET 3.3 V/5 V para D1-D3 |
+| Level shift LED | Pendiente de cerrar como solucion definitiva |
 
 ## Estado de banco 2026-08-20
 
@@ -47,6 +48,28 @@ Prueba parcial con hardware real, no validacion completa de las 9 dianas:
 alimentado a 3.3 V no debe recibir entradas `DO` a 5 V. Antes de seguir, medir
 `DO` de cada sensor en reposo y golpe, confirmar `VCC/GND` del 74HC165 y usar
 adaptacion de nivel si `DO HIGH` supera 3.3 V.
+
+## Estado de banco 2026-08-23
+
+Prueba parcial con hardware revisado:
+
+| Elemento | Observacion |
+| --- | --- |
+| ESP32-S3 | Compila, flashea y arranca por COM6; MAC `10:20:ba:4b:b7:04` |
+| Sensores instalados | Solo D1, D2 y D3 cableados |
+| Entradas sin sensor | D4-D9 fijadas a GND |
+| 74HC165 | Sustituidos por componentes nuevos antes de reanudar |
+| Adaptacion DO | Conversor bidireccional MOSFET; HV=5 V, LV=3.3 V |
+| Medida DO sensor | Reposo `0 V`, impacto hasta `5 V` |
+| Polaridad DO | `DIANA_DO_ACTIVE_HIGH` |
+| Lectura validada | Reposo `raw=0x0000`; D1=`0x0001`; D2=`0x0002`; D3 queda pendiente de captura |
+| LED | 9 aros conectados; firmware inicializa 3 cadenas de 72 LED y ejecuta test RGB/slots de 24 LED |
+| W5500 | SPI sigue sin responder: `VERSIONR=0x00`, `LINK=DOWN`, `IP=0.0.0.0` |
+| Selector | `GPIO15=1`, `GPIO16=1`, estado `INVALID_SELECTOR` |
+
+El cambio de polaridad viene de la medida electrica real: los sensores no quedan
+altos en reposo, sino que suben al impacto. D4-D9 a GND son por tanto entradas
+inactivas en el banco parcial.
 
 ## No usado en este prototipo
 
@@ -80,10 +103,10 @@ DIANA_DO_ACTIVE_HIGH
 DIANA_DO_ACTIVE_LOW
 ```
 
-La prueba de banco de 2026-08-20 observo reposo alto en las entradas utiles, por
-lo que el perfil queda en `DIANA_DO_ACTIVE_LOW`. Esta decision no valida el
-nivel electrico: si `DO HIGH` mide 5 V, sigue siendo obligatorio adaptar nivel
-antes del 74HC165/ESP32.
+La prueba de banco de 2026-08-23 midio reposo bajo e impacto alto, por lo que
+el perfil queda en `DIANA_DO_ACTIVE_HIGH`. Esta decision no valida por si sola
+el nivel electrico: como `DO HIGH` mide 5 V, sigue siendo obligatorio adaptar
+nivel antes del 74HC165/ESP32.
 
 ## Mapa logico
 

@@ -12,6 +12,7 @@
 #include <string.h>
 
 #include "esp_app_format.h"
+#include "esp_err.h"
 #include "esp_image_format.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
@@ -77,7 +78,20 @@ int diana_pf_ota_rollback(void *ctx)
 /** Confirma la imagen actual: cancela el rollback automatico del bootloader. */
 int diana_pf_ota_mark_valid(void)
 {
-    return esp_ota_mark_app_valid_cancel_rollback() == ESP_OK
-               ? DIANA_HAL_OK
-               : DIANA_HAL_ERR_GENERIC;
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    esp_ota_img_states_t state = ESP_OTA_IMG_UNDEFINED;
+    esp_err_t err = running ? esp_ota_get_state_partition(running, &state)
+                            : ESP_ERR_NOT_FOUND;
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "no se confirma OTA: estado de particion no disponible (%s)",
+                 esp_err_to_name(err));
+        return DIANA_HAL_OK;
+    }
+    if (state != ESP_OTA_IMG_PENDING_VERIFY) {
+        ESP_LOGI(TAG, "no se confirma OTA: imagen en estado %d", (int)state);
+        return DIANA_HAL_OK;
+    }
+
+    err = esp_ota_mark_app_valid_cancel_rollback();
+    return err == ESP_OK ? DIANA_HAL_OK : DIANA_HAL_ERR_GENERIC;
 }

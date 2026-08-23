@@ -14,8 +14,8 @@
 #define DIANA_BOARD_NAME       "proto-do-w5500"
 #define DIANA_HARDWARE_REV     "PROTO_DO_W5500"
 
-/* Banco 2026-08-20: sensores en reposo alto; impacto activa a nivel bajo. */
-#define DIANA_DO_POLARITY      DIANA_DO_ACTIVE_LOW
+/* Banco 2026-08-23: sensores medidos en reposo a 0 V; impacto sube a 5 V. */
+#define DIANA_DO_POLARITY      DIANA_DO_ACTIVE_HIGH
 #define DIANA_SELECTOR_PROFILE DIANA_SELECTOR_2_POSITION
 #define DIANA_HC165_POLL_MS    2
 

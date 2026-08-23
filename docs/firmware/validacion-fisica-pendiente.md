@@ -13,25 +13,31 @@ debe tratarse como calibrado.
 | Conformidad con el contrato MQTT | validada contra los esquemas reales |
 | Compilación con ESP-IDF | ejecutada con ESP-IDF v5.5 |
 | Flash/monitor | ejecutado en COM6 sobre ESP32-S3 `10:20:ba:4b:b7:04` |
-| LED | 2 aros de 24 LED encendidos tras configurar 72 LED/fila |
-| Sensores DO | reposo observado alto; firmware en `DIANA_DO_ACTIVE_LOW` |
-| Bloqueo físico | primer 74HC165 reportado muy caliente; no alimentar hasta revisar |
+| LED | 9 aros conectados; firmware en 3 cadenas de 72 LED, test RGB/slots ejecutado |
+| Sensores DO | D1-D3 montados; reposo `raw=0x0000`; firmware en `DIANA_DO_ACTIVE_HIGH` |
+| Bloqueo físico | 74HC165 sustituidos y level converter instalado; falta validar 1 h sin reinicios |
 | Umbrales piezoeléctricos | no aplican en DO-only; debounce/refractory pendientes |
 
-## 0.1. Incidencia crítica de banco 2026-08-20
+## 0.1. Incidencia crítica de banco 2026-08-20, revisada 2026-08-23
 
 El usuario reportó que el primer 74HC165 estaba muy caliente y que D1 parecía
-activo permanente. Se retiró alimentación. Esto bloquea la validación de
-sensores.
+activo permanente. Se retiró alimentación.
 
-Antes de alimentar de nuevo:
+El 2026-08-23 se sustituyeron los 74HC165 y se instaló un conversor
+bidireccional MOSFET 3.3 V/5 V para D1-D3. Los sensores medidos entregan
+`DO=0 V` en reposo y hasta `DO=5 V` al impacto. En firmware se cambió a
+`DIANA_DO_ACTIVE_HIGH`; el monitor confirmó D1=`0x0001` y D2=`0x0002`, ambos
+volviendo a reposo `0x0000`, sin nuevo desbordamiento de pila tras ampliar
+`diana_sens`.
 
-1. Probar el primer 74HC165 sin sensores conectados.
-2. Verificar `VCC=3.3 V`, `GND` y ausencia de corto entre alimentación y masa.
-3. Medir `DO` de cada sensor alimentado a 5 V.
-4. Si `DO HIGH` es mayor que 3.3 V, insertar adaptación de nivel.
-5. Fijar a nivel conocido todas las entradas no usadas.
-6. Repetir D1/D2/D3 sólo cuando el 74HC165 permanezca frío.
+Antes de cerrar validación:
+
+1. Capturar D3=`0x0004` en monitor serie.
+2. Completar D4-D9 con sensores reales y comprobar bit único por diana.
+3. Hacer una prueba de 1 h con 9 sensores y 216 LED sin reinicios.
+4. Confirmar que los 74HC165 permanecen fríos con todos los canales conectados.
+5. Medir DO cargado por el conversor si el LED del módulo sensor queda encendido
+   permanente al conectarlo.
 
 ## 1. Ruta analógica histórica: NO aplica al perfil DO-only
 
@@ -120,9 +126,10 @@ diseño de agrupación hay que replantearlo, no ajustarlo.
 | Caída por fila | medir la tensión al final de cada cadena; puede exigir inyección adicional |
 | Legibilidad de los patrones | a la distancia de uso, con luz ambiente real, y con un observador daltónico |
 
-Estado 2026-08-20: los aros reales son de 24 LED cada uno. El firmware se
-corrigió de 24 LED por fila a 72 LED por fila (`3 x 24`) y el usuario confirmó
-que los 2 aros conectados se encienden.
+Estado 2026-08-23: los aros reales son de 24 LED cada uno. Hay 9 aros
+conectados; el firmware inicializa 3 cadenas de 72 LED (`3 x 24`) y el
+bring-up recorre rojo, verde, azul, blanco tenue y slots `aro 1`, `aro 2`,
+`aro 3`.
 
 ## 5. OTA
 

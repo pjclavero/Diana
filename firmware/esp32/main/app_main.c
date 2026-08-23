@@ -249,7 +249,7 @@ void app_main(void)
     }
 
     /* --- Tareas (dosier 13.2) --- */
-    xTaskCreatePinnedToCore(diana_task_sensors,   "diana_sens", 8192, a, 10, NULL, 1);
+    xTaskCreatePinnedToCore(diana_task_sensors,   "diana_sens", 16384, a, 10, NULL, 1);
     xTaskCreatePinnedToCore(diana_task_leds,      "diana_led",  4096, a,  4, NULL, 1);
     xTaskCreatePinnedToCore(diana_task_network,   "diana_net",  8192, a,  6, NULL, 0);
     xTaskCreatePinnedToCore(diana_task_telemetry, "diana_tlm",  8192, a,  3, NULL, 0);

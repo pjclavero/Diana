@@ -7,11 +7,15 @@ cada modulo.
 No existe calibracion software de amplitud. No hay `AO`, ADC, umbral digital
 software ni lectura de envolvente.
 
-## Bloqueo de seguridad 2026-08-20
+## Incidencia de seguridad 2026-08-20, revisada 2026-08-23
 
 Durante banco, el primer 74HC165 fue reportado muy caliente y D1 aparecia
-activo de forma permanente. Se retiro alimentacion. No continuar la calibracion
-hasta aislar la causa electrica.
+activo de forma permanente. Se retiro alimentacion.
+
+El 2026-08-23 se reemplazaron los 74HC165, se instalo un conversor de nivel
+bidireccional MOSFET 3.3 V/5 V para D1-D3 y se reanudo la prueba con el ESP32
+por USB. Los sensores medidos entregan `DO=0 V` en reposo y hasta `DO=5 V` al
+impacto, por lo que el perfil actual usa `DIANA_DO_ACTIVE_HIGH`.
 
 Comprobaciones antes de volver a alimentar:
 
@@ -32,8 +36,9 @@ Comprobaciones antes de volver a alimentar:
    de 3.3 V.
 6. Arrancar firmware en modo bring-up serie.
 7. Confirmar polaridad real: `DIANA_DO_ACTIVE_HIGH` o `DIANA_DO_ACTIVE_LOW`.
-   En la prueba de banco con alimentacion de 5 V corregida, D1-D9 quedan en
-   `raw=1` en reposo, por lo que el perfil actual usa `DIANA_DO_ACTIVE_LOW`.
+   En la prueba de banco 2026-08-23, D1-D3 quedan en `raw=0` en reposo y suben
+   a `raw=1` solo durante el impacto, por lo que el perfil actual usa
+   `DIANA_DO_ACTIVE_HIGH`.
 
 ## Procedimiento
 
@@ -70,11 +75,14 @@ MULTI_TRIGGER aparece cuando hay varios DO activos simultaneos
 
 ## Valores de desarrollo
 
-La prueba de banco actual puede montarse parcialmente con solo D1-D2 o D2-D3
-para validar alimentacion, polaridad y mapa antes de completar las 9 entradas.
-En ese caso, las entradas no instaladas del HC165 deben quedar a nivel fijo, no
-flotando. No considerar validado el mapa de sensores mientras el primer 74HC165
-se caliente.
+La prueba de banco 2026-08-23 esta montada parcialmente con sensores solo en
+D1, D2 y D3. D4-D9 quedan fijadas a GND, correcto para `DIANA_DO_ACTIVE_HIGH`.
+No considerar validado el mapa completo hasta probar impactos reales en D4-D9.
+
+Con el conversor bidireccional MOSFET, un canal sin sensor puede quedar tirado a
+HV=5 V y LV=3.3 V por las resistencias de pull-up del propio modulo. El sensor
+DO conectado debe poder llevar la linea a 0 V en reposo; si el LED del modulo
+sensor queda encendido permanente, medir la linea DO cargada antes de continuar.
 
 Los tiempos de debounce y refractory del firmware son valores de desarrollo
 `PENDING_PHYSICAL_TUNING`. Deben medirse en banco:
