@@ -8,7 +8,7 @@ la BOM de la PCB futura.
 | Ref. | Componente | Cantidad | Uso | Estado |
 | --- | --- | ---: | --- | --- |
 | U1 | ESP32-S3 devboard | 1 | Controlador | Montado; modelo exacto pendiente |
-| U2 | Modulo W5500 con RJ45 | 1 | Ethernet | Montado; SPI no valida, `VERSIONR=0x00` |
+| U2 | Modulo W5500 con RJ45 | 1 | Ethernet | SPI/link/DHCP validados en imagen minima; integracion completa abierta |
 | U3-U4 | Modulos SN74HC165 / 74HC165 | 2 | Lectura DO por registro paralelo-serie | Montados; D1-D3 validados |
 | S1-S9 | Modulos piezo comerciales V/G/AO/DO | 9 objetivo; D1-D3 conectados | Impacto DO-only | D1-D3 validados con divisor; D4-D9 pendientes |
 | L1-L9 | Aro WS2812B 24 LED | 9 | Senalizacion luminosa | Conectados; test de slots ejecutado |

@@ -194,7 +194,9 @@ void app_main(void)
     diana_command_guard_init(&a->guard, &a->hal);
 
     /* Identidad: boot_id nuevo, local_sequence reservada (ADR-0003). */
-    if (diana_identity_load(&a->id, &a->hal, DIANA_FIRMWARE_VERSION) != DIANA_HAL_OK) {
+    bool identity_ready =
+        diana_identity_load(&a->id, &a->hal, DIANA_FIRMWARE_VERSION) == DIANA_HAL_OK;
+    if (!identity_ready) {
         /* Sin aprovisionar: no se inventa un module_id. El modulo se queda en
          * error visible y espera aprovisionamiento por consola. */
         ESP_LOGE(TAG, "modulo SIN aprovisionar: falta module_id en NVS");
@@ -231,19 +233,23 @@ void app_main(void)
         diana_platform_eth_start(a->pf, use_static, a->cfg.network.ip,
                                  a->cfg.network.netmask, a->cfg.network.gateway);
 
-        /* Last Will registrado ANTES de conectar (contrato §3). */
-        char lwt[256];
-        diana_presence_lwt_json(a->id.module_id, lwt, sizeof(lwt));
+        if (identity_ready) {
+            /* Last Will registrado ANTES de conectar (contrato §3). */
+            char lwt[256];
+            diana_presence_lwt_json(a->id.module_id, lwt, sizeof(lwt));
 
-        char uri[128], user[80];
-        snprintf(uri, sizeof(uri), "mqtt://%s:1883", CONFIG_DIANA_BROKER_HOST);
-        /* Usuario 'module-{id}', client_id '{id}' a secas: son cosas distintas y el
-         * contrato §8 fija ambas. La ACL depende de la segunda. */
-        snprintf(user, sizeof(user), "module-%.*s",
-                 DIANA_ID_MAXLEN - 1, a->id.module_id);
-        diana_platform_mqtt_start(a->pf, a->id.module_id, uri, user,
-                                  a->id.mqtt_pass, a->topic_presence, lwt);
-        diana_platform_mqtt_subscribe(a->pf, a->id.module_id);
+            char uri[128], user[80];
+            snprintf(uri, sizeof(uri), "mqtt://%s:1883", CONFIG_DIANA_BROKER_HOST);
+            /* Usuario 'module-{id}', client_id '{id}' a secas: son cosas distintas y el
+             * contrato §8 fija ambas. La ACL depende de la segunda. */
+            snprintf(user, sizeof(user), "module-%.*s",
+                     DIANA_ID_MAXLEN - 1, a->id.module_id);
+            diana_platform_mqtt_start(a->pf, a->id.module_id, uri, user,
+                                      a->id.mqtt_pass, a->topic_presence, lwt);
+            diana_platform_mqtt_subscribe(a->pf, a->id.module_id);
+        } else {
+            ESP_LOGW(TAG, "MQTT deshabilitado hasta aprovisionar module_id");
+        }
     } else {
         ESP_LOGW(TAG, "red deshabilitada: W5500 no responde");
     }

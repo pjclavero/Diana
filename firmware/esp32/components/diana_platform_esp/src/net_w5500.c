@@ -15,7 +15,8 @@
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_netif_sntp.h"
-#include "esp_rom_sys.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char *TAG = "diana.eth";
 
@@ -95,48 +96,23 @@ static void got_ip_handler(void *arg, esp_event_base_t base, int32_t id,
     start_sntp();
 }
 
-static esp_err_t read_w5500_version(const spi_device_interface_config_t *devcfg,
-                                    uint8_t *out_version)
-{
-    spi_device_handle_t spi = NULL;
-    esp_err_t err = spi_bus_add_device(DIANA_ETH_SPI_HOST, devcfg, &spi);
-    if (err != ESP_OK) return err;
-
-    uint8_t tx[4] = {0x00, 0x39, 0x00, 0x00}; /* VERSIONR, common block, read */
-    uint8_t rx[4] = {0};
-    spi_transaction_t t = {
-        .length = sizeof(tx) * 8,
-        .tx_buffer = tx,
-        .rx_buffer = rx,
-    };
-    err = spi_device_polling_transmit(spi, &t);
-    spi_bus_remove_device(spi);
-    if (err == ESP_OK && out_version) *out_version = rx[3];
-    return err;
-}
-
-static esp_err_t reset_w5500(void)
-{
-    gpio_config_t rst = {
-        .pin_bit_mask = (1ULL << DIANA_PIN_ETH_RST),
-        .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE,
-    };
-    esp_err_t err = gpio_config(&rst);
-    if (err != ESP_OK) return err;
-
-    gpio_set_level(DIANA_PIN_ETH_RST, 0);
-    esp_rom_delay_us(5000);
-    gpio_set_level(DIANA_PIN_ETH_RST, 1);
-    esp_rom_delay_us(50000);
-    return ESP_OK;
-}
-
 int diana_pf_net_init(struct diana_platform *p)
 {
     p->eth_ready = false;
+
+    gpio_config_t cs_cfg = {
+        .pin_bit_mask = (1ULL << DIANA_PIN_ETH_CS),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    if (gpio_config(&cs_cfg) != ESP_OK) return -4;
+    gpio_set_level(DIANA_PIN_ETH_CS, 1);
+
+    /* El modulo puede compartir la secuencia de encendido con el ESP32 o usar
+     * una fuente externa. Se deja margen antes del primer acceso SPI. */
+    vTaskDelay(pdMS_TO_TICKS(1500));
 
     esp_err_t err = esp_netif_init();
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
@@ -148,11 +124,6 @@ int diana_pf_net_init(struct diana_platform *p)
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
         ESP_LOGE(TAG, "event loop fallo: %s", esp_err_to_name(err));
         return -2;
-    }
-
-    err = gpio_install_isr_service(0);
-    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
-        ESP_LOGW(TAG, "GPIO ISR service no disponible: %s", esp_err_to_name(err));
     }
 
     esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH();
@@ -173,12 +144,6 @@ int diana_pf_net_init(struct diana_platform *p)
         return -4;
     }
 
-    err = reset_w5500();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "reset W5500 fallo: %s", esp_err_to_name(err));
-        return -5;
-    }
-
     spi_device_interface_config_t devcfg = {
         .mode = 0,
         .clock_speed_hz = DIANA_ETH_SPI_HZ,
@@ -186,24 +151,18 @@ int diana_pf_net_init(struct diana_platform *p)
         .queue_size = 20,
     };
 
-    uint8_t version = 0;
-    err = read_w5500_version(&devcfg, &version);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "lectura VERSIONR W5500 fallo: %s", esp_err_to_name(err));
-        return -6;
-    }
-    if (version != 0x04) {
-        ESP_LOGE(TAG, "W5500 VERSIONR invalido: esperado 0x04, leido 0x%02x",
-                 (unsigned)version);
-        return -7;
-    }
-
     eth_w5500_config_t w5500_cfg = ETH_W5500_DEFAULT_CONFIG(DIANA_ETH_SPI_HOST, &devcfg);
-    w5500_cfg.int_gpio_num = DIANA_PIN_ETH_INT;
+    /* En este modulo se usa sondeo: evita depender de la forma electrica de
+     * INT y coincide con el modo estable validado contra el ejemplo oficial. */
+    w5500_cfg.int_gpio_num = -1;
+    w5500_cfg.poll_period_ms = 10;
 
     eth_mac_config_t mac_cfg = ETH_MAC_DEFAULT_CONFIG();
     eth_phy_config_t phy_cfg = ETH_PHY_DEFAULT_CONFIG();
-    phy_cfg.reset_gpio_num = DIANA_PIN_ETH_RST;
+    /* El modulo comercial mantiene RESET alto internamente. El ejemplo oficial
+     * de ESP-IDF para W5500 deja el reset fisico sin conectar y el MAC realiza
+     * el reset software durante esp_eth_start(). */
+    phy_cfg.reset_gpio_num = -1;
     phy_cfg.autonego_timeout_ms = 5000;
 
     esp_eth_mac_t *mac = esp_eth_mac_new_w5500(&w5500_cfg, &mac_cfg);

@@ -8,7 +8,7 @@ no implica automaticamente que todas sus senales sean 5 V.
 | Subsistema | Alimentacion | Nivel logico | Estado |
 | --- | --- | --- | --- |
 | ESP32-S3 devboard | USB/rail de placa | 3.3 V | Confirmado por uso |
-| W5500 | 3.3 V chip; modulo con pines 5 V y 3.3 V segun doc local | SPI 3.3 V | No validado |
+| W5500 | Fuente externa de 3.3 V durante la prueba; chip 3.3 V | SPI 3.3 V | Funcionamiento parcial validado |
 | 74HC165 | 3.3 V | 3.3 V | Confirmado por firmware/banco |
 | Sensores piezo | 5 V en D1-D3 | DO medido 0-5 V antes de divisor | D1-D3 confirmado |
 | Divisores DO | Pasivo desde DO | Salida a HC165 segura para 3.3 V | D1-D3 validado por lectura |
@@ -32,6 +32,13 @@ la placa portadora/regulador, no al chip W5500 desnudo.
 
 Regla de banco: no conectar 5 V y 3.3 V a la vez salvo confirmacion explicita
 del datasheet/serigrafia del modulo comprado.
+
+Prueba 2026-08-24: con alimentacion independiente y GND comun, el W5500 alcanzo
+`LINK=UP` y obtuvo `192.168.1.168` por DHCP. El resultado confirma que el
+modulo puede funcionar con el bus actual, pero no cierra el presupuesto de
+potencia: tras reflasheos aparecio de nuevo `VERSIONR=0x00` hasta cortar la
+alimentacion del modulo. Medir 3.3 V directamente en VCC-GND y repetir bajo
+carga antes de decidir si puede alimentarse desde el regulador del ESP32.
 
 Comprobaciones pendientes:
 

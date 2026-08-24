@@ -7,8 +7,8 @@
 | GPIO4 | OUT | LED_ROW1 | D1 -> D2 -> D3 | Firmware actual |
 | GPIO5 | OUT | LED_ROW2 | D4 -> D5 -> D6 | Firmware actual |
 | GPIO6 | OUT | LED_ROW3 | D7 -> D8 -> D9 | Firmware actual |
-| GPIO8 | OUT | W5500_RST | W5500 RST | Firmware actual; reset explicito |
-| GPIO9 | IN | W5500_INT | W5500 INT/IRQ | Firmware actual |
+| GPIO8 | Libre | W5500_RST historico | NC | Firmware actual usa reset software |
+| GPIO9 | Libre | W5500_INT historico | NC | Firmware actual usa sondeo de 10 ms |
 | GPIO10 | OUT | W5500_CS | W5500 CS/SCS/SS | Firmware actual |
 | GPIO11 | OUT | SPI_MOSI | W5500 MOSI/SI/DIN | Firmware actual |
 | GPIO12 | OUT | SPI_CLK | W5500 SCK/SCLK | Firmware actual |
@@ -27,12 +27,13 @@ ESP32 GPIO11 MOSI -> W5500 MOSI / SI / DIN
 ESP32 GPIO12 SCK  -> W5500 SCK / SCLK
 ESP32 GPIO13 MISO <- W5500 MISO / SO / DOUT
 ESP32 GPIO10 CS   -> W5500 CS / SCS / SS
-ESP32 GPIO8  RST  -> W5500 RST / RESET
-ESP32 GPIO9  INT  <- W5500 INT / IRQ
+W5500 RST / RESET -> NC
+W5500 INT / IRQ   -> NC
 GND <----------------------> GND
 ```
 
-MOSI/MISO no se cruzan como UART. El W5500 usa logica SPI a 3.3 V.
+MOSI/MISO no se cruzan como UART. El W5500 usa logica SPI a 3.3 V. GPIO10 se
+mantiene alto antes de inicializar SPI; despues CS lo controla el periferico.
 
 ## 74HC165
 
@@ -101,7 +102,7 @@ GPIO17 -> pulsador -> GND
             GPIO5 --| LED ROW 2         |--> D4 -> D5 -> D6
             GPIO6 --| LED ROW 3         |--> D7 -> D8 -> D9
                     |                   |
-        GPIO8-13 ---| SPI / W5500       |--> RJ45 / Ethernet
+       GPIO10-13 ---| SPI / W5500       |--> RJ45 / Ethernet
                     |                   |
            GPIO38 <-| HC165 DATA        |
            GPIO47 ->| HC165 LOAD        |

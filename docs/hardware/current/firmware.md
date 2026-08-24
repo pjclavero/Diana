@@ -62,6 +62,7 @@ idf.py -DCMAKE_MAKE_PROGRAM=C:/Espressif/tools/ninja/1.12.1/ninja.exe -p COM6 bu
 ## Limitaciones
 
 - El modulo no esta aprovisionado en NVS: falta `module_id`.
-- W5500 no responde por SPI (`VERSIONR=0x00`), por tanto MQTT no esta validado.
+- W5500 responde, enlaza y obtiene DHCP en imagen minima; el firmware completo
+  reinicia al activar Ethernet y MQTT sigue sin validar.
 - Host tests con `make -C firmware test` no se ejecutaron en este Windows por
   falta de `make`/`gcc`.

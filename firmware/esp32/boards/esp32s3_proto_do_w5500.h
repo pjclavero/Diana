@@ -25,6 +25,7 @@
 #define DIANA_PIN_LED_ROW2     6    /* D7-D9 */
 
 /* --- SPI del W5500 -------------------------------------------------------- */
+/* Reservados por compatibilidad documental; el montaje actual deja RST/INT NC. */
 #define DIANA_PIN_ETH_RST      8
 #define DIANA_PIN_ETH_INT      9
 #define DIANA_PIN_ETH_CS       10

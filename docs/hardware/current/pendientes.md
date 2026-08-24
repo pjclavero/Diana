@@ -31,18 +31,21 @@ Accion: verificar fisicamente cada entrada libre y SER_IN.
 
 ## P1 - Bring-up
 
-### H4 - W5500 `VERSIONR=0x00`
+### H4 - W5500 intermitente e integracion FreeRTOS
 
 Estado: abierto.
 
-Evidencia: con W5500 en switch LAN y alimentado, firmware con reset explicito y
-SPI a 5 MHz sigue leyendo `0x00`; LEDs RJ45 apagados.
+Evidencia positiva: la imagen minima basada en el ejemplo ESP-IDF obtuvo
+`SPI=OK`, `LINK=UP` y DHCP `192.168.1.168`. El firmware completo detecto el
+W5500 a 5 MHz tras cortar su alimentacion.
 
-Accion: comprobar si se esta alimentando por el pin correcto del modulo
-comercial. La documentacion local previa indica pines 5 V y 3.3 V; el chip
-W5500 trabaja a 3.3 V, asi que el pin 5 V solo es valido si la placa portadora
-tiene regulador. Confirmar GND comun, RST, CS, MOSI/MISO/SCK, modelo exacto del
-modulo y puerto/cable/switch.
+Evidencia pendiente: despues de algunos reflasheos reaparecio `VERSIONR=0x00`.
+Cuando el firmware completo arranca Ethernet, aproximadamente 2 s despues se
+reproduce una asercion/`StoreProhibited` en el temporizador de FreeRTOS.
+
+Accion: medir 3.3 V en carga, ejecutar diez ciclos de alimentacion, aislar la
+interaccion del temporizador Ethernet con el resto de componentes y validar
+una hora continua. RST e INT quedan NC; CS/MOSI/SCK/MISO son GPIO10-13.
 
 ### H5 - Servidor LAN sin puertos TCP
 
