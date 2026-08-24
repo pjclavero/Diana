@@ -1,7 +1,6 @@
 /**
  * @file store_nvs.c
  * @brief Almacenamiento clave-valor sobre NVS (identidad, config, credenciales).
- *        NO COMPILADO.
  */
 #include "platform_internal.h"
 
