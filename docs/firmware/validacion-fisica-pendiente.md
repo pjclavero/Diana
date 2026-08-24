@@ -1,8 +1,13 @@
 # Validación física pendiente
 
-**Este documento existe porque el firmware de WP-04 se ha escrito sin ESP-IDF,
-sin hardware y sin posibilidad de medir nada.** Todo lo que aparece aquí está
-sin comprobar. Ningún valor de este documento debe tratarse como calibrado.
+> STATUS: LEGACY PARCIAL. El estado vivo consolidado esta en
+> [`docs/hardware/current/validacion.md`](../hardware/current/validacion.md) y
+> [`docs/hardware/current/pendientes.md`](../hardware/current/pendientes.md).
+
+**Este documento existe para separar lo implementado de lo validado en banco.**
+Parte del firmware ya se ha compilado, flasheado y observado sobre hardware real,
+pero la validación física completa sigue abierta. Ningún valor de este documento
+debe tratarse como calibrado.
 
 ## 0. Resumen para quien vaya a montar el banco
 
@@ -10,13 +15,39 @@ sin comprobar. Ningún valor de este documento debe tratarse como calibrado.
 |---|---|
 | Lógica de negocio | probada en PC, 389 comprobaciones |
 | Conformidad con el contrato MQTT | validada contra los esquemas reales |
-| Compilación con ESP-IDF | **nunca ejecutada** |
-| Cualquier cosa con hardware | **nunca ejecutada** |
-| Umbrales piezoeléctricos | **inventados**, punto de partida |
+| Compilación con ESP-IDF | ejecutada con ESP-IDF v5.5 |
+| Flash/monitor | ejecutado en COM6 sobre ESP32-S3 `10:20:ba:4b:b7:04` |
+| LED | 9 aros conectados; firmware en 3 cadenas de 72 LED, test RGB/slots ejecutado |
+| Sensores DO | D1-D3 montados con divisor resistivo; reposo `raw=0x0000`; D1/D2/D3 validados |
+| Red W5500 | bloqueada en SPI: `VERSIONR=0x00` incluso con reset firmware y SPI a 5 MHz |
+| Bloqueo físico | 74HC165 sustituidos y level converter instalado; falta validar 1 h sin reinicios |
+| Umbrales piezoeléctricos | no aplican en DO-only; debounce/refractory pendientes |
 
-## 1. Umbrales piezoeléctricos: NO están calibrados
+## 0.1. Incidencia crítica de banco 2026-08-20, revisada 2026-08-23
 
-Los valores por defecto de `diana/config.h` son:
+El usuario reportó que el primer 74HC165 estaba muy caliente y que D1 parecía
+activo permanente. Se retiró alimentación.
+
+El 2026-08-23 se sustituyeron los 74HC165. El conversor bidireccional MOSFET
+3.3 V/5 V se descarto para DO porque sus pull-ups dejaban la linea alta en
+reposo; se instalaron divisores resistivos en D1-D3. Los sensores medidos
+entregan `DO=0 V` en reposo y hasta `DO=5 V` al impacto. En firmware se cambió
+a `DIANA_DO_ACTIVE_HIGH`; el monitor confirmó D1=`0x0001`, D2=`0x0002` y
+D3=`0x0004`, todos volviendo a reposo `0x0000`, sin nuevo desbordamiento de
+pila tras ampliar `diana_sens`.
+
+Antes de cerrar validación:
+
+1. Completar D4-D9 con sensores reales y comprobar bit único por diana.
+2. Hacer una prueba de 1 h con 9 sensores y 216 LED sin reinicios.
+3. Confirmar que los 74HC165 permanecen fríos con todos los canales conectados.
+4. Medir cada divisor instalado: reposo cerca de 0 V e impacto dentro de nivel
+   alto seguro para 3.3 V.
+
+## 1. Ruta analógica histórica: NO aplica al perfil DO-only
+
+Los valores por defecto de `diana/config.h` pertenecen a la ruta analogica
+historica y no calibran el prototipo DO-only:
 
 | Parámetro | Valor | De dónde sale |
 |---|---:|---|
@@ -78,6 +109,17 @@ diseño de agrupación hay que replantearlo, no ajustarlo.
 
 ## 3. Red
 
+Estado 2026-08-23: el W5500 se probo conectado al switch LAN del servidor y con
+alimentacion externa. El firmware flasheado fuerza reset del W5500 antes de la
+sonda SPI y baja la sonda a 5 MHz, pero el registro `VERSIONR` sigue leyendo
+`0x00` en vez de `0x04`; por tanto no se llega a enlace, DHCP, SNTP ni MQTT.
+Revisar primero `MOSI/MISO/SCK/CS/RST/GND/VCC` y el modelo exacto del modulo.
+
+Desde el PC de banco, `192.168.1.209` respondio a ping, pero no acepto TCP en
+`1883`, `8080`, `80`, `22`, `443`, `8443` ni `9001`. Aunque el W5500 quede
+arreglado, MQTT real requiere levantar/exponer el broker en `1883` o cambiar
+`CONFIG_DIANA_BROKER_HOST/PORT` al servicio disponible.
+
 | Qué | Criterio |
 |---|---|
 | **SNTP** | el módulo debe obtener hora tras conseguir IP. Sin ella, la caducidad de comandos **no se verifica**: se acepta declarándolo y la defensa queda sólo en el nonce. Comprobar que `epoch_ms` deja de ser 0 y cuánto tarda |
@@ -94,11 +136,16 @@ diseño de agrupación hay que replantearlo, no ajustarlo.
 
 | Qué | Criterio |
 |---|---|
-| Modelo de consumo | medir con pinza el consumo real en blanco máximo y comparar con los 4320 mA estimados |
+| Modelo de consumo | medir con pinza el consumo real en blanco máximo y comparar con los 12960 mA teoricos |
 | Presupuesto de 3000 mA | comprobar que la fuente aguanta el pico sin caída de tensión |
 | Conversión de nivel | verificar que los WS2812 leen bien el dato a 5 V |
 | Caída por fila | medir la tensión al final de cada cadena; puede exigir inyección adicional |
 | Legibilidad de los patrones | a la distancia de uso, con luz ambiente real, y con un observador daltónico |
+
+Estado 2026-08-23: los aros reales son de 24 LED cada uno. Hay 9 aros
+conectados; el firmware inicializa 3 cadenas de 72 LED (`3 x 24`) y el
+bring-up recorre rojo, verde, azul, blanco tenue y slots `aro 1`, `aro 2`,
+`aro 3`.
 
 ## 5. OTA
 
@@ -108,7 +155,7 @@ plazo. La verificación de firma en host es un doble, no criptografía real.
 
 Falta, con hardware:
 
-1. Primera compilación real con ESP-IDF (nunca hecha).
+1. OTA real A/B; la compilación USB de bring-up ya se hizo, pero no una OTA.
 2. Generar la clave de firma y comprobar que una imagen **sin firmar** es
    rechazada por el bootloader.
 3. Actualización completa A → B y arranque desde la nueva partición.

@@ -10,10 +10,13 @@
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "esp_eth_driver.h"
+#include "esp_err.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_netif_sntp.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char *TAG = "diana.eth";
 
@@ -95,12 +98,37 @@ static void got_ip_handler(void *arg, esp_event_base_t base, int32_t id,
 
 int diana_pf_net_init(struct diana_platform *p)
 {
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    p->eth_ready = false;
+
+    gpio_config_t cs_cfg = {
+        .pin_bit_mask = (1ULL << DIANA_PIN_ETH_CS),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    if (gpio_config(&cs_cfg) != ESP_OK) return -4;
+    gpio_set_level(DIANA_PIN_ETH_CS, 1);
+
+    /* El modulo puede compartir la secuencia de encendido con el ESP32 o usar
+     * una fuente externa. Se deja margen antes del primer acceso SPI. */
+    vTaskDelay(pdMS_TO_TICKS(1500));
+
+    esp_err_t err = esp_netif_init();
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+        ESP_LOGE(TAG, "esp_netif_init fallo: %s", esp_err_to_name(err));
+        return -1;
+    }
+
+    err = esp_event_loop_create_default();
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+        ESP_LOGE(TAG, "event loop fallo: %s", esp_err_to_name(err));
+        return -2;
+    }
 
     esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH();
     p->netif = esp_netif_new(&cfg);
-    if (!p->netif) return -1;
+    if (!p->netif) return -3;
 
     /* --- bus SPI del W5500 ------------------------------------------------- */
     spi_bus_config_t buscfg = {
@@ -110,7 +138,11 @@ int diana_pf_net_init(struct diana_platform *p)
         .quadwp_io_num = -1,
         .quadhd_io_num = -1,
     };
-    ESP_ERROR_CHECK(spi_bus_initialize(DIANA_ETH_SPI_HOST, &buscfg, SPI_DMA_CH_AUTO));
+    err = spi_bus_initialize(DIANA_ETH_SPI_HOST, &buscfg, SPI_DMA_CH_AUTO);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "SPI W5500 no inicializado: %s", esp_err_to_name(err));
+        return -4;
+    }
 
     spi_device_interface_config_t devcfg = {
         .mode = 0,
@@ -120,39 +152,59 @@ int diana_pf_net_init(struct diana_platform *p)
     };
 
     eth_w5500_config_t w5500_cfg = ETH_W5500_DEFAULT_CONFIG(DIANA_ETH_SPI_HOST, &devcfg);
-    w5500_cfg.int_gpio_num = DIANA_PIN_ETH_INT;
+    /* En este modulo se usa sondeo: evita depender de la forma electrica de
+     * INT y coincide con el modo estable validado contra el ejemplo oficial. */
+    w5500_cfg.int_gpio_num = -1;
+    w5500_cfg.poll_period_ms = 10;
 
     eth_mac_config_t mac_cfg = ETH_MAC_DEFAULT_CONFIG();
     eth_phy_config_t phy_cfg = ETH_PHY_DEFAULT_CONFIG();
-    phy_cfg.reset_gpio_num = DIANA_PIN_ETH_RST;
+    /* El modulo comercial mantiene RESET alto internamente. El ejemplo oficial
+     * de ESP-IDF para W5500 deja el reset fisico sin conectar y el MAC realiza
+     * el reset software durante esp_eth_start(). */
+    phy_cfg.reset_gpio_num = -1;
     phy_cfg.autonego_timeout_ms = 5000;
 
     esp_eth_mac_t *mac = esp_eth_mac_new_w5500(&w5500_cfg, &mac_cfg);
     esp_eth_phy_t *phy = esp_eth_phy_new_w5500(&phy_cfg);
-    if (!mac || !phy) return -2;
+    if (!mac || !phy) return -8;
 
     esp_eth_config_t eth_cfg = ETH_DEFAULT_CONFIG(mac, phy);
-    ESP_ERROR_CHECK(esp_eth_driver_install(&eth_cfg, &p->eth));
+    err = esp_eth_driver_install(&eth_cfg, &p->eth);
+    if (err != ESP_OK) {
+        p->eth = NULL;
+        ESP_LOGE(TAG, "W5500 no detectado: %s", esp_err_to_name(err));
+        return -9;
+    }
 
     /* El W5500 no trae MAC de fabrica utilizable: se deriva de la eFuse del
      * ESP32-S3, que si es unica por chip (dosier 8.3 "direccion MAC unica"). */
     uint8_t mac_addr[6];
-    ESP_ERROR_CHECK(esp_read_mac(mac_addr, ESP_MAC_ETH));
-    ESP_ERROR_CHECK(esp_eth_ioctl(p->eth, ETH_CMD_S_MAC_ADDR, mac_addr));
+    err = esp_read_mac(mac_addr, ESP_MAC_ETH);
+    if (err != ESP_OK) return -10;
+    err = esp_eth_ioctl(p->eth, ETH_CMD_S_MAC_ADDR, mac_addr);
+    if (err != ESP_OK) return -11;
 
     p->glue = esp_eth_new_netif_glue(p->eth);
-    ESP_ERROR_CHECK(esp_netif_attach(p->netif, p->glue));
+    if (!p->glue) return -12;
+    err = esp_netif_attach(p->netif, p->glue);
+    if (err != ESP_OK) return -13;
 
-    ESP_ERROR_CHECK(esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID,
-                                               eth_event_handler, p));
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP,
-                                               got_ip_handler, p));
+    err = esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID,
+                                     eth_event_handler, p);
+    if (err != ESP_OK) return -14;
+    err = esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP,
+                                     got_ip_handler, p);
+    if (err != ESP_OK) return -15;
+    p->eth_ready = true;
     return 0;
 }
 
 int diana_platform_eth_start(struct diana_platform *p, bool use_static,
                              const char *ip, const char *netmask, const char *gw)
 {
+    if (!p || !p->eth_ready || !p->eth || !p->netif) return -1;
+
     if (use_static) {
         /* IP fija opcional (dosier 12.2). Se para el DHCP ANTES de fijarla. */
         esp_netif_dhcpc_stop(p->netif);
@@ -160,7 +212,7 @@ int diana_platform_eth_start(struct diana_platform *p, bool use_static,
         info.ip.addr = esp_ip4addr_aton(ip);
         info.netmask.addr = esp_ip4addr_aton(netmask);
         info.gw.addr = esp_ip4addr_aton(gw);
-        ESP_ERROR_CHECK(esp_netif_set_ip_info(p->netif, &info));
+        if (esp_netif_set_ip_info(p->netif, &info) != ESP_OK) return -1;
         snprintf(p->ip, sizeof(p->ip), "%s", ip);
         p->has_ip = true;
     }
@@ -180,8 +232,14 @@ int diana_pf_net_status(void *ctx, diana_hal_net_status *out)
 int diana_pf_net_reconnect(void *ctx)
 {
     struct diana_platform *p = (struct diana_platform *)ctx;
+    if (!p || !p->eth_ready || !p->eth) return DIANA_HAL_ERR_GENERIC;
     /* Reconexion automatica: parar y arrancar el driver renegocia el enlace.
      * El W5500 no siempre recupera solo tras un desconectado largo. */
     esp_eth_stop(p->eth);
     return esp_eth_start(p->eth) == ESP_OK ? DIANA_HAL_OK : DIANA_HAL_ERR_GENERIC;
+}
+
+bool diana_platform_eth_available(diana_platform *p)
+{
+    return p && p->eth_ready && p->eth;
 }

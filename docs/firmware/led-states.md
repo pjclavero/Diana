@@ -46,7 +46,7 @@ en pantalla.
 | `solid` | intensidad constante |
 | `slow_pulse` | rampa triangular entre el 23 % y el 100 % |
 | `flash_fade` | arranca al 100 % y decae linealmente hasta apagarse |
-| `countdown` | los 8 LED de la diana se apagan uno a uno según avanza la fase |
+| `countdown` | los 24 LED de la diana se apagan uno a uno según avanza la fase |
 | `fast_blink` | 50 % de ciclo de trabajo |
 | `alternate` | alterna el color base y blanco cada medio periodo |
 | `sweep` | un LED al 100 %, el resto al 12 %, girando alrededor de la diana |
@@ -54,14 +54,17 @@ en pantalla.
 
 ## 4. Distribución física
 
-72 LED, 8 por diana, en 3 cadenas de 24 (una por fila de 3 dianas), según el
-dosier §10.2. La cadena `c` cubre las dianas `3c+1 .. 3c+3`; dentro de la
-cadena, cada diana ocupa 8 LED consecutivos.
+216 LED, 24 por diana, en 3 cadenas de 72 (una por fila de 3 dianas). La cadena
+`c` cubre las dianas `3c+1 .. 3c+3`; dentro de la cadena, cada diana ocupa 24
+LED consecutivos.
+
+Banco 2026-08-20: con 2 aros reales conectados en serie, ambos se encienden al
+configurar `DIANA_LEDS_PER_TARGET=24` y `DIANA_LEDS_PER_CHAIN=72`.
 
 ## 5. Presupuesto de potencia
 
-El dosier §10.4 calcula 72 × 60 mA = **4320 mA** en blanco máximo simultáneo.
-El firmware aplica dos límites:
+Con 216 LED, el blanco máximo teórico a 60 mA/LED seria **12960 mA**. El
+firmware aplica dos límites:
 
 1. **Brillo global** (`led_brightness_max`, 120/255 por defecto), configurable
    desde el backend por `config/desired`.

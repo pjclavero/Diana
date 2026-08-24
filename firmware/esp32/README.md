@@ -6,16 +6,31 @@ Firmware de los módulos de dianas 3×3. Implementa WP-04.
 
 | Parte | Estado |
 |---|---|
-| Lógica de negocio (`components/diana_core`) | **compilada y probada en host**, 389 comprobaciones en verde |
-| Mensajes MQTT generados | **validados contra los JSON Schema congelados** de `contracts/mqtt/` (18 mensajes) |
-| Capa de plataforma ESP-IDF (`components/diana_platform_esp`) | **escrita, NUNCA compilada**: no hay ESP-IDF en el entorno de desarrollo |
-| Aplicación (`main/`) | **escrita, NUNCA compilada** |
-| Pinout (`boards/`) | **propuesta preliminar**, ningún pin verificado sobre hardware |
-| Umbrales piezoeléctricos | **provisionales, SIN calibrar**: no hay hardware |
+| Lógica de negocio (`components/diana_core`) | Suite host ampliada para DO-only; pendiente de ejecutar en este Windows por falta de `make`/`gcc` |
+| Mensajes MQTT generados | Esquemas y ejemplos validados con `python contracts/validate.py` desde la raiz |
+| Capa de plataforma ESP-IDF (`components/diana_platform_esp`) | Adaptada a HC165 DO-only; build ESP-IDF real ejecutado con ESP-IDF v5.5 |
+| Aplicación (`main/`) | Bring-up serie DO-only, tarea de sensores por polling HC165 y test LED por aro |
+| Pinout (`boards/`) | `esp32s3_proto_do_w5500.h`, perfil del prototipo fisico actual |
+| Umbrales piezoelectricos | No aplican al perfil DO-only; debounce/refractory quedan `PENDING_PHYSICAL_TUNING` |
 
-Nada de lo que toca hardware se ha ejecutado. Ver
-`docs/firmware/validacion-fisica-pendiente.md` para el listado completo de lo
-que falta comprobar y cómo.
+Validacion fisica parcial de banco, no completa: ESP32-S3 flashea y arranca por
+COM6. El 2026-08-23, con 74HC165 sustituidos y divisores resistivos en D1-D3,
+los sensores se midieron en reposo `0 V` e impacto hasta `5 V`, asi que el
+perfil queda `DIANA_DO_ACTIVE_HIGH`. La lectura serie quedo en reposo
+`raw=0x0000`; se capturaron impactos reales D1=`0x0001`, D2=`0x0002` y
+D3=`0x0004` sin reinicio. Los 9 aros WS2812B estan conectados y el test de
+bring-up recorre RGB y slots de 24 LED en las 3 cadenas de 72 LED. La prueba
+minima basada en el driver oficial W5500 de ESP-IDF 5.5 valido SPI, enlace y
+DHCP (`192.168.1.168`) con GPIO10-13, RST/INT sin usar y sondeo de 10 ms. El
+firmware completo reconoce el W5500 a 5 MHz tras reiniciar su alimentacion,
+pero se reproduce un `StoreProhibited` en el temporizador de FreeRTOS unos 2 s
+despues de arrancar Ethernet. Tras algunos reflasheos tambien reaparece
+`VERSIONR=0x00`, por lo que la estabilidad y MQTT siguen pendientes. Desde el
+PC de banco, `192.168.1.209` responde a ping pero no acepta TCP en los puertos
+probados (`1883`, `8080`, `80`, `22`, `443`, `8443`, `9001`). Ver
+`docs/firmware/pinout-definitivo.md`,
+`docs/hardware/prototipo-do-only.md` y
+`docs/firmware/validacion-fisica-pendiente.md`.
 
 ## Por qué la lógica se prueba en PC
 
@@ -54,17 +69,25 @@ valida contra los esquemas congelados:
 
 Otros objetivos: `make -C firmware build`, `contracts`, `clean`.
 
-## Compilar para el ESP32-S3 (no verificado)
+## Compilar para el ESP32-S3
 
 ```bash
 cd firmware/esp32
 idf.py set-target esp32s3
-idf.py build flash monitor
+idf.py fullclean
+idf.py build
 ```
 
-Requiere ESP-IDF v5.x. **Este build nunca se ha ejecutado.** Es previsible que
-la primera compilación real requiera ajustes en nombres de API y en la lista de
-`REQUIRES` de los componentes.
+Requiere ESP-IDF v5.x. En este Windows se localizo ESP-IDF v5.5, Ninja y el
+toolchain. El build y flash real se ejecutaron en COM6 con:
+
+```cmd
+idf.py -DCMAKE_MAKE_PROGRAM=C:/Espressif/tools/ninja/1.12.1/ninja.exe -p COM6 build flash monitor
+```
+
+El puerto COM6 corresponde al ESP32-S3 visto en banco (`MAC:
+10:20:ba:4b:b7:04`). No flashear sin confirmar puerto si cambia la enumeracion
+USB.
 
 ## Estructura
 
@@ -73,12 +96,12 @@ firmware/esp32/
 ├── CMakeLists.txt              proyecto ESP-IDF
 ├── sdkconfig.defaults          watchdog, OTA, coredump, firma, NVS cifrada
 ├── partitions.csv              OTA A/B + NVS + partición de cola de eventos
-├── boards/                     pinout preliminar por placa
+├── boards/                     perfil proto-do-w5500 y pinouts historicos
 ├── components/
 │   ├── diana_core/             lógica pura (probada)
 │   ├── diana_hal/              interfaz del HAL
-│   └── diana_platform_esp/     W5500, MQTT, NVS, piezo, LED, OTA (sin compilar)
-├── main/                       aplicación y tareas (sin compilar)
+│   └── diana_platform_esp/     W5500, MQTT, NVS, HC165, LED, OTA
+├── main/                       aplicación, bring-up y tareas
 ├── test_host/                  HAL de simulación + suite de pruebas
 ├── tools/                      validador de mensajes contra el contrato
 └── build-host/                 salida de la compilación en PC (ignorada por git)

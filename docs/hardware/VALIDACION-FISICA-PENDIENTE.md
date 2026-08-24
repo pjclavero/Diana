@@ -97,7 +97,7 @@ ejecutado con salida limpia.**
 
 | # | Validación | Criterio numérico | Fase |
 |---:|---|---|---|
-| **F1** | 1 h con 9 sensores y 72 LED | **Sin reinicios. Causa de reinicio = `POWERON`** | G1 |
+| **F1** | 1 h con 9 sensores y 216 LED | **Sin reinicios. Causa de reinicio = `POWERON`** | G1 |
 | **F2** | Detección de impacto con las 3 filas en blanco máximo | Degradación de amplitud **< 10 %** | G4 |
 | **F3** | 1 000 impactos en un canal | Fallos de detección **< 1 %** | G7 |
 | **F4** | Identificación individual de canal en los 9 | Cada golpe activa **sólo** su bit | F8 |

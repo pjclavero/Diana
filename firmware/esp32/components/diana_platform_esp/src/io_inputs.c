@@ -1,9 +1,10 @@
 /**
  * @file io_inputs.c
- * @brief Selector de 3 posiciones y boton de identificacion. NO COMPILADO.
- *        Dosier 6.3.
+ * @brief Selector fisico y boton IDENTIFY del prototipo DO-only.
  */
 #include "platform_internal.h"
+
+#include "diana/sensors.h"
 
 #include "driver/gpio.h"
 #include "esp_log.h"
@@ -23,13 +24,6 @@ int diana_pf_inputs_init(void)
     };
     if (gpio_config(&cfg) != ESP_OK) return -1;
 
-    gpio_config_t out = {
-        .pin_bit_mask = (1ULL << DIANA_PIN_LED_STATUS) |
-                        (1ULL << DIANA_PIN_LED_FAULT),
-        .mode = GPIO_MODE_OUTPUT,
-        .intr_type = GPIO_INTR_DISABLE,
-    };
-    if (gpio_config(&out) != ESP_OK) return -2;
     return 0;
 }
 
@@ -39,20 +33,13 @@ int diana_pf_selector_read(void *ctx, int *out)
     int a = gpio_get_level(DIANA_PIN_SELECTOR_A);
     int b = gpio_get_level(DIANA_PIN_SELECTOR_B);
 
-    if (a == 0 && b == 1) {
-        *out = DIANA_SELECTOR_SATELITE;
-    } else if (a == 1 && b == 0) {
-        *out = DIANA_SELECTOR_PRINCIPAL;
-    } else if (a == 1 && b == 1) {
-        *out = DIANA_SELECTOR_AUTO;   /* posicion central */
-    } else {
-        /* a==0 && b==0 es imposible con un selector sano: cortocircuito o
-         * cableado mal. Se degrada a SATELITE (el rol menos peligroso: no toma
-         * autoridad de partida) y se avisa. */
-        ESP_LOGE(TAG, "selector en estado imposible (A=0,B=0): se asume SATELITE");
-        *out = DIANA_SELECTOR_SATELITE;
-        return DIANA_HAL_ERR_GENERIC;
+    diana_selector_position pos = DIANA_SELECTOR_SATELITE;
+    int rc = diana_selector_decode(a, b, DIANA_SELECTOR_PROFILE, &pos);
+    if (rc != DIANA_HAL_OK) {
+        ESP_LOGE(TAG, "INVALID_SELECTOR GPIO15=%d GPIO16=%d", a, b);
+        return rc;
     }
+    *out = (int)pos;
     return DIANA_HAL_OK;
 }
 

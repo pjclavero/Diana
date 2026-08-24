@@ -159,7 +159,7 @@ pines 3, 4, 5 y 6 de J30. **Se recomienda añadirlas antes de fabricar.**
 ### R-11 · Correspondencia canal ↔ posición física no fijada — **A — ABIERTO**
 
 No existe ADR que fije qué canal físico corresponde a qué posición del módulo, ni
-el orden de direccionamiento de los 72 LED.
+el orden de direccionamiento de los 216 LED del montaje real (`9 x 24`).
 
 **Un error aquí es completamente silencioso y falsea toda la puntuación del
 juego.** No hay ninguna comprobación automática que lo detecte.

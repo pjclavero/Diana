@@ -114,6 +114,8 @@ int diana_platform_mqtt_start(struct diana_platform *p, const char *client_id,
 
 int diana_platform_mqtt_subscribe(struct diana_platform *p, const char *module_id)
 {
+    if (!p || !p->mqtt) return -1;
+
     char topic[DIANA_TOPIC_MAXLEN];
     static const char *const suffixes[] = {
         "command", "config/desired", "ota",

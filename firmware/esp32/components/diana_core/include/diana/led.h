@@ -6,9 +6,9 @@
  * color y patron, y el patron es parte del contrato visual: dos estados nunca
  * comparten la pareja (color, patron).
  *
- * Dosier 10.2: 72 LED en 3 cadenas de 24 (una por fila de 3 dianas, 8 LED por
- * diana). Dosier 10.4: 72 x 60 mA = 4,32 A en blanco maximo; el firmware
- * impone un limite global de brillo y un presupuesto de corriente.
+ * Banco 2026-08-20: aros WS2812B reales de 24 LED por diana, 3 dianas por
+ * fila. El modulo completo tiene 216 LED; el firmware impone un limite global
+ * de brillo y un presupuesto de corriente.
  */
 #ifndef DIANA_LED_H
 #define DIANA_LED_H
@@ -56,7 +56,7 @@ const char *diana_led_pattern_str(diana_led_pattern p);
  * @param identify   true si el modulo esta en modo identificacion.
  * @param brightness limite global de brillo 1..255 (config.led_brightness_max).
  * @param t_ms       tiempo monotonico en ms, para animar los patrones.
- * @param out        buffer de 24 pixeles.
+ * @param out        buffer de DIANA_LEDS_PER_CHAIN pixeles.
  */
 void diana_led_render_chain(uint8_t chain, const diana_target_state *states,
                             bool identify, uint8_t brightness, uint64_t t_ms,

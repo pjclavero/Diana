@@ -1,5 +1,17 @@
 # Notas de diseño — WP-06 · Diseño electrónico del módulo 3×3
 
+> **AVISO PROTOTIPO DO-ONLY:** la cadena analogica descrita aqui queda como
+> futura PCB. Para el montaje fisico actual usar
+> `docs/hardware/prototipo-do-only.md` y
+> `docs/hardware/conexionado-prototipo.md`. AO, ADC de impacto, ADS7953,
+> MCP3208, MCP6004 externo, LM339 externo y `VREF_TH` son **NO UTILIZADO EN EL
+> PROTOTIPO DO-ONLY**.
+>
+> **AVISO LED 2026-08-20:** el banco real usa aros de 24 LED por diana
+> (`9 x 24 = 216 LED`). Las cifras antiguas de 72 LED / 4,32 A de este
+> documento pertenecen a una hipotesis previa y no dimensionan el consumo maximo
+> del montaje actual.
+
 > **ESTADO: DISEÑO DOCUMENTADO. VALIDACIÓN PENDIENTE.**
 >
 > No hay KiCad en el entorno de trabajo, no hay hardware, no hay instrumentación.

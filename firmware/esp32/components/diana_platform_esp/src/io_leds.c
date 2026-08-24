@@ -1,6 +1,6 @@
 /**
  * @file io_leds.c
- * @brief Tres cadenas de 24 LED por RMT (dosier 10.2). NO COMPILADO.
+ * @brief Tres cadenas de 72 LED por RMT: 3 aros de 24 LED por fila.
  */
 #include "platform_internal.h"
 
