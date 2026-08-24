@@ -136,6 +136,53 @@ int run_do_only(void)
      * (La lectura del 2026-08-20 decia lo contrario, pero se tomo sobre un
      * 74HC165 averiado y sin adaptacion de nivel.)
      */
+
+    /* ===================================================================
+     * EQUIVALENCIA CON EL BUCLE VERIFICADO EN BANCO
+     * ===================================================================
+     * io_hc165.c NO se compila en las pruebas de host, asi que su cambio no
+     * lo cubre ninguna suite. Y ese cambio no es cosmetico: el firmware
+     * verificado en banco (3c51847) leia los sensores con
+     *
+     *     raw = (raw << 1) | gpio_get_level(SR_DATA);
+     *
+     * y ahora captura los bits en un array y llama a diana_shiftreg_pack().
+     * Las medidas de banco D1=0x0001, D2=0x0002, D3=0x0004 se obtuvieron con
+     * el bucle ORIGINAL. Si pack() ordenara los bits de otro modo, D1 apuntaria
+     * a otra diana y nada avisaria.
+     *
+     * Aqui se reproduce el bucle original y se comparan AMBOS sobre las 65536
+     * tramas posibles. No es una comprobacion de muestra: es exhaustiva.
+     */
+    SECTION("EQUIVALENCIA CON EL BUCLE VERIFICADO EN BANCO: pack() == (raw<<1)|bit");
+    {
+        diana_shiftreg_cfg sr;
+        diana_shiftreg_cfg_defaults(&sr);
+
+        int discrepantes = 0;
+        for (uint32_t v = 0; v < 65536u; ++v) {
+            uint8_t serie[16];
+            for (int i = 0; i < 16; ++i) serie[i] = (uint8_t)((v >> (15 - i)) & 1u);
+
+            uint16_t original = 0;                      /* el bucle de 3c51847 */
+            for (int i = 0; i < 16; ++i)
+                original = (uint16_t)((original << 1) | serie[i]);
+
+            if (diana_shiftreg_pack(&sr, serie, 16) != original) ++discrepantes;
+        }
+        CHECK_EQ_INT(discrepantes, 0,
+                     "las 65536 tramas dan lo mismo que el bucle verificado en banco");
+
+        /* Los tres casos REALMENTE MEDIDOS el 2026-08-23, uno a uno. */
+        const uint16_t esperado[3] = { 0x0001u, 0x0002u, 0x0004u };
+        for (int d = 0; d < 3; ++d) {
+            uint8_t serie[16] = {0};
+            serie[15 - d] = 1;                          /* bit d en el resultado */
+            CHECK_EQ_INT(diana_shiftreg_pack(&sr, serie, 16), esperado[d],
+                         "D1/D2/D3 dan 0x0001/0x0002/0x0004 como en el monitor serie");
+        }
+    }
+
     SECTION("POLARIDAD DECLARADA POR LA PLACA: coincide con el banco 2026-08-23");
     CHECK(DIANA_DO_POLARITY == DIANA_DO_ACTIVE_HIGH,
           "la placa declara active-high, como se midio en banco");
