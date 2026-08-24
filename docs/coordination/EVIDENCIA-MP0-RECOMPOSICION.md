@@ -2,11 +2,33 @@
 
 Estado congelado el **2026-08-25**, previo a supervisión independiente.
 
-## Identidad del artefacto
+## Identidad del artefacto — dos identificadores, NO confundirlos
 
 ```
-COMMIT          5eedcb5f1f94ab953b57dffd77a0a023522ae658   (mp0/integration-v2)
-FIRMWARE_BASE   3c51847f3f29ba9371e3956668289a32110b7ae2
+MP0_RECOMPOSITION_ARTIFACT = 5eedcb5    <-- lo que AUDITA el supervisor
+MP0_EVIDENCE_HEAD          = (este commit y los que añadan sólo evidencia)
+
+FIRMWARE_BASE              = 3c51847
+```
+
+**El dictamen técnico recae sobre `5eedcb5`, no sobre el commit documental.** Este
+fichero y los que lo amplíen añaden únicamente congelación de evidencia: el árbol
+de `firmware/`, `contracts/`, `server/`, `simulators/` e `infrastructure/` es
+idéntico al de `5eedcb5`, verificable por hash de subárbol. Cualquier informe debe
+decir explícitamente que **el código supervisado fue `5eedcb5`**, para que no
+parezca que se auditó un commit distinto.
+
+Al promover, la trazabilidad queda así:
+
+```
+MP0_INTEGRATION_PREVIOUS = 27652ed    <-- última cabeza sobre la base ANTERIOR (b883da0)
+MP0_INTEGRATION_NEW_CODE = 5eedcb5    <-- código supervisado
+MP0_INTEGRATION_NEW_HEAD = <evidencia>  <-- si se incluye la congelación documental
+```
+
+`27652ed` se conserva como referencia, **sin reescribir su historia**.
+
+```
 árbol           limpio · 28 commits sobre la base
 ```
 
@@ -158,6 +180,27 @@ Pertenece a la misma familia que los otros fallos mudos de esta ola —registro 
 suite que no aplicó por un espacio, `INSERT` con errores redirigidos a
 `/dev/null`, mutación que no compilaba y no mostró nada—: **confiar en que un
 comando hizo lo esperado en vez de comprobar que lo hizo**.
+
+## Regla permanente: parsear semántica, no contar coincidencias de texto
+
+Durante esta congelación, un `grep` crudo de `%c|%u` sobre la ACL devolvió **2
+coincidencias** y estuvo a punto de reportarse como incumplimiento. Las dos
+estaban en **comentarios que explican precisamente que el fichero no las usa**.
+Cero líneas de REGLA las contenían.
+
+La regresión que vigila esa propiedad ya lo hacía bien —filtra las líneas
+`topic`/`pattern` antes de mirar—, y por eso no se dejó engañar.
+
+**Norma para todo el proyecto:** una comprobación de seguridad debe **parsear la
+semántica de la configuración** siempre que sea posible, no contar apariciones de
+una cadena. Un comentario que menciona `%c` no autoriza nada; una directiva
+declarada una sola vez no aplica a todos los listeners; un `#define` presente no
+significa que el runtime lo use. Contar texto produce **falsos positivos** —que
+erosionan la confianza en el arnés— y **falsos negativos**, que son peores.
+
+Precedentes en esta ola: la directiva `use_username_as_clientid` que existía en el
+fichero pero faltaba en un listener, y el `#define` de polaridad que ninguna
+prueba comprobaba pese a gobernar el runtime.
 
 ## Qué queda fuera de esta congelación
 
