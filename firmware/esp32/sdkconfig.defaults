@@ -62,6 +62,10 @@ CONFIG_SPIRAM_SPEED_80M=y
 #     esp_timer sea la fuente monotonica, no los ticks de FreeRTOS -----------
 CONFIG_FREERTOS_HZ=1000
 
+# El arranque ejecuta autodiagnostico, prueba LED y configuracion de red antes
+# de crear las tareas de aplicacion. Reserva margen para esa ruta anidada.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
 CONFIG_COMPILER_OPTIMIZATION_SIZE=y
 CONFIG_COMPILER_WARN_WRITE_STRINGS=y
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y

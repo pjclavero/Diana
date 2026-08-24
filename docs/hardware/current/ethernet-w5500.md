@@ -85,10 +85,12 @@ DHCP IP=192.168.1.168
 Configuracion de esa prueba: GPIO10/11/12/13, SPI modo 0 a 1 MHz, RST e INT sin
 usar, sondeo cada 10 ms. El LED del modulo y el LED RJ45 estaban encendidos.
 
-El firmware completo tambien alcanzo `W5500 SPI=OK` a 5 MHz despues de cortar y
-reponer la alimentacion del W5500. Sin embargo, aproximadamente 2 s despues de
-`driver arrancado` aparece un `StoreProhibited`/asercion dentro del temporizador
-de FreeRTOS. Esta integracion sigue abierta y no se atribuye al cableado SPI.
+El firmware completo tambien alcanza `W5500 SPI=OK` a 5 MHz. El reinicio que
+aparecia unos 2 s despues de `driver arrancado` no procedia del W5500: el
+autodiagnostico desbordaba la pila de `app_main` con un buffer JSON de 3072
+bytes y corrompia estado de FreeRTOS. El 2026-08-24 se movieron los buffers
+grandes al heap y se amplio la pila principal a 8192 bytes. La imagen completa
+quedo estable durante la observacion de banco con RJ45 desconectado.
 
 Tras algunos reflasheos con el W5500 alimentado continuamente, `VERSIONR`
 volvio a `0x00`; un corte de alimentacion del modulo lo recupero al menos una
@@ -103,6 +105,6 @@ Desde el PC de banco:
 TCP 1883, 8080, 80, 22, 443, 8443 y 9001 no aceptan conexion
 ```
 
-DHCP queda validado solo en la imagen minima. MQTT real no queda validado hasta
-resolver el reinicio del firmware completo, aprovisionar `module_id` y exponer
-el broker.
+DHCP queda validado solo en la imagen minima. Falta repetirlo con la imagen
+completa y RJ45 conectado. MQTT real requiere ademas aprovisionar `module_id` y
+exponer el broker.

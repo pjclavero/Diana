@@ -42,6 +42,7 @@ Los datos estan clasificados por evidencia:
 
 | Documento | Contenido |
 | --- | --- |
+| [estado-actual.md](estado-actual.md) | Relevo operativo: montado, validado, no validado y siguientes pasos |
 | [componentes.md](componentes.md) | Inventario real por modulo comercial |
 | [bom-prototipo.csv](bom-prototipo.csv) | BOM del prototipo fisico V1, separada de la PCB futura |
 | [conexionado.md](conexionado.md) | Tabla maestra de GPIO, cableado y diagrama de bloques |

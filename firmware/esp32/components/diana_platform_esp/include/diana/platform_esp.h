@@ -2,13 +2,7 @@
  * @file platform_esp.h
  * @brief Implementacion del HAL de Diana sobre ESP-IDF (ESP32-S3 + W5500).
  *
- * ###########################################################################
- * # NO COMPILADO. Este componente NO se ha podido construir: en el entorno  #
- * # de desarrollo no hay ESP-IDF instalado ni hardware. Es codigo escrito   #
- * # contra la API documentada de ESP-IDF v5.x y esta PENDIENTE de su primer #
- * # `idf.py build`. La logica que si esta probada vive en diana_core y se   #
- * # ejecuta en host contra test_host/hal_host.c.                            #
- * ###########################################################################
+ * Compilado y flasheado sobre ESP32-S3 con ESP-IDF 5.5 el 2026-08-24.
  */
 #ifndef DIANA_PLATFORM_ESP_H
 #define DIANA_PLATFORM_ESP_H

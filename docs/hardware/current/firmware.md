@@ -24,7 +24,7 @@ firmware/esp32/main/app_main.c
 | --- | --- |
 | `firmware/esp32/boards/esp32s3_proto_do_w5500.h` | Board profile del prototipo DO-only |
 | `firmware/esp32/main/app_main.c` | Arranque, bring-up y creacion de tareas |
-| `firmware/esp32/main/app_tasks.c` | Tareas de sensores, LED, red y telemetria |
+| `firmware/esp32/main/app_tasks.c` | Tareas de entradas, sensores, LED, red y telemetria |
 | `firmware/esp32/components/diana_platform_esp/src/io_hc165.c` | Lectura 2 x 74HC165 |
 | `firmware/esp32/components/diana_core/src/sensors.c` | Decodificacion DO, debounce/refractory |
 | `firmware/esp32/components/diana_platform_esp/src/io_leds.c` | Salida LED por RMT/led_strip |
@@ -42,6 +42,11 @@ DIANA_LEDS_PER_TARGET  = 24
 DIANA_LEDS_PER_CHAIN   = 72
 DIANA_ETH_SPI_HZ       = 5 MHz
 ```
+
+La tarea de entradas lee el selector y el pulsador cada 20 ms, acepta el cambio
+tras 3 muestras estables y permite usar IDENTIFY sin red. La opcion Kconfig
+`DIANA_BENCH_HIT_LED_TEST`, desactivada por defecto, arma D1-D3 para validar en
+banco el recorrido impacto -> aro y rearma cada diana al segundo.
 
 ## Compilacion ESP-IDF
 
@@ -61,8 +66,13 @@ idf.py -DCMAKE_MAKE_PROGRAM=C:/Espressif/tools/ninja/1.12.1/ninja.exe -p COM6 bu
 
 ## Limitaciones
 
+Estado flasheado al cerrar la sesion del 2026-08-24: imagen completa de
+operacion, con `DIANA_BENCH_HIT_LED_TEST` desactivado. Validada durante mas de
+seis minutos con IDENTIFY y golpes D1-D3, sin reinicios ni watchdog.
+
 - El modulo no esta aprovisionado en NVS: falta `module_id`.
-- W5500 responde, enlaza y obtiene DHCP en imagen minima; el firmware completo
-  reinicia al activar Ethernet y MQTT sigue sin validar.
+- W5500 responde, enlaza y obtiene DHCP en imagen minima. El firmware completo
+  ya queda estable con el driver activo; falta repetir DHCP con RJ45 conectado.
+- MQTT sigue sin validar y requiere aprovisionar `module_id`.
 - Host tests con `make -C firmware test` no se ejecutaron en este Windows por
   falta de `make`/`gcc`.

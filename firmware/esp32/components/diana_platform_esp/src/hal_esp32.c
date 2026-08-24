@@ -1,7 +1,6 @@
 /**
  * @file hal_esp32.c
  * @brief Cableado de la tabla del HAL a la implementacion ESP-IDF.
- *        NO COMPILADO: ver diana/platform_esp.h.
  */
 #include "platform_internal.h"
 

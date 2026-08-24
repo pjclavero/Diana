@@ -4,13 +4,14 @@
 
 ### H1 - Incidencia termica 74HC165
 
-Estado: parcialmente mitigada.
+Estado: cerrada para el montaje D1-D3 el 2026-08-24.
 
-Evidencia: un primer 74HC165 se calento durante banco; se reemplazaron los
-componentes antes de continuar. D1-D3 funcionan, pero falta prueba larga y D4-D9
-con sensores reales.
+Evidencia: el calentamiento aparecio cuando la salida DO de sensores alimentados
+a 5 V llegaba directamente al 74HC165 alimentado a 3.3 V. Con los divisores
+resistivos instalados en D1-D3, ambos 74HC165 mantienen temperatura normal y las
+lecturas son correctas.
 
-Accion: verificar temperatura de ambos 74HC165 con todos los canales conectados.
+Accion restante: repetir la comprobacion termica al instalar D4-D9.
 
 ### H2 - Nivel DO y divisores
 
@@ -49,21 +50,22 @@ Accion: verificar fisicamente cada entrada libre y SER_IN.
 
 ## P1 - Bring-up
 
-### H4 - W5500 intermitente e integracion FreeRTOS
+### H4 - W5500: repetibilidad de arranque y prueba de red completa
 
-Estado: abierto.
+Estado: integracion FreeRTOS corregida; validacion larga abierta.
 
 Evidencia positiva: la imagen minima basada en el ejemplo ESP-IDF obtuvo
 `SPI=OK`, `LINK=UP` y DHCP `192.168.1.168`. El firmware completo detecto el
 W5500 a 5 MHz tras cortar su alimentacion.
 
-Evidencia pendiente: despues de algunos reflasheos reaparecio `VERSIONR=0x00`.
-Cuando el firmware completo arranca Ethernet, aproximadamente 2 s despues se
-reproduce una asercion/`StoreProhibited` en el temporizador de FreeRTOS.
+Evidencia 2026-08-24: el reinicio del firmware completo era un desbordamiento
+de pila en el autodiagnostico. Corregido con buffers JSON en heap y pila de
+`app_main` de 8192 bytes; el firmware completo queda estable y reconoce el
+W5500 a 5 MHz con el RJ45 desconectado.
 
-Accion: medir 3.3 V en carga, ejecutar diez ciclos de alimentacion, aislar la
-interaccion del temporizador Ethernet con el resto de componentes y validar
-una hora continua. RST e INT quedan NC; CS/MOSI/SCK/MISO son GPIO10-13.
+Accion: conectar RJ45, repetir DHCP con la imagen completa, medir 3.3 V en
+carga, ejecutar diez ciclos de alimentacion y validar una hora continua. RST e
+INT quedan NC; CS/MOSI/SCK/MISO son GPIO10-13.
 
 ### H5 - Servidor LAN sin puertos TCP
 
@@ -74,21 +76,24 @@ Evidencia: `192.168.1.209` responde a ping desde PC, pero no acepta TCP en
 
 Accion: levantar/exponer Mosquitto/panel o actualizar configuracion de destino.
 
-### H6 - Selector invalido
+### H6 - Selector SPDT
 
-Estado: abierto.
+Estado: cerrado el 2026-08-24.
 
-Evidencia: monitor `GPIO15=1 GPIO16=1`.
+Evidencia: ambas posiciones fisicas capturadas en monitor:
+`GPIO15=0/GPIO16=1 = PRINCIPAL` y `GPIO15=1/GPIO16=0 = SATELITE`.
 
-Accion: comprobar COM a GND y terminales a GPIO15/GPIO16.
+Accion restante: ninguna para el selector SPDT actual.
 
-### H7 - IDENTIFY LOW pendiente
+### H7 - IDENTIFY
 
-Estado: abierto.
+Estado: cerrado el 2026-08-24.
 
-Evidencia: monitor `identify: HIGH`; no hay captura de pulsacion.
+Evidencia: `GPIO17=LOW` capturado al pulsar y `HIGH` al soltar. El pulsador
+activa en ejecucion el barrido cian IDENTIFY en los nueve aros. Se anadio
+antirrebote de 60 ms tras observar rebote mecanico en el primer registro.
 
-Accion: pulsar y capturar LOW en monitor.
+Accion restante: ninguna.
 
 ## P2 - Integracion/mejora futura
 
@@ -117,3 +122,30 @@ Estado: abierto.
 
 Accion: instalar divisores/sensores D4-D9, comprobar bit unico y ausencia de
 falsos positivos.
+
+## P3 - Firmware e integracion
+
+### F1 - Aprovisionamiento
+
+Estado: abierto. Falta cargar `module_id`, URI y credenciales MQTT en NVS con
+un procedimiento repetible.
+
+### F2 - Red completa y servidor
+
+Estado: abierto. Validar en la imagen completa DHCP, SNTP, MQTT, Last Will,
+comandos, eventos, ACK y vaciado de cola tras reconexion.
+
+### F3 - Pruebas de duracion
+
+Estado: abierto. Ejecutar diez ciclos de alimentacion y una hora continua con
+Ethernet y actividad de entradas/LED.
+
+### F4 - Suite host y contrato
+
+Estado: abierto en este Windows. Ejecutar `make -C firmware test` en Linux/WSL
+y ratificar el limite de `expires_in_ms` descrito en el README del firmware.
+
+### F5 - OTA real
+
+Estado: abierto. Validar descarga, firma, cambio A/B, confirmacion y rollback en
+el hardware final.

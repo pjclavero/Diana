@@ -1,7 +1,6 @@
 /**
  * @file mqtt_client.c
  * @brief Cliente MQTT con Last Will EXACTAMENTE como manda el contrato §3.
- *        NO COMPILADO.
  */
 #include "platform_internal.h"
 

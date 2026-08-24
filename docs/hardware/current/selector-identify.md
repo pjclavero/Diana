@@ -35,13 +35,16 @@ Estados:
 | HIGH | HIGH | INVALID_SELECTOR |
 | LOW | LOW | INVALID_SELECTOR |
 
-Estado observado en banco:
+Estados validados en banco el 2026-08-24:
 
 ```text
-GPIO15=1
-GPIO16=1
-mode=INVALID_SELECTOR
+GPIO15=0 GPIO16=1 mode=PRINCIPAL
+GPIO15=1 GPIO16=0 mode=SATELITE
 ```
+
+El firmware actualiza selector y rol en ejecucion tras 3 muestras estables a
+20 ms. El estado inicial `1/1` indicaba que, en aquella lectura, ninguna entrada
+estaba siendo llevada a GND; no reaparecio al validar ambos extremos.
 
 AUTO no esta disponible con el selector fisico actual. El selector ON-OFF-ON es
 un diseno futuro.
@@ -63,10 +66,13 @@ HIGH = libre
 LOW  = pulsado
 ```
 
-Estado observado:
+Estados validados en monitor:
 
 ```text
-identify: HIGH
+libre:   GPIO17=HIGH
+pulsado: GPIO17=LOW
 ```
 
-Pendiente: capturar pulsacion LOW en monitor.
+El pulsador se vigila en ejecucion con antirrebote de 3 muestras a 20 ms. Al
+mantenerlo pulsado, los nueve aros muestran el barrido cian IDENTIFY; al soltar,
+recuperan su estado anterior. Funcion validada en hardware real el 2026-08-24.

@@ -55,8 +55,15 @@ CONFIRMADO EN HARDWARE REAL:
 
 - 9 aros conectados.
 - El firmware inicializa 3 cadenas de 72 LED.
-- Bring-up ejecuta rojo, verde, azul, blanco tenue y slots `aro 1`, `aro 2`,
-  `aro 3`.
+- Mapeo individual de los nueve aros validado el 2026-08-24, uno por uno y con
+  los otros ocho apagados: D1/D4/D7 rojos, D2/D5/D8 azules y D3/D6/D9 verdes.
+- Cada aro encendio sus 24 LED y las tres filas siguieron el orden fisico
+  D1-D2-D3, D4-D5-D6 y D7-D8-D9.
+- La integracion D1-D3 se valido con la imagen de banco: cada impacto puso en
+  verde solo su aro durante 1 s y despues lo devolvio al rojo activo. El monitor
+  confirmo `0x0001`, `0x0002` y `0x0004`, siempre con un unico canal.
+- IDENTIFY fisico en GPIO17 activa el barrido cian en los nueve aros mientras
+  se mantiene pulsado y restaura los estados al soltar.
 
 Pendiente:
 

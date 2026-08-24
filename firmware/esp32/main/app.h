@@ -1,6 +1,6 @@
 /**
  * @file app.h
- * @brief Estado de la aplicacion del modulo. NO COMPILADO (falta ESP-IDF).
+ * @brief Estado de la aplicacion del modulo.
  */
 #ifndef DIANA_APP_H
 #define DIANA_APP_H
@@ -40,6 +40,7 @@ typedef struct {
     diana_module_role  role;
 
     bool               identify_active;
+    bool               identify_button_active;
     uint64_t           identify_until_us;
 
     /* ultimo comando, para module-status.last_command */
@@ -63,6 +64,7 @@ extern diana_app g_app;
 
 /* Tareas (app_tasks.c). */
 void diana_task_sensors(void *arg);
+void diana_task_inputs(void *arg);
 void diana_task_leds(void *arg);
 void diana_task_network(void *arg);
 void diana_task_telemetry(void *arg);

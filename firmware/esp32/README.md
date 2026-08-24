@@ -9,34 +9,38 @@ Firmware de los módulos de dianas 3×3. Implementa WP-04.
 | Lógica de negocio (`components/diana_core`) | Suite host ampliada para DO-only; pendiente de ejecutar en este Windows por falta de `make`/`gcc` |
 | Mensajes MQTT generados | Esquemas y ejemplos validados con `python contracts/validate.py` desde la raiz |
 | Capa de plataforma ESP-IDF (`components/diana_platform_esp`) | Adaptada a HC165 DO-only; build ESP-IDF real ejecutado con ESP-IDF v5.5 |
-| Aplicación (`main/`) | Bring-up serie DO-only, tarea de sensores por polling HC165 y test LED por aro |
+| Aplicación (`main/`) | Imagen completa flasheada; sensores HC165, LED, selector, IDENTIFY y tareas de red activas |
 | Pinout (`boards/`) | `esp32s3_proto_do_w5500.h`, perfil del prototipo fisico actual |
 | Umbrales piezoelectricos | No aplican al perfil DO-only; debounce/refractory quedan `PENDING_PHYSICAL_TUNING` |
 
-Validacion fisica parcial de banco, no completa: ESP32-S3 flashea y arranca por
-COM6. El 2026-08-23, con 74HC165 sustituidos y divisores resistivos en D1-D3,
+Validacion fisica del alcance actualmente montado, todavia incompleta para el
+modulo final: ESP32-S3 flashea y arranca por COM6. El 2026-08-23, con 74HC165
+sustituidos y divisores resistivos en D1-D3,
 los sensores se midieron en reposo `0 V` e impacto hasta `5 V`, asi que el
 perfil queda `DIANA_DO_ACTIVE_HIGH`. La lectura serie quedo en reposo
 `raw=0x0000`; se capturaron impactos reales D1=`0x0001`, D2=`0x0002` y
-D3=`0x0004` sin reinicio. Los 9 aros WS2812B estan conectados y el test de
-bring-up recorre RGB y slots de 24 LED en las 3 cadenas de 72 LED. La prueba
+D3=`0x0004` sin reinicio. Los 9 aros WS2812B estan conectados; el test
+individual valido los nueve aros, con 24 LED por aro y un unico aro encendido
+en cada paso. Las filas corresponden a D1-D3, D4-D6 y D7-D9. La prueba
 minima basada en el driver oficial W5500 de ESP-IDF 5.5 valido SPI, enlace y
 DHCP (`192.168.1.168`) con GPIO10-13, RST/INT sin usar y sondeo de 10 ms. El
-firmware completo reconoce el W5500 a 5 MHz tras reiniciar su alimentacion,
-pero se reproduce un `StoreProhibited` en el temporizador de FreeRTOS unos 2 s
-despues de arrancar Ethernet. Tras algunos reflasheos tambien reaparece
-`VERSIONR=0x00`, por lo que la estabilidad y MQTT siguen pendientes. Desde el
-PC de banco, `192.168.1.209` responde a ping pero no acepta TCP en los puertos
-probados (`1883`, `8080`, `80`, `22`, `443`, `8443`, `9001`). Ver
-`docs/firmware/pinout-definitivo.md`,
-`docs/hardware/prototipo-do-only.md` y
-`docs/firmware/validacion-fisica-pendiente.md`.
+firmware completo reconoce el W5500 a 5 MHz tras reiniciar su alimentacion.
+La caida que parecia originarse en el temporizador Ethernet quedo aislada el
+2026-08-24: el autodiagnostico desbordaba la pila de `app_main` al reservar un
+JSON de 3072 bytes. Los mensajes grandes pasan ahora por heap y la pila de
+arranque es de 8192 bytes. El firmware completo flasheado queda estable con
+`W5500 SPI=OK`; sin RJ45 informa correctamente `LINK=DOWN` e `IP=0.0.0.0`.
+La imagen de operacion permanecio mas de seis minutos con todas las tareas,
+golpes D1-D3 e IDENTIFY, sin reinicios, watchdog ni errores de memoria. Falta
+repetir DHCP/MQTT con el cable conectado y aprovisionar `module_id`. La fuente
+de verdad de este montaje es `docs/hardware/current/`, comenzando por
+`docs/hardware/current/estado-actual.md`.
 
 ## Por qué la lógica se prueba en PC
 
-El paquete es de riesgo alto (tiempo, cola persistente, OTA) y el entorno de
-desarrollo no tiene ESP-IDF, ni placa, ni permisos de administrador. La
-arquitectura resuelve eso separando en dos:
+El paquete es de riesgo alto (tiempo, cola persistente, OTA), por lo que la
+arquitectura separa la logica portable de la plataforma ESP-IDF. Esto permite
+probar la mayor parte del comportamiento sin depender de una placa conectada:
 
 ```
 components/diana_core/     lógica pura, C11, sin ESP-IDF  -> se prueba en PC
@@ -102,6 +106,7 @@ firmware/esp32/
 │   ├── diana_hal/              interfaz del HAL
 │   └── diana_platform_esp/     W5500, MQTT, NVS, HC165, LED, OTA
 ├── main/                       aplicación, bring-up y tareas
+├── diagnostics/                proyectos mínimos reutilizables de banco
 ├── test_host/                  HAL de simulación + suite de pruebas
 ├── tools/                      validador de mensajes contra el contrato
 └── build-host/                 salida de la compilación en PC (ignorada por git)

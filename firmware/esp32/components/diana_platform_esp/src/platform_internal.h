@@ -1,7 +1,6 @@
 /**
  * @file platform_internal.h
  * @brief Estado compartido entre los ficheros de la plataforma ESP.
- *        NO COMPILADO: ver diana/platform_esp.h.
  */
 #ifndef DIANA_PLATFORM_INTERNAL_H
 #define DIANA_PLATFORM_INTERNAL_H

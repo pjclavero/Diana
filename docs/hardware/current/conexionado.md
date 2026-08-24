@@ -13,9 +13,9 @@
 | GPIO11 | OUT | SPI_MOSI | W5500 MOSI/SI/DIN | Firmware actual |
 | GPIO12 | OUT | SPI_CLK | W5500 SCK/SCLK | Firmware actual |
 | GPIO13 | IN | SPI_MISO | W5500 MISO/SO/DOUT | Firmware actual |
-| GPIO15 | IN PU | SELECTOR_A | SPDT terminal 1 | Firmware actual; monitor 1 |
-| GPIO16 | IN PU | SELECTOR_B | SPDT terminal 2 | Firmware actual; monitor 1 |
-| GPIO17 | IN PU | IDENTIFY | Pulsador a GND | Firmware actual; monitor HIGH |
+| GPIO15 | IN PU | SELECTOR_A | SPDT terminal 1 | Validado: 0/1 PRINCIPAL, 1/0 SATELITE |
+| GPIO16 | IN PU | SELECTOR_B | SPDT terminal 2 | Validado: 0/1 PRINCIPAL, 1/0 SATELITE |
+| GPIO17 | IN PU | IDENTIFY | Pulsador a GND | Validado: LOW pulsado, HIGH libre |
 | GPIO38 | IN | SR_DATA | 74HC165 #2 QH/SER_OUT | Firmware actual |
 | GPIO47 | OUT | SR_LOAD | 74HC165 SH/LD compartido | Firmware actual |
 | GPIO48 | OUT | SR_CLK | 74HC165 CLK compartido | Firmware actual; devboard exacta pendiente |

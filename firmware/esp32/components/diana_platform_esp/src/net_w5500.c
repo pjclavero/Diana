@@ -1,7 +1,7 @@
 /**
  * @file net_w5500.c
  * @brief Driver Ethernet W5500 por SPI: DHCP, IP estatica, deteccion de enlace
- *        y reconexion (dosier 8.3, 12.2). NO COMPILADO.
+ *        y reconexion (dosier 8.3, 12.2).
  */
 #include "platform_internal.h"
 

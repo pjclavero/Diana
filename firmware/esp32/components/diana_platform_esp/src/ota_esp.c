@@ -1,7 +1,7 @@
 /**
  * @file ota_esp.c
  * @brief OTA A/B sobre esp_ota_ops: verificacion de firma, activacion y
- *        rollback. NO COMPILADO. Dosier 13.6.
+ *        rollback. Dosier 13.6.
  *
  * La DECISION de si se puede actualizar (partida en curso, sha256, orden de
  * comprobaciones) vive en diana_core/ota.c y esta probada en host. Aqui solo
