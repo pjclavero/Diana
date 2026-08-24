@@ -1,47 +1,80 @@
-# Evidencia de compilación ESP-IDF — MP0, antes de D1b
+# Evidencia de compilación ESP-IDF — MP0
 
-## `ESP_IDF_BUILD_PRE_D1B`
+## Base física vigente
 
 ```
-HEAD      = 44b9d03f18d12a3d0b89f1805c78358ec6978184
-WORKTREE  = CLEAN            (worktree recién creado desde el commit publicado)
+PHYSICAL_FIRMWARE_BASE_PREVIOUS = b883da0    (evidencia histórica, NO se borra)
+PHYSICAL_FIRMWARE_BASE_CURRENT  = 3c51847
+FIRMWARE_BASE                   = 3c51847
+
+DO_POLARITY = ACTIVE_HIGH
+DO_IDLE     = 0 V  /  bus 0x0000
+DO_HIT      = ~5 V antes de adaptación  /  1 lógico después
+HC165_SPI   = 5 MHz
+```
+
+`b883da0` conserva valor como evidencia histórica de la primera prueba física y,
+sobre todo, documenta el fallo de montaje que permitió descubrir el problema de
+nivel lógico. Deja de ser la base canónica, no pasa a ser «incorrecta».
+
+**Por qué cambia la polaridad:** la lectura del 2026-08-20 («reposo alto, activo
+bajo») se tomó sobre un 74HC165 averiado y **sin adaptación de nivel**; ese
+«reposo alto» era el síntoma de la avería. La medida vigente se hizo con
+registros nuevos y divisor resistivo en D1-D3, confirmada por dos vías
+independientes: voltímetro (0 V en reposo, ~5 V al impacto) y monitor serie
+(`D1=0x0001`, `D2=0x0002`, `D3=0x0004`, reposo `0x0000`).
+
+## `ESP_IDF_BUILD` sobre el árbol recompuesto
+
+```
+HEAD      = 745523e   (mp0/integration-v2, rebasada sobre 3c51847)
+WORKTREE  = CLEAN
 ESP-IDF   = v5.5
-BUILD     = PASS             (1105/1105 pasos, enlazado y binario generado)
-fecha     = 2026-08-23
+BUILD     = PASS
+fecha     = 2026-08-24
 ```
-
-Compilado en la imagen oficial `espressif/idf:v5.5`
-(`sha256:00e94c6ff8bc1f7bd22b234ff43db3f3056cb33dedac6819df9fbedbcb5c6ebb`),
-bajo Docker **rootless**, en un worktree separado para que ningún artefacto de
-compilación tocara la rama candidata.
 
 | artefacto | bytes | SHA-256 |
 |---|---:|---|
-| `diana_firmware.bin` | 639 904 | `368235838f62c99431ac2de780750aefc59210250912fa842095bbb0874cabec` |
-| `bootloader/bootloader.bin` | 21 184 | `a4ac632a64d6886aa411eba9c970ed4958bf89e792567bdf820044966711e7de` |
+| `diana_firmware.bin` | 639 216 | `3df25068301f7f0f40452182d652d9532d1ce39698967f78e0482f0520a62b4c` |
+| `bootloader/bootloader.bin` | 21 184 | `72bef9f0b1e9221470926f85a33acdf916164525177635ca3186ab1b683172f8` |
 | `partition_table/partition-table.bin` | 3 072 | `552bb58f7ba97390bcac984a9d7e698accac3d3d76cdad4c5166591ee2d18a1c` |
 | `ota_data_initial.bin` | 8 192 | `7d2c7ac4888bfd75cd5f56e8d61f69595121183afc81556c876732fd3782c62f` |
 
-Ocupación: `0x9c3a0` de una partición de aplicación de `0x300000` — **80 % libre**.
+Compilado en la imagen oficial `espressif/idf:v5.5` bajo Docker rootless.
 
-## Alcance y límite de esta evidencia
+### Comparación con el build anterior (`44b9d03`, sobre `b883da0`)
 
-Demuestra que el árbol compila y enlaza con ESP-IDF 5.5 para `esp32s3`. Es
-reproducible por cualquiera: la versión está fijada por la imagen, no por la
-máquina.
+`diana_firmware.bin` y `bootloader.bin` cambian de huella, como debe ser: el
+árbol lleva ahora la polaridad corregida, el bring-up del W5500, la pila ampliada
+de `diana_sens` y el código de D1b. `partition-table.bin` y `ota_data_initial.bin`
+son **idénticos**: la tabla de particiones no se ha tocado.
 
-**NO sustituye la trazabilidad de origen del firmware físico.** El binario que se
-flasheó y observó sobre hardware salió de la máquina del operador; ésta es una
-compilación independiente del árbol integrado, no la reconstrucción de aquel
-binario.
+### Límite de esta evidencia
 
-**NO se ha flasheado ni monitorizado nada.** `HW_GAP-74HC165` sigue vigente: el
-prototipo no se energiza hasta medir el nivel de `DO` y resolver la adaptación.
+Demuestra que el árbol compila y enlaza con ESP-IDF 5.5 para `esp32s3`, de forma
+reproducible por estar la versión fijada en la imagen. **No reconstruye el
+binario que se flasheó físicamente** ni sustituye a la validación de banco.
+
+**No se ha flasheado ni monitorizado nada** desde este entorno.
+
+## Huecos que siguen abiertos en la evidencia física
+
+1. **Valores del divisor resistivo: sin confirmar.** `docs/hardware/current/bom-prototipo.csv`
+   los declara `UNKNOWN` con «10k/18k recomendado; confirmar los valores realmente
+   montados». Es el único dato de la nueva evidencia declarado y no medido.
+2. Faltan D4-D9 con sensores reales, la prueba de 1 h con 9 sensores y 216 LED, y
+   confirmar que los registros siguen fríos con todos los canales conectados.
+3. `StoreProhibited` en el timer de FreeRTOS con el firmware completo, ~2 s tras
+   arrancar el driver de red. Causa no determinada.
+4. `VERSIONR=0x00` intermitente tras reflasheos con el módulo alimentado.
+5. El acondicionamiento de nivel **no está reflejado en KiCad**: resuelto en este
+   montaje no implica resuelto en la futura PCB.
 
 ## Nota de método
 
-El primer intento de este build devolvió `exit code 0` **sin compilar una sola
-línea**: ejecutó un script residual de otra tarea, y el cero venía del entorno de
-ESP-IDF, no de una compilación. Por eso el procedimiento imprime ahora la versión
-de ESP-IDF y la tabla de artefactos: **el propio log debe demostrar que midió**,
-en vez de confiar en el código de salida.
+Al rebasar, la polaridad pasó de `ACTIVE_LOW` a `ACTIVE_HIGH` y **la suite siguió
+en 740/740**: ninguna prueba comprobaba la polaridad declarada por la placa. Se
+añadió una que ancla la medida de banco y se calibró — invertir el header produce
+4 rojas, y el bus en reposo pasa de 0 impactos a **9**, que es exactamente el
+síntoma del montaje averiado.
