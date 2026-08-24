@@ -118,6 +118,44 @@ int run_do_only(void)
     CHECK_EQ_INT(reserved.active_bitmap, 0, "reservados no generan impactos");
     CHECK_EQ_INT(reserved.active_count, 0, "sin canales activos");
 
+
+    /* ===================================================================
+     * La POLARIDAD QUE DECLARA LA PLACA, anclada a la medida de banco.
+     * ===================================================================
+     * Las secciones de arriba pasan la polaridad como argumento, asi que
+     * comprueban que decode() sabe manejar ambas -- pero NINGUNA comprueba
+     * que la placa declare la correcta. Se detecto invirtiendo
+     * DIANA_DO_POLARITY en el header: la suite entera seguia en verde.
+     *
+     * El runtime SI usa el valor de la placa (io_hc165.c, app_tasks.c,
+     * app_main.c), luego una placa mal declarada da un firmware que lee los
+     * sensores al reves sin que nada avise.
+     *
+     * Banco 2026-08-23, con registros nuevos y divisor resistivo en D1-D3:
+     * reposo medido 0 V y bus 0x0000; impacto ~5 V y bit propio a 1.
+     * (La lectura del 2026-08-20 decia lo contrario, pero se tomo sobre un
+     * 74HC165 averiado y sin adaptacion de nivel.)
+     */
+    SECTION("POLARIDAD DECLARADA POR LA PLACA: coincide con el banco 2026-08-23");
+    CHECK(DIANA_DO_POLARITY == DIANA_DO_ACTIVE_HIGH,
+          "la placa declara active-high, como se midio en banco");
+    {
+        /* Lo que de verdad importa no es el nombre de la constante, sino su
+         * consecuencia: en reposo el bus vale 0x0000 y NO debe haber impactos.
+         * Con active-low, ese mismo 0x0000 se leeria como las NUEVE dianas
+         * golpeadas a la vez -- que es exactamente el sintoma que dio el
+         * montaje averiado. */
+        diana_do_snapshot reposo;
+        diana_do_decode(0x0000u, DIANA_DO_POLARITY, &reposo);
+        CHECK_EQ_INT(reposo.active_count, 0,
+                     "bus en reposo (0x0000) con la polaridad de la placa: CERO impactos");
+
+        diana_do_snapshot golpe;
+        diana_do_decode(bit_for_target(1), DIANA_DO_POLARITY, &golpe);
+        CHECK_EQ_INT(golpe.active_count, 1, "D1 a 1 con la polaridad de la placa: un impacto");
+        CHECK_EQ_INT(golpe.active_channels[0], 1, "y es la diana 1");
+    }
+
     SECTION("active-low invierte solo los 9 bits utiles");
     diana_do_snapshot low;
     diana_do_decode((uint16_t)~bit_for_target(4), DIANA_DO_ACTIVE_LOW, &low);
