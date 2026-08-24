@@ -41,14 +41,17 @@ CONFIG_BOOTLOADER_WDT_ENABLE=y
 CONFIG_BOOTLOADER_WDT_TIME_MS=9000
 
 # --- Firma de aplicacion (dosier 13.6, 23.3) --------------------------------
-# Se deja el modo "solo verificacion de firma" activable sin secure boot para el
-# prototipo. La clave NO esta en el repositorio.
-CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT=y
-CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT=y
-CONFIG_SECURE_BOOT_SIGNING_KEY="secure_boot_signing_key.pem"
+# BRING-UP PROTOTIPO: no se fuerza firma porque la clave privada NO debe vivir
+# en el repositorio. Produccion/OTA debe reactivar estas opciones con una clave
+# provisionada fuera del arbol de Git.
+CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT=n
+CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT=n
 
-# --- Cifrado de NVS: las credenciales MQTT no van en claro ------------------
-CONFIG_NVS_ENCRYPTION=y
+# --- Cifrado de NVS ----------------------------------------------------------
+# BRING-UP PROTOTIPO: no se fuerza cifrado NVS porque requiere provisionar
+# claves/eFuses en la placa. Produccion debe reactivar esta opcion antes de
+# almacenar credenciales MQTT reales.
+CONFIG_NVS_ENCRYPTION=n
 
 # --- PSRAM (placa de desarrollo con octal SPI RAM) --------------------------
 CONFIG_SPIRAM=y
@@ -58,6 +61,10 @@ CONFIG_SPIRAM_SPEED_80M=y
 # --- Reloj y temporizacion: la resolucion de 1 ms del dosier 14.2 exige que
 #     esp_timer sea la fuente monotonica, no los ticks de FreeRTOS -----------
 CONFIG_FREERTOS_HZ=1000
+
+# El arranque ejecuta autodiagnostico, prueba LED y configuracion de red antes
+# de crear las tareas de aplicacion. Reserva margen para esa ruta anidada.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 
 CONFIG_COMPILER_OPTIMIZATION_SIZE=y
 CONFIG_COMPILER_WARN_WRITE_STRINGS=y

@@ -1,7 +1,6 @@
 /**
  * @file hal_esp32.c
  * @brief Cableado de la tabla del HAL a la implementacion ESP-IDF.
- *        NO COMPILADO: ver diana/platform_esp.h.
  */
 #include "platform_internal.h"
 
@@ -94,13 +93,8 @@ static int pf_health(void *ctx, diana_hal_health *out)
      * queda pendiente de correlacion en banco. */
     out->has_temperature = false;
 
-    int mv5 = 0, mv12 = 0;
-    if (diana_pf_adc_read_mv(p, DIANA_ADC_CH_V5, &mv5) == DIANA_HAL_OK &&
-        diana_pf_adc_read_mv(p, DIANA_ADC_CH_V12, &mv12) == DIANA_HAL_OK) {
-        out->has_voltage = true;
-        out->voltage_5v_mv = (uint32_t)mv5 * DIANA_VDIV_5V_NUM / DIANA_VDIV_5V_DEN;
-        out->voltage_12v_mv = (uint32_t)mv12 * DIANA_VDIV_12V_NUM / DIANA_VDIV_12V_DEN;
-    }
+    (void)p;
+    out->has_voltage = false;
     return DIANA_HAL_OK;
 }
 
@@ -124,10 +118,11 @@ int diana_platform_init(diana_platform **out, diana_hal *hal)
 
     if (diana_pf_nvs_init() != 0) return -1;
     if (diana_pf_queue_init(p) != 0) return -2;
-    if (diana_pf_piezo_init(p) != 0) return -3;
+    if (diana_pf_hc165_init(p) != 0) return -3;
     if (diana_pf_leds_init(p) != 0) return -4;
     if (diana_pf_inputs_init() != 0) return -5;
-    if (diana_pf_net_init(p) != 0) return -6;
+    if (diana_pf_net_init(p) != 0)
+        ESP_LOGW(TAG, "Ethernet no disponible en bring-up; continuo sin red");
 
     uint8_t mac[6] = {0};
     esp_read_mac(mac, ESP_MAC_ETH);
@@ -155,7 +150,7 @@ int diana_platform_init(diana_platform **out, diana_hal *hal)
     hal->mqtt_publish = diana_pf_mqtt_publish;
     hal->mqtt_connected = diana_pf_mqtt_connected;
 
-    hal->piezo_amplitude = diana_pf_piezo_amplitude;
+    hal->piezo_amplitude = NULL;
     hal->led_write = diana_pf_led_write;
     hal->selector_read = diana_pf_selector_read;
     hal->button_pressed = diana_pf_button_pressed;

@@ -1,6 +1,6 @@
 /**
  * @file sensors.h
- * @brief Pipeline de los 9 canales piezoelectricos (dosier 9.4 - 9.6).
+ * @brief Pipeline de sensores de impacto.
  *
  * Flujo:
  *   1. El comparador de cada canal genera un flanco -> ISR -> se registra
@@ -16,8 +16,9 @@
  * ATENCION: los umbrales son PROVISIONALES y no estan calibrados (no hay
  * hardware). Ver diana/config.h y docs/firmware/validacion-fisica-pendiente.md.
  *
- * Este modulo es codigo puro: recibe disparos ya capturados y decide. La ISR y
- * la lectura ADC viven en la capa de plataforma.
+ * El prototipo fisico actual usa DO-only sobre 2 x 74HC165. La ruta analogica
+ * se conserva para la PCB futura, pero el perfil DIANA_BOARD_PROTO_DO_W5500 no
+ * depende de ADC ni de amplitud.
  */
 #ifndef DIANA_SENSORS_H
 #define DIANA_SENSORS_H
@@ -53,6 +54,12 @@ typedef struct {
     uint16_t amplitude;
     uint16_t threshold;
     uint16_t noise_floor;
+    bool     has_amplitude;
+    bool     has_threshold;
+    bool     has_noise_floor;
+    uint16_t raw_bitmap;                    /* snapshot HC165 crudo, DO-only */
+    uint16_t active_bitmap;                 /* bit 0=D1 ... bit 8=D9 */
+    uint8_t  active_count;
     diana_hit_classification classification;
     char     reason[DIANA_REASON_MAXLEN]; /* vacio solo si valid_hit */
     diana_neighbour neighbours[DIANA_MAX_NEIGHBOURS];
@@ -69,7 +76,25 @@ typedef struct {
     uint64_t last_trigger_us[DIANA_TARGET_COUNT];
     uint32_t suppressed_debounce[DIANA_TARGET_COUNT];
     uint32_t suppressed_blanking[DIANA_TARGET_COUNT];
+    uint16_t do_last_active_bitmap;
 } diana_sensor_state;
+
+typedef enum {
+    DIANA_DO_ACTIVE_HIGH = 0,
+    DIANA_DO_ACTIVE_LOW
+} diana_do_polarity;
+
+typedef enum {
+    DIANA_SELECTOR_2_POSITION = 0,
+    DIANA_SELECTOR_3_POSITION
+} diana_selector_profile;
+
+typedef struct {
+    uint16_t raw_bitmap;
+    uint16_t active_bitmap;
+    uint8_t active_count;
+    uint8_t active_channels[DIANA_TARGET_COUNT]; /* valores 1..9 */
+} diana_do_snapshot;
 
 void diana_sensor_state_init(diana_sensor_state *st);
 
@@ -101,6 +126,28 @@ void diana_sensor_classify(const diana_config *cfg,
 /** Marca el blanking del canal tras aceptar un impacto valido. */
 void diana_sensor_mark_hit(diana_sensor_state *st, const diana_config *cfg,
                            uint8_t target_index, uint64_t now_us);
+
+uint16_t diana_do_active_bitmap(uint16_t raw_bitmap, diana_do_polarity polarity);
+void diana_do_decode(uint16_t raw_bitmap, diana_do_polarity polarity,
+                     diana_do_snapshot *out);
+
+/**
+ * Clasifica un snapshot DO-only del 74HC165.
+ *
+ * Reglas del prototipo:
+ *   - bit 0=D1 ... bit 8=D9; bits 9..15 se ignoran.
+ *   - 0 bits activos: no hay impacto.
+ *   - 1 bit activo: transicion candidata, con debounce/refractory por canal.
+ *   - >1 bits activos: MULTI_TRIGGER diagnostico/no puntuable. No se elige un
+ *     canal arbitrario.
+ */
+void diana_do_process_snapshot(diana_sensor_state *st, const diana_config *cfg,
+                               uint16_t raw_bitmap, diana_do_polarity polarity,
+                               uint64_t now_us, diana_hit_group *out);
+
+int diana_selector_decode(int gpio15_level, int gpio16_level,
+                          diana_selector_profile profile,
+                          diana_selector_position *out);
 
 #ifdef __cplusplus
 }

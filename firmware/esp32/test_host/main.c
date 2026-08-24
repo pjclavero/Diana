@@ -56,6 +56,7 @@ int main(void)
         {"queue",        run_queue},
         {"idempotency",  run_idempotency},
         {"crosstalk",    run_crosstalk},
+        {"do_only",      run_do_only},
         {"command",      run_command},
         {"reconnect",    run_reconnect},
         {"coordination", run_coordination},

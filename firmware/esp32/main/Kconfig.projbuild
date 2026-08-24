@@ -30,4 +30,12 @@ config DIANA_QUEUE_DROP_OLDEST
       Desactivado: se rechaza el nuevo y se conserva el historico.
       En ambos casos se emite un diagnostico 'queue_overflow'.
 
+config DIANA_BENCH_HIT_LED_TEST
+    bool "Banco: armar D1-D3 para probar impacto -> aro"
+    default n
+    help
+      Modo exclusivo de validacion fisica. D1, D2 y D3 quedan activas y cada
+      impacto aceptado cambia el aro correspondiente a HIT antes de rearmarlo.
+      Debe permanecer desactivado en las imagenes de operacion normal.
+
 endmenu

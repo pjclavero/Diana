@@ -1,7 +1,7 @@
 /**
  * @file io_piezo.c
  * @brief Captura digital por interrupcion + lectura de amplitud por multiplexor.
- *        NO COMPILADO. Dosier 9.4 y 9.5.
+ *        No forma parte del perfil DO-only actual. Dosier 9.4 y 9.5.
  *
  * La ISR hace lo MINIMO: leer el reloj monotonico y encolar (canal, t_us). Ese
  * t_us es T1 (ADR-0002) y no puede depender de cuando la tarea llegue a

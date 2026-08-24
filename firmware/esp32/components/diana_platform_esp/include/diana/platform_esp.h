@@ -2,13 +2,7 @@
  * @file platform_esp.h
  * @brief Implementacion del HAL de Diana sobre ESP-IDF (ESP32-S3 + W5500).
  *
- * ###########################################################################
- * # NO COMPILADO. Este componente NO se ha podido construir: en el entorno  #
- * # de desarrollo no hay ESP-IDF instalado ni hardware. Es codigo escrito   #
- * # contra la API documentada de ESP-IDF v5.x y esta PENDIENTE de su primer #
- * # `idf.py build`. La logica que si esta probada vive en diana_core y se   #
- * # ejecuta en host contra test_host/hal_host.c.                            #
- * ###########################################################################
+ * Compilado y flasheado sobre ESP32-S3 con ESP-IDF 5.5 el 2026-08-24.
  */
 #ifndef DIANA_PLATFORM_ESP_H
 #define DIANA_PLATFORM_ESP_H
@@ -28,7 +22,7 @@ typedef struct diana_platform diana_platform;
 
 /**
  * Arranca los periféricos y rellena la tabla de operaciones del HAL.
- * Orden: NVS -> particion de cola -> GPIO/ADC -> LED -> Ethernet -> MQTT.
+ * Orden: NVS -> particion de cola -> HC165/entradas -> LED -> Ethernet -> MQTT.
  * Devuelve 0 en exito.
  */
 int diana_platform_init(diana_platform **out, diana_hal *hal);
@@ -59,17 +53,19 @@ typedef struct {
 bool diana_platform_rx_pop(diana_platform *p, diana_platform_rx *out,
                            uint32_t timeout_ms);
 
-/* --- piezo ----------------------------------------------------------------- */
+/* --- sensores DO-only ------------------------------------------------------ */
 
-/** Disparo capturado por la ISR del comparador: canal y reloj monotonico. */
+/** Snapshot capturado por polling del 74HC165: bitmap crudo y reloj monotono. */
 typedef struct {
-    uint8_t  channel;    /* 0..8 */
+    uint16_t raw_bitmap; /* bit 0=D1 ... bit 8=D9 tras orden de cascada */
     uint64_t t_us;
 } diana_platform_trigger;
 
-/** Extrae un disparo de la cola de la ISR. */
+/** Extrae un snapshot activo/cambiado de la cola de polling. */
 bool diana_platform_trigger_pop(diana_platform *p, diana_platform_trigger *out,
                                 uint32_t timeout_ms);
+
+int diana_platform_hc165_read_raw(diana_platform *p, uint16_t *out_raw);
 
 /* --- led ------------------------------------------------------------------- */
 
@@ -80,6 +76,8 @@ int diana_platform_led_refresh(diana_platform *p);
 int diana_platform_eth_start(diana_platform *p, bool use_static,
                              const char *ip, const char *netmask,
                              const char *gw);
+
+bool diana_platform_eth_available(diana_platform *p);
 
 #ifdef __cplusplus
 }

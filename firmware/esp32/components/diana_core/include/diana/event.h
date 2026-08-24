@@ -78,7 +78,9 @@ typedef struct {
     diana_device_time device;
     bool     has_coordinator;
     diana_coordinator_time coordinator;
+    bool     has_amplitude;
     uint16_t amplitude;
+    bool     has_threshold;
     uint16_t threshold;
     bool     has_noise_floor;
     uint16_t noise_floor;

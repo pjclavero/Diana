@@ -1,6 +1,6 @@
 /**
  * @file app_commands.c
- * @brief Recepcion y ejecucion de comandos, config y OTA. NO COMPILADO.
+ * @brief Recepcion y ejecucion de comandos, config y OTA.
  *
  * TODA orden pasa antes por diana_command_validate(): caducidad, command_id
  * repetido y nonce no monotonico (contrato §6). Esa logica esta probada en host
@@ -8,6 +8,7 @@
  */
 #include "app.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "cJSON.h"

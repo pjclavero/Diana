@@ -76,7 +76,7 @@ int run_led(void)
           "error y sensor_error comparten color base");
     CHECK(serr.pattern != err.pattern, "pero NO comparten patron");
 
-    SECTION("render de las 3 cadenas de 24 LED");
+    SECTION("render de las 3 cadenas de 72 LED");
     diana_target_state states[DIANA_TARGET_COUNT];
     for (int i = 0; i < DIANA_TARGET_COUNT; ++i) states[i] = DIANA_TARGET_SAFE;
     states[4] = DIANA_TARGET_ACTIVE;   /* diana 5, cadena 1 */
@@ -89,8 +89,8 @@ int run_led(void)
     diana_led_render_chain(2, states, false, 255, 0, chain2);
 
     CHECK(chain0[0].b > 0 && chain0[0].r == 0, "cadena 0: diana 1 en azul");
-    /* diana 5 = indice 4 -> cadena 1, hueco 1 -> LED 8..15 */
-    CHECK(chain1[8].r > 0 && chain1[8].b == 0, "cadena 1: diana 5 en rojo");
+    /* diana 5 = indice 4 -> cadena 1, hueco 1 -> LED 24..47 */
+    CHECK(chain1[24].r > 0 && chain1[24].b == 0, "cadena 1: diana 5 en rojo");
     CHECK(chain1[0].b > 0, "cadena 1: diana 4 sigue azul");
 
     SECTION("modo identificacion afecta a todo el modulo");
@@ -113,7 +113,7 @@ int run_led(void)
         white[i].r = 255; white[i].g = 255; white[i].b = 255;
     }
     uint32_t ma = diana_led_estimate_ma(white, DIANA_LEDS_PER_CHAIN);
-    CHECK_EQ_INT(ma, 24 * 60, "24 LED en blanco maximo estiman 1440 mA");
+    CHECK_EQ_INT(ma, 72 * 60, "72 LED en blanco maximo estiman 4320 mA");
 
     diana_hal_rgb a[DIANA_LEDS_PER_CHAIN], b[DIANA_LEDS_PER_CHAIN],
                   c[DIANA_LEDS_PER_CHAIN];
@@ -123,7 +123,7 @@ int run_led(void)
     diana_hal_rgb *chains[DIANA_LED_CHAINS] = {a, b, c};
 
     uint32_t total = diana_led_estimate_ma(a, DIANA_LEDS_PER_CHAIN) * 3;
-    CHECK_EQ_INT(total, 4320, "72 LED en blanco maximo estiman 4320 mA (dosier 10.4)");
+    CHECK_EQ_INT(total, 12960, "216 LED en blanco maximo estiman 12960 mA");
 
     uint16_t factor = diana_led_apply_budget(chains, DIANA_LEDS_PER_CHAIN, 3000);
     CHECK(factor < 1000, "el presupuesto de 3000 mA obliga a recortar");

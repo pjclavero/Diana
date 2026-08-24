@@ -1,17 +1,112 @@
 /**
  * @file app_tasks.c
- * @brief Tareas principales del modulo (dosier 13.2). NO COMPILADO.
+ * @brief Tareas principales del modulo (dosier 13.2).
  */
 #include "app.h"
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "esp_log.h"
 #include "esp_task_wdt.h"
+#include "esp32s3_proto_do_w5500.h"
+#include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
 static const char *TAG = "diana.task";
+
+#define SENSOR9_BITS_PATTERN "%c%c%c%c%c%c%c%c%c"
+#define SENSOR9_BITS(bitmap) \
+    ((bitmap) & (1u << 8) ? '1' : '0'), \
+    ((bitmap) & (1u << 7) ? '1' : '0'), \
+    ((bitmap) & (1u << 6) ? '1' : '0'), \
+    ((bitmap) & (1u << 5) ? '1' : '0'), \
+    ((bitmap) & (1u << 4) ? '1' : '0'), \
+    ((bitmap) & (1u << 3) ? '1' : '0'), \
+    ((bitmap) & (1u << 2) ? '1' : '0'), \
+    ((bitmap) & (1u << 1) ? '1' : '0'), \
+    ((bitmap) & (1u << 0) ? '1' : '0')
+
+#define SENSOR16_BITS_PATTERN "%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c"
+#define SENSOR16_BITS(bitmap) \
+    ((bitmap) & (1u << 15) ? '1' : '0'), \
+    ((bitmap) & (1u << 14) ? '1' : '0'), \
+    ((bitmap) & (1u << 13) ? '1' : '0'), \
+    ((bitmap) & (1u << 12) ? '1' : '0'), \
+    ((bitmap) & (1u << 11) ? '1' : '0'), \
+    ((bitmap) & (1u << 10) ? '1' : '0'), \
+    ((bitmap) & (1u << 9) ? '1' : '0'), \
+    ((bitmap) & (1u << 8) ? '1' : '0'), \
+    ((bitmap) & (1u << 7) ? '1' : '0'), \
+    ((bitmap) & (1u << 6) ? '1' : '0'), \
+    ((bitmap) & (1u << 5) ? '1' : '0'), \
+    ((bitmap) & (1u << 4) ? '1' : '0'), \
+    ((bitmap) & (1u << 3) ? '1' : '0'), \
+    ((bitmap) & (1u << 2) ? '1' : '0'), \
+    ((bitmap) & (1u << 1) ? '1' : '0'), \
+    ((bitmap) & (1u << 0) ? '1' : '0')
+
+/* --------------------------------------------------------------- entradas */
+
+void diana_task_inputs(void *arg)
+{
+    diana_app *a = (diana_app *)arg;
+    esp_task_wdt_add(NULL);
+
+    int selector_candidate = -1;
+    int selector_stable = -1;
+    uint8_t selector_samples = 0;
+    bool button_candidate = a->hal.button_pressed(a->hal.ctx);
+    bool button_stable = button_candidate;
+    uint8_t button_samples = 0;
+    a->identify_button_active = button_stable;
+
+    for (;;) {
+        esp_task_wdt_reset();
+
+        int s1 = gpio_get_level(DIANA_PIN_SELECTOR_A);
+        int s2 = gpio_get_level(DIANA_PIN_SELECTOR_B);
+        int selector_raw = (s1 << 1) | s2;
+        if (selector_raw != selector_candidate) {
+            selector_candidate = selector_raw;
+            selector_samples = 1;
+        } else if (selector_samples < 3) {
+            selector_samples++;
+        }
+        if (selector_samples == 3 && selector_stable != selector_candidate) {
+            diana_selector_position sel;
+            if (diana_selector_decode(s1, s2, DIANA_SELECTOR_PROFILE, &sel) ==
+                DIANA_HAL_OK) {
+                a->selector = sel;
+                a->role = diana_role_from_selector(sel);
+                ESP_LOGI(TAG, "SELECTOR GPIO15=%d GPIO16=%d mode=%s", s1, s2,
+                         diana_selector_str(sel));
+            } else {
+                ESP_LOGE(TAG, "SELECTOR GPIO15=%d GPIO16=%d mode=INVALID_SELECTOR",
+                         s1, s2);
+            }
+            selector_stable = selector_candidate;
+        }
+
+        bool button = a->hal.button_pressed(a->hal.ctx);
+        if (button != button_candidate) {
+            button_candidate = button;
+            button_samples = 1;
+        } else if (button_samples < 3) {
+            button_samples++;
+        }
+        if (button_samples == 3 && button_stable != button_candidate) {
+            button_stable = button_candidate;
+            a->identify_button_active = button_stable;
+            ESP_LOGI(TAG, "IDENTIFY GPIO17=%s",
+                     button_stable ? "LOW" : "HIGH");
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+}
 
 /* --------------------------------------------------------------- publicacion */
 
@@ -26,6 +121,13 @@ static void publish(diana_app *a, const char *topic, const char *json,
         .retain = diana_topic_retain(t),
     };
     a->hal.mqtt_publish(a->hal.ctx, &msg);
+}
+
+static char *alloc_message_buffer(void)
+{
+    char *buf = malloc(DIANA_MSG_JSON_MAX);
+    if (!buf) ESP_LOGE(TAG, "sin memoria para serializar mensaje JSON");
+    return buf;
 }
 
 void diana_publish_presence(diana_app *a, diana_presence_reason reason)
@@ -54,9 +156,11 @@ void diana_publish_status(diana_app *a)
     in.last_command_result = diana_command_result_str(a->last_command_result);
     in.last_command_detail = a->last_command_detail;
 
-    char buf[DIANA_MSG_JSON_MAX];
-    size_t n = diana_status_json(&in, buf, sizeof(buf));
+    char *buf = alloc_message_buffer();
+    if (!buf) return;
+    size_t n = diana_status_json(&in, buf, DIANA_MSG_JSON_MAX);
     if (n) publish(a, a->topic_status, buf, n, DIANA_TOPIC_STATUS);
+    free(buf);
 }
 
 void diana_publish_diagnostic(diana_app *a, diana_diagnostic_kind kind,
@@ -64,20 +168,24 @@ void diana_publish_diagnostic(diana_app *a, diana_diagnostic_kind kind,
 {
     diana_diagnostic d;
     diana_diagnostic_init(&d, &a->hal, kind, sev, message);
-    char buf[DIANA_MSG_JSON_MAX];
+    char *buf = alloc_message_buffer();
+    if (!buf) return;
     size_t n = diana_diagnostic_json(&d, &a->id,
                                      a->hal.now_us(a->hal.ctx) - a->boot_us,
-                                     buf, sizeof(buf));
+                                     buf, DIANA_MSG_JSON_MAX);
     if (n) publish(a, a->topic_diagnostic, buf, n, DIANA_TOPIC_DIAGNOSTIC);
+    free(buf);
 }
 
 void diana_publish_config_reported(diana_app *a)
 {
-    char buf[DIANA_MSG_JSON_MAX];
+    char *buf = alloc_message_buffer();
+    if (!buf) return;
     size_t n = diana_config_reported_json(&a->cfg, a->id.module_id, NULL, buf,
-                                          sizeof(buf));
+                                          DIANA_MSG_JSON_MAX);
     if (n) publish(a, a->topic_config_reported, buf, n,
                    DIANA_TOPIC_CONFIG_REPORTED);
+    free(buf);
 }
 
 /* ------------------------------------------------------------------ sensores */
@@ -114,71 +222,80 @@ void diana_task_sensors(void *arg)
 {
     diana_app *a = (diana_app *)arg;
     esp_task_wdt_add(NULL);
-
-    diana_piezo_trigger group[DIANA_TARGET_COUNT];
-    uint8_t group_n = 0;
-    uint64_t group_start_us = 0;
+    uint16_t last_logged_raw = 0xffffu;
+    uint16_t last_logged_used = 0xffffu;
+    uint64_t last_diag_us = 0;
 
     for (;;) {
         esp_task_wdt_reset();
 
         diana_platform_trigger t;
-        /* Espera corta: hay que poder cerrar la ventana de agrupacion aunque no
-         * lleguen mas disparos. */
-        bool got = diana_platform_trigger_pop(a->pf, &t, 2);
+        bool got = diana_platform_trigger_pop(a->pf, &t, DIANA_HC165_POLL_MS);
+        if (!got) continue;
 
-        if (got) {
-            uint8_t idx = (uint8_t)(t.channel + 1);
-            uint16_t amp = 0;
-            a->hal.piezo_amplitude(a->hal.ctx, t.channel, &amp);
-
-            diana_piezo_trigger trig = {idx, t.t_us, amp};
-            const char *why = NULL;
-            if (diana_sensor_admit(&a->sensors, &a->cfg, &trig, &why)) {
-                if (group_n == 0) group_start_us = t.t_us;
-                if (group_n < DIANA_TARGET_COUNT) group[group_n++] = trig;
-            }
+        uint16_t used_raw = (uint16_t)(t.raw_bitmap & 0x01ffu);
+        bool used_changed = used_raw != last_logged_used;
+        bool raw_changed = t.raw_bitmap != last_logged_raw;
+        bool diag_due = (t.t_us - last_diag_us) >= 250000ULL;
+        if (used_changed || (raw_changed && diag_due)) {
+            diana_do_snapshot snap;
+            diana_do_decode(t.raw_bitmap, DIANA_DO_POLARITY, &snap);
+            uint16_t active_high = diana_do_active_bitmap(t.raw_bitmap,
+                                                          DIANA_DO_ACTIVE_HIGH);
+            uint16_t active_low = diana_do_active_bitmap(t.raw_bitmap,
+                                                         DIANA_DO_ACTIVE_LOW);
+            ESP_LOGI(TAG, "SENSORES raw=0x%04x bits16=" SENSOR16_BITS_PATTERN
+                     " raw D9..D1=" SENSOR9_BITS_PATTERN
+                     " AH=" SENSOR9_BITS_PATTERN
+                     " AL=" SENSOR9_BITS_PATTERN
+                     " cfg=%s count=%u",
+                     (unsigned)t.raw_bitmap, SENSOR16_BITS(t.raw_bitmap),
+                     SENSOR9_BITS(used_raw),
+                     SENSOR9_BITS(active_high),
+                     SENSOR9_BITS(active_low),
+                     DIANA_DO_POLARITY == DIANA_DO_ACTIVE_HIGH ? "AH" : "AL",
+                     (unsigned)snap.active_count);
+            last_logged_raw = t.raw_bitmap;
+            last_logged_used = used_raw;
+            last_diag_us = t.t_us;
         }
 
-        if (group_n == 0) continue;
-
-        /* Cierre de la ventana de agrupacion del canal principal. */
-        const diana_target_calibration *cal =
-            diana_config_cal(&a->cfg, group[0].target_index);
-        uint64_t now = a->hal.now_us(a->hal.ctx);
-        if (cal && now - group_start_us < cal->group_window_us) continue;
-
         diana_hit_group grp;
-        diana_sensor_classify(&a->cfg, group, group_n, &grp);
-        group_n = 0;
+        diana_do_process_snapshot(&a->sensors, &a->cfg, t.raw_bitmap,
+                                  DIANA_DO_POLARITY, t.t_us, &grp);
+
+        if (!grp.accepted) {
+            if (grp.target_index == 0 && strstr(grp.reason, "MULTI_TRIGGER") != NULL)
+                diana_publish_diagnostic(a, DIANA_DIAG_SENSOR_ERROR,
+                                         DIANA_SEV_WARNING, grp.reason);
+            continue;
+        }
 
         diana_target *tg = diana_target_at(&a->targets, grp.target_index);
         if (!tg) continue;
         diana_target_state before = tg->state;
+        uint64_t now = a->hal.now_us(a->hal.ctx);
 
-        if (grp.accepted) {
-            /* Clasificacion segun el estado de la diana y de la partida. */
-            if (a->fsm.state == DIANA_MODULE_GAME_PAUSED) {
-                grp.classification = DIANA_HIT_DURING_PAUSE;
-                snprintf(grp.reason, sizeof(grp.reason), "partida en pausa");
-            } else if (a->fsm.state == DIANA_MODULE_CALIBRATION) {
-                grp.classification = DIANA_HIT_CALIBRATION;
-                snprintf(grp.reason, sizeof(grp.reason), "impacto de calibracion");
-            } else if (before == DIANA_TARGET_SAFE) {
-                grp.classification = DIANA_HIT_ON_SAFE;
-                snprintf(grp.reason, sizeof(grp.reason), "diana en estado seguro");
-                diana_target_apply(tg, DIANA_TEV_HIT_PENALTY, now);
-            } else if (before == DIANA_TARGET_HIT) {
-                grp.classification = DIANA_HIT_ON_ALREADY_HIT;
-                snprintf(grp.reason, sizeof(grp.reason), "diana ya alcanzada");
-            } else if (!diana_target_is_scorable(tg)) {
-                grp.classification = DIANA_HIT_OUT_OF_ORDER;
-                snprintf(grp.reason, sizeof(grp.reason), "diana no activa (%s)",
-                         diana_target_state_str(before));
-            } else {
-                diana_target_apply(tg, DIANA_TEV_HIT_VALID, now);
-                diana_sensor_mark_hit(&a->sensors, &a->cfg, grp.target_index, now);
-            }
+        /* Clasificacion segun el estado de la diana y de la partida. */
+        if (a->fsm.state == DIANA_MODULE_GAME_PAUSED) {
+            grp.classification = DIANA_HIT_DURING_PAUSE;
+            snprintf(grp.reason, sizeof(grp.reason), "partida en pausa");
+        } else if (a->fsm.state == DIANA_MODULE_CALIBRATION) {
+            grp.classification = DIANA_HIT_CALIBRATION;
+            snprintf(grp.reason, sizeof(grp.reason), "impacto de calibracion");
+        } else if (before == DIANA_TARGET_SAFE) {
+            grp.classification = DIANA_HIT_ON_SAFE;
+            snprintf(grp.reason, sizeof(grp.reason), "diana en estado seguro");
+            diana_target_apply(tg, DIANA_TEV_HIT_PENALTY, now);
+        } else if (before == DIANA_TARGET_HIT) {
+            grp.classification = DIANA_HIT_ON_ALREADY_HIT;
+            snprintf(grp.reason, sizeof(grp.reason), "diana ya alcanzada");
+        } else if (!diana_target_is_scorable(tg)) {
+            grp.classification = DIANA_HIT_OUT_OF_ORDER;
+            snprintf(grp.reason, sizeof(grp.reason), "diana no activa (%s)",
+                     diana_target_state_str(before));
+        } else {
+            diana_target_apply(tg, DIANA_TEV_HIT_VALID, now);
         }
 
         diana_hit_event ev;
@@ -220,13 +337,26 @@ void diana_task_leds(void *arg)
         if (a->identify_active && now > a->identify_until_us)
             a->identify_active = false;
 
+#if CONFIG_DIANA_BENCH_HIT_LED_TEST
+        for (uint8_t i = 0; i < 3; ++i) {
+            diana_target *tg = &a->targets.t[i];
+            if (tg->state == DIANA_TARGET_HIT &&
+                now - tg->entered_at_us >= 1000000ULL) {
+                diana_target_apply(tg, DIANA_TEV_HIT_CLEARED, now);
+                diana_target_apply(tg, DIANA_TEV_ARM, now);
+                ESP_LOGI(TAG, "BANCO D%u rearmada", (unsigned)(i + 1u));
+            }
+        }
+#endif
+
         diana_target_state states[DIANA_TARGET_COUNT];
         for (int i = 0; i < DIANA_TARGET_COUNT; ++i)
             states[i] = a->targets.t[i].state;
 
         diana_hal_rgb px[DIANA_LED_CHAINS][DIANA_LEDS_PER_CHAIN];
         for (uint8_t c = 0; c < DIANA_LED_CHAINS; ++c)
-            diana_led_render_chain(c, states, a->identify_active,
+            diana_led_render_chain(c, states,
+                                   a->identify_active || a->identify_button_active,
                                    a->cfg.led_brightness_max, t_ms, px[c]);
 
         /* Presupuesto de potencia ANTES de escribir: nunca se envia al hardware
@@ -284,6 +414,8 @@ void diana_task_network(void *arg)
 
         /* Rollback automatico si la OTA no se confirma a tiempo. */
         diana_ota_tick(&a->ota, a->hal.now_us(a->hal.ctx));
+
+        vTaskDelay(pdMS_TO_TICKS(20));
     }
 }
 
@@ -313,9 +445,10 @@ void diana_task_telemetry(void *arg)
         for (int c = 0; c < DIANA_LED_CHAINS; ++c) in.chain_ok[c] = true;
         in.has_chain_current = false;   /* sin medida real de corriente por cadena */
 
-        char buf[DIANA_MSG_JSON_MAX];
-        size_t n = diana_telemetry_json(&in, buf, sizeof(buf));
+        char *buf = alloc_message_buffer();
+        size_t n = buf ? diana_telemetry_json(&in, buf, DIANA_MSG_JSON_MAX) : 0;
         if (n) publish(a, a->topic_telemetry, buf, n, DIANA_TOPIC_TELEMETRY);
+        free(buf);
 
         if (in.health.has_voltage && in.health.voltage_5v_mv < 4600) {
             diana_publish_diagnostic(a, DIANA_DIAG_LOW_VOLTAGE, DIANA_SEV_WARNING,

@@ -1,7 +1,6 @@
 /**
  * @file mqtt_client.c
  * @brief Cliente MQTT con Last Will EXACTAMENTE como manda el contrato §3.
- *        NO COMPILADO.
  */
 #include "platform_internal.h"
 
@@ -114,6 +113,8 @@ int diana_platform_mqtt_start(struct diana_platform *p, const char *client_id,
 
 int diana_platform_mqtt_subscribe(struct diana_platform *p, const char *module_id)
 {
+    if (!p || !p->mqtt) return -1;
+
     char topic[DIANA_TOPIC_MAXLEN];
     static const char *const suffixes[] = {
         "command", "config/desired", "ota",

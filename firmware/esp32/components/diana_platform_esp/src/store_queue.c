@@ -1,7 +1,6 @@
 /**
  * @file store_queue.c
  * @brief Cola FIFO persistente de eventos sobre la particion 'evtqueue'.
- *        NO COMPILADO.
  *
  * Diseno: anillo de ranuras de tamano FIJO. Un registro por ranura, con
  * cabecera (magia + longitud + CRC32). El tamano fijo evita compactar la flash
@@ -23,6 +22,7 @@
 #include "esp_crc.h"
 #include "esp_log.h"
 #include "esp_partition.h"
+#include "spi_flash_mmap.h"
 
 static const char *TAG = "diana.evtq";
 
