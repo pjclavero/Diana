@@ -14,12 +14,30 @@ Accion: verificar temperatura de ambos 74HC165 con todos los canales conectados.
 
 ### H2 - Nivel DO y divisores
 
-Estado: D1-D3 medidos y validados; D4-D9 pendientes.
+Estado: D1-D3 medidos y validados con valores confirmados; D4-D9 pendientes.
 
 Evidencia D1-D3: DO reposo 0 V, impacto hasta 5 V, divisor instalado y lectura
 HC165 correcta.
 
-Accion: repetir medida en D4-D9 antes de conectarlos al 74HC165.
+Valores confirmados 2026-08-24: serie 10k al DO del sensor y 18k a masa, E12.
+Nominal 3.214 V desde 5 V, es decir 86 mV POR DEBAJO de VCC=3.3 V, de modo que el
+diodo de proteccion de entrada nunca se acerca a conducir. Peor caso con
+tolerancia 5 % y rail de 5.25 V: 3.494 V frente a un maximo absoluto de 3.80 V, y
+2.943 V frente a un VIH minimo de 2.31 V.
+
+Se preveia 10k/20k para la version final, pero esa pareja queda 33 mV POR ENCIMA
+de VCC y deja solo 190 mV de margen: se recomienda mantener 10k/18k tambien en la
+version final, sobre todo con nueve canales y 216 LED cargando la fuente.
+
+CAUSA RAIZ CONFIRMADA del sobrecalentamiento del primer 74HC165: el DO del sensor
+entrega 5 V a logica alimentada a 3.3 V. Sin divisor, la corriente por el diodo de
+proteccion solo la limita el propio diodo. Con divisor, la impedancia equivalente
+de ~6.4 k la acota a ~390 uA incluso si el HC165 arranca sin alimentacion mientras
+el sensor ya da 5 V.
+
+Accion: repetir medida en D4-D9 antes de conectarlos al 74HC165. Cada canal DO
+necesita SU PROPIO divisor: faltan 6 parejas (12 resistencias). Consumo ~180 uA
+por canal y ~1.6 mA con los nueve.
 
 ### H3 - Entradas HC165 libres
 

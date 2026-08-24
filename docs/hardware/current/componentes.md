@@ -15,7 +15,7 @@ la BOM de la PCB futura.
 | SW1 | Selector SPDT 2 posiciones | 1 | Modo principal/satelite | Montado; lectura actual invalida `GPIO15=1 GPIO16=1` |
 | SW2 | Pulsador momentaneo | 1 | IDENTIFY | Montado/documentado; cambio LOW pendiente de captura |
 | U5 | 74AHCT125 / 74AHCT125N | 1 | Adaptacion dato LED 3.3 V -> 5 V | Seleccionado, no instalado |
-| R-D1..R-D3 | Divisor resistivo DO | 3 instalados | Adaptar DO de sensor a 3.3 V | D1-D3 validados; valores exactos montados pendientes de confirmar |
+| R-D1..R-D3 | Divisor resistivo DO | 3 instalados; faltan 6 para D4-D9 | Adaptar DO de sensor a 3.3 V | 10k + 18k E12 confirmados 2026-08-24; D1-D3 validados |
 | PSU/DC | Alimentacion externa | segun banco | Energia ESP32/sensores/LED/W5500 | Separar railes; pendientes de medicion |
 
 ## U1 - ESP32-S3 devboard
