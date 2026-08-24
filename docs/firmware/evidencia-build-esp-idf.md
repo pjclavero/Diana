@@ -58,18 +58,38 @@ binario que se flasheó físicamente** ni sustituye a la validación de banco.
 
 **No se ha flasheado ni monitorizado nada** desde este entorno.
 
-## Huecos que siguen abiertos en la evidencia física
+## Huecos abiertos en la evidencia física — SEIS, clasificados
 
-1. **Valores del divisor resistivo: sin confirmar.** `docs/hardware/current/bom-prototipo.csv`
-   los declara `UNKNOWN` con «10k/18k recomendado; confirmar los valores realmente
-   montados». Es el único dato de la nueva evidencia declarado y no medido.
-2. Faltan D4-D9 con sensores reales, la prueba de 1 h con 9 sensores y 216 LED, y
-   confirmar que los registros siguen fríos con todos los canales conectados.
-3. `StoreProhibited` en el timer de FreeRTOS con el firmware completo, ~2 s tras
-   arrancar el driver de red. Causa no determinada.
-4. `VERSIONR=0x00` intermitente tras reflasheos con el módulo alimentado.
-5. El acondicionamiento de nivel **no está reflejado en KiCad**: resuelto en este
-   montaje no implica resuelto en la futura PCB.
+Una versión anterior de este documento decía «cinco» y enumeraba seis: uno de los
+puntos empaquetaba tres cosas distintas. Son seis, cada una con su gate.
+
+| # | hallazgo | gate | tratamiento |
+|---|---|---|---|
+| 1 | Valores reales del divisor **desconocidos** — `current/bom-prototipo.csv` los declara `UNKNOWN` con «10k/18k recomendado; confirmar lo montado» | `HW-GAP` | **bloquea el diseño definitivo de PCB** |
+| 2 | D4-D9 no probados con sensores reales | `PHYSICAL-VALIDATION-GAP` | banco posterior |
+| 3 | Prueba de 1 h con 9 sensores y 216 LED sin reinicios, y registros fríos con todos los canales | `ENDURANCE-GAP` | antes de declarar el firmware físico estable |
+| 4 | `StoreProhibited` en el timer de FreeRTOS, ~2 s tras arrancar el driver de red, **sin causa determinada** | `FIRMWARE-GAP` **importante** | investigar antes del producto físico |
+| 5 | `VERSIONR=0x00` intermitente tras reflasheos con el módulo alimentado | `NETWORK/HW-GAP` **importante** | investigar antes de despliegue real |
+| 6 | La adaptación de nivel **no está reflejada en KiCad** | `HW-GAP` **bloqueante para PCB** | corregir esquema y BOM antes de fabricar |
+
+### Los dos que no deben enterrarse
+
+**#4 y #5 no son pruebas físicas pendientes: son defectos sin explicar.** Un
+crash no diagnosticado reaparece en operación real, y un `VERSIONR=0x00`
+intermitente puede ser alimentación, reset, SPI, temporización, CS, cableado o
+inicialización. Hace falta llegar a una causa o, como mínimo, a una recuperación
+determinista.
+
+Ninguno bloquea la integración de MP0, pero **ambos bloquean cualquier futuro
+dictamen `FIRMWARE_PHYSICAL = PRODUCTION_READY`**.
+
+### #6 tiene que pasar a diseño, no quedarse en el banco
+
+«Funcionó en el prototipo» **no equivale a** «está resuelto para hardware». Si el
+divisor está montado físicamente fuera de KiCad, **el repositorio todavía no
+describe el dispositivo que funcionó**. El carril de hardware debe reconciliar
+prototipo físico ↔ KiCad ↔ BOM ↔ documentación de conexionado hasta que
+coincidan. **No se vuelve a fabricar PCB sobre el esquema actual sin cerrar esto.**
 
 ## Nota de método
 
