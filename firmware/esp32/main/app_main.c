@@ -1,6 +1,6 @@
 /**
  * @file app_main.c
- * @brief Arranque del modulo Diana. NO COMPILADO (falta ESP-IDF).
+ * @brief Arranque del modulo Diana sobre ESP-IDF.
  *
  * Sigue la maquina de estados del dosier 13.3:
  *   ARRANQUE -> AUTODIAGNOSTICO -> RED -> REGISTRO -> LISTO
@@ -127,49 +127,60 @@ static void fill_leds(diana_app *a, uint8_t r, uint8_t g, uint8_t b)
     diana_platform_led_refresh(a->pf);
 }
 
-static void fill_led_slot(diana_app *a, uint8_t slot, uint8_t r, uint8_t g,
-                          uint8_t b)
+static void fill_led_target(diana_app *a, uint8_t target, uint8_t r, uint8_t g,
+                            uint8_t b)
 {
+    if (target >= DIANA_TARGET_COUNT) return;
+
     diana_hal_rgb px[DIANA_LEDS_PER_CHAIN];
     for (uint8_t i = 0; i < DIANA_LEDS_PER_CHAIN; ++i)
         px[i] = (diana_hal_rgb){0, 0, 0};
 
+    for (uint8_t c = 0; c < DIANA_LED_CHAINS; ++c)
+        a->hal.led_write(a->hal.ctx, c, px, DIANA_LEDS_PER_CHAIN);
+
+    uint8_t chain = target / 3u;
+    uint8_t slot = target % 3u;
     size_t first = (size_t)slot * DIANA_LEDS_PER_TARGET;
     size_t last = first + DIANA_LEDS_PER_TARGET;
     if (last > DIANA_LEDS_PER_CHAIN) last = DIANA_LEDS_PER_CHAIN;
     for (size_t i = first; i < last; ++i)
         px[i] = (diana_hal_rgb){r, g, b};
 
-    for (uint8_t c = 0; c < DIANA_LED_CHAINS; ++c)
-        a->hal.led_write(a->hal.ctx, c, px, DIANA_LEDS_PER_CHAIN);
+    a->hal.led_write(a->hal.ctx, chain, px, DIANA_LEDS_PER_CHAIN);
     diana_platform_led_refresh(a->pf);
 }
 
 static void bringup_led_test(diana_app *a)
 {
-    ESP_LOGI(TAG, "LED TEST: rojo");
-    fill_leds(a, 32, 0, 0);
-    vTaskDelay(pdMS_TO_TICKS(500));
-    ESP_LOGI(TAG, "LED TEST: verde");
-    fill_leds(a, 0, 32, 0);
-    vTaskDelay(pdMS_TO_TICKS(500));
-    ESP_LOGI(TAG, "LED TEST: azul");
-    fill_leds(a, 0, 0, 32);
-    vTaskDelay(pdMS_TO_TICKS(500));
-    ESP_LOGI(TAG, "LED TEST: blanco tenue");
-    fill_leds(a, 16, 16, 16);
-    vTaskDelay(pdMS_TO_TICKS(500));
-    ESP_LOGI(TAG, "LED TEST: aro 1");
-    fill_led_slot(a, 0, 32, 0, 0);
-    vTaskDelay(pdMS_TO_TICKS(700));
-    ESP_LOGI(TAG, "LED TEST: aro 2");
-    fill_led_slot(a, 1, 0, 32, 0);
-    vTaskDelay(pdMS_TO_TICKS(700));
-    ESP_LOGI(TAG, "LED TEST: aro 3");
-    fill_led_slot(a, 2, 0, 0, 32);
-    vTaskDelay(pdMS_TO_TICKS(700));
+    fill_leds(a, 0, 0, 0);
+    static const diana_hal_rgb colors[3] = {
+        {32, 0, 0},
+        {0, 0, 32},
+        {0, 32, 0},
+    };
+    for (uint8_t target = 0; target < DIANA_TARGET_COUNT; ++target) {
+        diana_hal_rgb color = colors[target % 3u];
+        ESP_LOGI(TAG, "LED TEST: D%u", (unsigned)(target + 1u));
+        fill_led_target(a, target, color.r, color.g, color.b);
+        vTaskDelay(pdMS_TO_TICKS(700));
+    }
     fill_leds(a, 0, 0, 0);
     ESP_LOGI(TAG, "LED TEST: fin");
+}
+
+static void enable_bench_hit_led_test(diana_app *a)
+{
+#if CONFIG_DIANA_BENCH_HIT_LED_TEST
+    uint64_t now = a->hal.now_us(a->hal.ctx);
+    for (uint8_t i = 0; i < 3; ++i) {
+        diana_target_apply(&a->targets.t[i], DIANA_TEV_ENABLE, now);
+        diana_target_apply(&a->targets.t[i], DIANA_TEV_ARM, now);
+    }
+    ESP_LOGW(TAG, "MODO BANCO: D1-D3 activas; golpe aceptado -> aro verde");
+#else
+    (void)a;
+#endif
 }
 
 void app_main(void)
@@ -226,6 +237,7 @@ void app_main(void)
     diana_module_fsm_apply(&a->fsm,
                            st_ok ? DIANA_EV_SELFTEST_OK : DIANA_EV_SELFTEST_FAIL,
                            a->hal.now_us(a->hal.ctx));
+    enable_bench_hit_led_test(a);
 
     /* --- RED --- */
     bool use_static = (a->cfg.network.mode == DIANA_NET_STATIC);
@@ -256,6 +268,7 @@ void app_main(void)
 
     /* --- Tareas (dosier 13.2) --- */
     xTaskCreatePinnedToCore(diana_task_sensors,   "diana_sens", 16384, a, 10, NULL, 1);
+    xTaskCreatePinnedToCore(diana_task_inputs,    "diana_in",    3072, a,  5, NULL, 1);
     xTaskCreatePinnedToCore(diana_task_leds,      "diana_led",  4096, a,  4, NULL, 1);
     xTaskCreatePinnedToCore(diana_task_network,   "diana_net",  8192, a,  6, NULL, 0);
     xTaskCreatePinnedToCore(diana_task_telemetry, "diana_tlm",  8192, a,  3, NULL, 0);
