@@ -53,8 +53,17 @@ contracts/         7 ·   +193 /   −6
 **Ficheros de la base física borrados: 0.** Ni uno.
 
 De las 33 líneas eliminadas en `firmware/`, sólo **tres** tocan comportamiento
-verificado en banco —el bucle de lectura de `io_hc165.c`— y su equivalencia está
-demostrada de forma exhaustiva (ver abajo). Intactos por completo:
+**verificado sobre hardware** —el bucle de lectura de `io_hc165.c`— y su
+equivalencia está demostrada de forma exhaustiva (ver abajo).
+
+**Precisión (O-2 del supervisor):** «verificado» significa aquí *verificado en
+banco*, no *cualquier comportamiento del firmware*. Otras 2 líneas, en
+`app_commands.c`, **sí cambian comportamiento del firmware**: la emisión de
+`command_rejected` pasa a ir correlada con la orden que la causó. Es un cambio
+deliberado de contrato, cubierto por la suite de host, y nunca fue comportamiento
+validado en banco. Las 28 restantes son refactor de `verdict()` (15), Makefile
+(5), tests (4), comentarios (2), amplitud de vecino por ADR-0007 (1) y
+`messages.c` (1). Intactos por completo:
 `net_w5500.c`, `sdkconfig.defaults`, `ota_esp.c`, `app_main.c`,
 `idf_component.yml` y ambos `CMakeLists.txt`.
 
@@ -209,7 +218,41 @@ prueba comprobaba pese a gobernar el runtime.
   credenciales**, no cierra GAME. Se cablea en MP0-F, no antes.
 - Sin `root_key` en NVS, D1b entra en **fallo cerrado permanente**. Integrarlo es
   correcto, pero **no aporta funcionalidad observable** hasta el carril de fábrica.
+- **D1b NO SE COMPILA PARA EL OBJETIVO (O-3 del supervisor).** Los seis fuentes
+  —`provisioning.c`, `prov_parse.c`, `prov_canonical.c`, `p256.c`, `seq_guard.c`,
+  `base64url.c`, ~2 300 líneas— **están en el árbol pero NO en `SRCS` de
+  `diana_core/CMakeLists.txt`**: sólo se añadió `shiftreg.c`. Se compilan y prueban
+  únicamente con el gcc de host (x86-64); el toolchain xtensa **nunca los ha visto**.
+
+  Es el estado esperado de una integración parada en el **paso 3 de 7** —el paso 4
+  era precisamente el `CMakeLists`— pero no estaba declarado aquí, y tiene dos
+  consecuencias que hay que decir:
+
+  1. El `ESP_IDF_BUILD = PASS` de esta congelación **no incluye D1b**.
+  2. **`DEVICE_MANAGEMENT_PATH = UNIQUE` NO está conseguido.** No puede afirmarse
+     mientras el código de autoridad no forme parte del firmware.
+
+  Riesgo medido, no supuesto: el supervisor añadió los seis fuentes al componente
+  y recompiló con ESP-IDF v5.5 → **compila limpio para esp32s3, 0 errores y 0
+  warnings**. El hueco es de integración, no de portabilidad.
+
 - `SEQ_GUARD_FULL_ANTI_REPLAY = DEFERRED_TO_A3_B5`. Sólo se ejerce la superficie
   que D1b usa de verdad.
-- El firmware sigue hablando `mqtt://…:1883` en claro. El broker sólo escucha en
-  8883 con TLS desde P0-2: **hoy el módulo no puede conectar, por diseño**.
+- **CORRECCIÓN (O-1 del supervisor).** Una versión anterior de este documento
+  decía que «el broker sólo escucha en 8883 con TLS desde P0-2». Eso describe
+  **producción y la rama `hotfix/p02-tls-6da16d4`, NO este árbol**. Medido:
+
+  ```
+  este árbol (5eedcb5)          listener 1883  ·  # listener 8883 comentado  ·  listener 9001
+  hotfix/p02-tls-6da16d4        listener 8883  ·  listener 9001
+  ```
+
+  **Este árbol NO contiene el endurecimiento TLS de P0-2**, que sigue sin
+  fusionar. Es deuda de integración declarada, no un defecto de la recomposición.
+
+  Lo que sí es cierto en ambos sitios: el **firmware** sigue hablando
+  `mqtt://…:1883` en claro, así que contra el broker de producción —que sólo
+  escucha en 8883— hoy no puede conectar.
+
+  Era el modo de fallo que este proyecto tiene registrado: leer una capacidad de
+  otra rama y presentarla como propiedad del producto.
