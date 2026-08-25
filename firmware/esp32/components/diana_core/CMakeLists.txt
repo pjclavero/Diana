@@ -17,6 +17,16 @@ idf_component_register(
          "src/sha256.c"
          "src/messages.c"
          "src/ota.c"
+         # --- D1b · plano DEVICE_MANAGEMENT firmado -------------------------
+         # Estos seis estaban en el arbol pero NO aqui: se compilaban solo con
+         # el gcc de host y el toolchain xtensa nunca los habia visto. Sin ellos
+         # en el binario, DEVICE_MANAGEMENT_PATH no puede declararse UNIQUE.
+         "src/base64url.c"
+         "src/p256.c"
+         "src/seq_guard.c"
+         "src/prov_canonical.c"
+         "src/prov_parse.c"
+         "src/provisioning.c"
     INCLUDE_DIRS "include"
     REQUIRES diana_hal
 )
