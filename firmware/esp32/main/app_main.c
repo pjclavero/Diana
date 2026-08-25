@@ -215,6 +215,12 @@ void app_main(void)
                                a->hal.now_us(a->hal.ctx));
     }
     diana_config_load(&a->cfg, &a->hal);
+
+    /* D1b · autoridad DEVICE_MANAGEMENT. Va DESPUES de cargar identidad y
+     * configuracion porque necesita module_id y system_id. Sin root_key en NVS
+     * el contexto queda en FALLO CERRADO y toda credencial se rechaza: es el
+     * comportamiento correcto mientras no exista el utillaje de fabrica. */
+    diana_prov_app_init(a);
     diana_queue_init(&a->queue, &a->hal, DIANA_QUEUE_DROP_OLDEST);
     diana_ota_init(&a->ota, &a->hal, DIANA_BOARD_NAME, DIANA_FIRMWARE_VERSION,
                    DIANA_OTA_CONFIRM_WINDOW_MS);

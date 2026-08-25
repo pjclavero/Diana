@@ -1,0 +1,114 @@
+/**
+ * @file app_provision.c
+ * @brief Camino de RUNTIME del plano DEVICE_MANAGEMENT (D1b).
+ *
+ *   MQTT -> diana_platform_rx (con retained) -> diana_prov_message()
+ *        -> diana_prov_handle() -> NVS -> targets/v1/module/{id}/provision/state
+ *
+ * Este fichero es DELIBERADAMENTE fino. Todo lo que decide algo —parseo,
+ * conformidad, delegacion, ECDSA, maquina de estados, persistencia, serializado
+ * de la respuesta— vive en diana_core, que se compila y se ejercita en host. Lo
+ * unico que hay aqui es lo que no se puede probar sin ESP-IDF: emparejar el
+ * topico, sacar el flag retain del transporte y publicar. Si alguna regla
+ * aparece en este fichero, esta en el sitio equivocado.
+ *
+ * LO QUE ESTE CARRIL **NO** RESUELVE, y hay que decirlo: la raiz de
+ * aprovisionamiento se lee de NVS ("diana_prov"/"root_key", punto SEC1 de 65
+ * bytes) porque es donde la dejaria el flasheo de fabrica, pero NADIE la
+ * escribe todavia. Sin ella el modulo funciona en FALLO CERRADO —toda
+ * credencial se rechaza con delegation_invalid_signature— que es el
+ * comportamiento correcto, no un fallo. El utillaje de fabrica es otro carril.
+ */
+#include "app.h"
+
+#include <string.h>
+
+#include "esp_log.h"
+
+static const char *TAG = "diana.prov";
+
+/** Claves de fabrica en NVS. El namespace es el mismo que usa el estado
+ *  persistente del modulo (DIANA_PROV_NVS_NS): son datos del mismo dominio. */
+#define PROV_NVS_ROOT_KEY  "root_key"
+#define PROV_NVS_ROOT_ID   "root_key_id"
+#define PROV_NVS_FP        "prov_fp"
+
+void diana_prov_app_init(diana_app *a)
+{
+    /* El fingerprint de fabrica identifica la CLAVE DE APROVISIONAMIENTO que el
+     * backend debe presentar. Si no esta en NVS se deja vacio: entonces la
+     * comprobacion provisioning_key_mismatch no puede pasar y el modulo se
+     * queda sin aprovisionar. Fallo cerrado, otra vez. */
+    char fp[DIANA_PROV_FP_HEX_BUF];
+    size_t len = sizeof(fp);
+    memset(fp, 0, sizeof(fp));
+    if (a->hal.kv_get(a->hal.ctx, DIANA_PROV_NVS_NS, PROV_NVS_FP, fp,
+                      sizeof(fp) - 1u, &len) != DIANA_HAL_OK)
+        fp[0] = '\0';
+
+    diana_prov_init(&a->prov, &a->hal, a->id.module_id, a->cfg.system_id, fp);
+
+    uint8_t root[DIANA_P256_PUBKEY_LEN];
+    len = sizeof(root);
+    char root_id[DIANA_PROV_ID_BUF];
+    size_t idlen = sizeof(root_id);
+    memset(root_id, 0, sizeof(root_id));
+    if (a->hal.kv_get(a->hal.ctx, DIANA_PROV_NVS_NS, PROV_NVS_ROOT_KEY, root,
+                      sizeof(root), &len) == DIANA_HAL_OK &&
+        len == sizeof(root)) {
+        if (a->hal.kv_get(a->hal.ctx, DIANA_PROV_NVS_NS, PROV_NVS_ROOT_ID,
+                          root_id, sizeof(root_id) - 1u, &idlen) != DIANA_HAL_OK)
+            root_id[0] = '\0';
+        diana_prov_set_root_key(&a->prov, root, root_id);
+        ESP_LOGI(TAG, "raiz de aprovisionamiento cargada de NVS (%s)",
+                 root_id[0] ? root_id : "sin id");
+    } else {
+        ESP_LOGW(TAG, "SIN raiz de aprovisionamiento en NVS: toda credencial "
+                      "sera rechazada (fallo cerrado)");
+    }
+
+    /* CONTRACT_GAP-PROVISION-STATE-TOPIC: no se construye topico de estado.
+     * Los TopicKind del contrato v1 estan CONGELADOS y no incluyen
+     * provision/state. D1b entra aqui SOLO como camino de ordenes:
+     * recepcion, validacion y ejecucion. La publicacion del estado de
+     * autoridad se decide en MP1 con ADR y evolucion contractual
+     * deliberada, no metiendo dos topicos por la puerta de atras. */
+
+    ESP_LOGI(TAG, "estado de aprovisionamiento al arranque: %s",
+             diana_prov_state_str((diana_prov_state)a->prov.st.state));
+}
+
+/** Publica module-provision-state. QoS y retain salen de la tabla del contrato,
+ *  no de literales: este topico NUNCA se retiene. */
+
+bool diana_prov_app_handle(diana_app *a, const diana_platform_rx *rx)
+{
+    /* Emparejado por SUFIJO exacto. Con strstr(), un topico
+     * ".../provision/state" —que el propio modulo publica— entraria por aqui.
+     * El resto del fichero de comandos usa strstr y ese defecto ya existe alli;
+     * aqui no se replica. */
+    size_t tlen = strlen(rx->topic);
+    static const char SUF[] = "/provision";
+    size_t slen = sizeof(SUF) - 1u;
+    if (tlen < slen || strcmp(rx->topic + (tlen - slen), SUF) != 0) return false;
+
+    diana_prov_command cmd;
+    diana_prov_outcome out;
+    diana_prov_message(&a->prov, rx->payload, rx->payload_len, rx->retained,
+                       &cmd, &out);
+
+    ESP_LOGI(TAG, "orden de aprovisionamiento: retenida=%d resultado=%s "
+                  "estado=%s motivo=%s aplicada=%d",
+             (int)rx->retained, diana_prov_result_str(out.result),
+             diana_prov_state_str(out.state), diana_prov_reason_str(out.reason),
+             (int)out.applied);
+
+    /* CONTRACT_GAP-PROVISION-STATE-TOPIC: `out.publish` queda sin consumir a
+     * proposito. La orden SI se recibe, valida y aplica; lo que NO se emite es
+     * el estado de autoridad resultante, porque el contrato v1 no tiene topico
+     * para ello y sus TopicKind estan congelados. Se decide en MP1 con ADR.
+     *
+     * Tampoco existe aqui un `announce` de estado por la misma razon. */
+    (void)out.publish;
+    return true;
+}

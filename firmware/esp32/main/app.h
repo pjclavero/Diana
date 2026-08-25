@@ -14,6 +14,7 @@
 #include "diana/module_fsm.h"
 #include "diana/ota.h"
 #include "diana/platform_esp.h"
+#include "diana/provisioning.h"
 #include "diana/queue.h"
 #include "diana/sensors.h"
 #include "diana/target_fsm.h"
@@ -58,6 +59,11 @@ typedef struct {
     char topic_telemetry[DIANA_TOPIC_MAXLEN];
     char topic_diagnostic[DIANA_TOPIC_MAXLEN];
     char topic_config_reported[DIANA_TOPIC_MAXLEN];
+    /* D1b · plano DEVICE_MANAGEMENT firmado. Camino de ORDENES unicamente:
+     * el estado de autoridad no se publica porque el contrato v1 no tiene
+     * topico para ello (CONTRACT_GAP-PROVISION-STATE-TOPIC). */
+    diana_prov_ctx prov;
+
 } diana_app;
 
 extern diana_app g_app;
@@ -78,6 +84,14 @@ void diana_publish_status(diana_app *a);
 void diana_publish_command_rejected(diana_app *a, const char *command_id,
                                     diana_command_reject_reason reason,
                                     const char *message);
+
+/* D1b: inicializa el contexto de autoridad desde NVS (fingerprint y root_key).
+ * Sin root_key el modulo queda en FALLO CERRADO, que es lo correcto. */
+void diana_prov_app_init(diana_app *a);
+
+/* D1b: intercepta una orden de DEVICE_MANAGEMENT. Devuelve true si el mensaje
+ * era suyo y ya ha sido tratado, para que no siga por el canal de juego. */
+bool diana_prov_app_handle(diana_app *a, const diana_platform_rx *rx);
 
 void diana_publish_diagnostic(diana_app *a, diana_diagnostic_kind kind,
                               diana_severity sev, const char *message);

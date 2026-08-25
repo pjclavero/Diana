@@ -38,6 +38,7 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t id,
         diana_platform_rx rx;
         memset(&rx, 0, sizeof(rx));
         rx.recv_us = (uint64_t)esp_timer_get_time();
+        rx.retained = (ev->retain != 0);
 
         size_t tlen = (size_t)ev->topic_len;
         if (tlen >= sizeof(rx.topic)) tlen = sizeof(rx.topic) - 1;

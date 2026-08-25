@@ -53,6 +53,12 @@ typedef struct {
     char payload[2048];
     size_t payload_len;
     uint64_t recv_us;   /* reloj MONOTONICO de recepcion: base de la caducidad */
+
+    /* Bandera de TRANSPORTE: no viaja en el payload, asi que ningun esquema
+     * puede verla. Un mensaje RETENIDO es un replay servido por el broker al
+     * suscribirse, y el plano DEVICE_MANAGEMENT lo rechaza ANTES incluso de
+     * verificar la firma. Sin este campo esa guarda no puede existir. */
+    bool retained;
 } diana_platform_rx;
 
 /** Extrae un mensaje recibido. Devuelve false si no hay ninguno. */

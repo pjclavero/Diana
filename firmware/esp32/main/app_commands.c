@@ -237,6 +237,11 @@ static void handle_ota(diana_app *a, const cJSON *root, uint64_t recv_us)
 
 void diana_handle_message(diana_app *a, const diana_platform_rx *rx)
 {
+    /* D1b: el plano DEVICE_MANAGEMENT se atiende ANTES que el canal de juego.
+     * Si el mensaje era suyo, no sigue: un modulo sin autoridad no debe poder
+     * colar una orden de provisioning por la ruta de comandos de partida. */
+    if (diana_prov_app_handle(a, rx)) return;
+
     cJSON *root = cJSON_ParseWithLength(rx->payload, rx->payload_len);
     if (!root) {
         diana_publish_diagnostic(a, DIANA_DIAG_SCHEMA_REJECTED, DIANA_SEV_WARNING,
