@@ -1,5 +1,8 @@
 # Firmware Diana · ESP32-S3 + W5500
 
+> **¿Qué rama uso?** Ver [`docs/firmware/MAPA-FIRMWARE.md`](../../docs/firmware/MAPA-FIRMWARE.md).
+> No fusiones `feat/wp04-firmware`: parte de un tronco de julio y revertiría trabajo.
+
 Firmware de los módulos de dianas 3×3. Implementa WP-04.
 
 ## Estado real de este código
