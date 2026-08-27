@@ -7,7 +7,7 @@
 | GPIO4 | OUT | LED_ROW1 | D1 -> D2 -> D3 | Firmware actual |
 | GPIO5 | OUT | LED_ROW2 | D4 -> D5 -> D6 | Firmware actual |
 | GPIO6 | OUT | LED_ROW3 | D7 -> D8 -> D9 | Firmware actual |
-| GPIO8 | Libre | W5500_RST historico | NC | Firmware actual usa reset software |
+| GPIO8 | OUT | W5500_RST | W5500 RST / RESET | Firmware actual; pulso de reset hardware en el arranque |
 | GPIO9 | Libre | W5500_INT historico | NC | Firmware actual usa sondeo de 10 ms |
 | GPIO10 | OUT | W5500_CS | W5500 CS/SCS/SS | Firmware actual |
 | GPIO11 | OUT | SPI_MOSI | W5500 MOSI/SI/DIN | Firmware actual |
@@ -27,7 +27,7 @@ ESP32 GPIO11 MOSI -> W5500 MOSI / SI / DIN
 ESP32 GPIO12 SCK  -> W5500 SCK / SCLK
 ESP32 GPIO13 MISO <- W5500 MISO / SO / DOUT
 ESP32 GPIO10 CS   -> W5500 CS / SCS / SS
-W5500 RST / RESET -> NC
+ESP32 GPIO8  RST  -> W5500 RST / RESET
 W5500 INT / IRQ   -> NC
 GND <----------------------> GND
 ```

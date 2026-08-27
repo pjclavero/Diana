@@ -20,7 +20,7 @@ Esto confirma familia/chip, pero no identifica la variante comercial comprada.
 
 | ESP32-S3 | W5500 | Direccion |
 | --- | --- | --- |
-| NC | RST / RESET | No conectado; reset software del driver |
+| GPIO8 | RST / RESET | ESP32 -> W5500; pulso de reset hardware en el arranque |
 | NC | INT / IRQ | No usado; firmware por sondeo cada 10 ms |
 | GPIO10 | CS / SCS / SS | ESP32 -> W5500 |
 | GPIO11 | MOSI / SI / DIN | ESP32 -> W5500 |
@@ -62,7 +62,12 @@ El firmware actual sigue el ejemplo W5500 de ESP-IDF 5.5:
 - SPI modo 0 a 5 MHz en el firmware completo.
 - CS en GPIO10, forzado a nivel alto desde el inicio del arranque.
 - Espera de 1.5 s antes del primer acceso SPI.
-- RST sin conectar y `reset_gpio_num = -1`.
+- RST cableado a GPIO8 y pulsado por el propio firmware antes del primer
+  acceso SPI: nivel bajo 5 ms (el datasheet exige >= 500 us) y despues alto.
+- `reset_gpio_num = -1` DE FORMA DELIBERADA: no significa que RST este sin
+  conectar. El `w5500_reset_hw` de ESP-IDF solo mantiene RSTn bajo 100 us, por
+  debajo del minimo del datasheet, y lo suelta justo antes de `mac->init` sin
+  margen para el bloqueo del PLL. Por eso el pin lo conduce el firmware.
 - INT sin usar; `poll_period_ms = 10`.
 - Verificacion y reset software realizados por el driver oficial.
 

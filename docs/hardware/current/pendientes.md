@@ -51,19 +51,31 @@ Accion: verificar fisicamente cada entrada libre y SER_IN.
 
 ### H4 - W5500 intermitente e integracion FreeRTOS
 
-Estado: abierto.
+Estado: causa raiz encontrada y corregida. Queda la prueba larga.
 
-Evidencia positiva: la imagen minima basada en el ejemplo ESP-IDF obtuvo
-`SPI=OK`, `LINK=UP` y DHCP `192.168.1.168`. El firmware completo detecto el
-W5500 a 5 MHz tras cortar su alimentacion.
+CAUSA RAIZ CONFIRMADA 2026-08-28: RSTn del W5500 no lo conducia nadie. El
+firmware solo configuraba CS, de modo que GPIO8 quedaba como entrada en alta
+impedancia y RSTn -activo a nivel bajo- colgaba de una linea flotante. El
+sintoma era `w5500_reset: reset timeout`: el bucle del driver sale en cuanto
+lee el bit RST de MR a 0, asi que un timeout significa que MR se leia con ese
+bit a 1 permanentemente, es decir MISO sin conducir y el chip fuera del bus.
+Concuerda con que la unica recuperacion conocida fuese cortar la alimentacion
+del modulo a mano.
 
-Evidencia pendiente: despues de algunos reflasheos reaparecio `VERSIONR=0x00`.
-Cuando el firmware completo arranca Ethernet, aproximadamente 2 s despues se
-reproduce una asercion/`StoreProhibited` en el temporizador de FreeRTOS.
+Correccion: `diana_pf_net_init` configura GPIO8 como salida y lo pone alto
+junto a CS, y pulsa RSTn bajo 5 ms antes del primer acceso SPI. El datasheet
+del W5500 exige RSTn bajo >= 500 us. `phy_cfg.reset_gpio_num` se mantiene en
+-1 a proposito: el `w5500_reset_hw` de ESP-IDF solo asierta 100 us y suelta el
+reset sin margen para el PLL justo antes de `mac->init`.
 
-Accion: medir 3.3 V en carga, ejecutar diez ciclos de alimentacion, aislar la
-interaccion del temporizador Ethernet con el resto de componentes y validar
-una hora continua. RST e INT quedan NC; CS/MOSI/SCK/MISO son GPIO10-13.
+Evidencia 2026-08-28: diez arranques consecutivos, con reset por RTS entre
+cada uno, dieron 10/10 con `W5500 SPI=OK` y DHCP `192.168.1.168`. Ningun
+`reset timeout` y ningun `StoreProhibited`: la asercion del temporizador de
+FreeRTOS no se reprodujo en ninguno de los diez ciclos.
+
+Pendiente: 3 de 60 pings perdidos (5 %) con latencia 1-11 ms; medir 3.3 V en
+carga en VCC-GND del modulo; validar una hora continua. RST esta en GPIO8;
+INT sigue NC y el firmware sondea cada 10 ms; CS/MOSI/SCK/MISO son GPIO10-13.
 
 ### H5 - Servidor LAN sin puertos TCP
 

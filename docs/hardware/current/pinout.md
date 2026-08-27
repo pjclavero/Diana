@@ -24,7 +24,7 @@ firmware/esp32/boards/esp32s3_proto_do_w5500.h
 | 4 | `DIANA_PIN_LED_ROW0` | Fila D1-D3 |
 | 5 | `DIANA_PIN_LED_ROW1` | Fila D4-D6 |
 | 6 | `DIANA_PIN_LED_ROW2` | Fila D7-D9 |
-| 8 | `DIANA_PIN_ETH_RST` | Reservado; W5500 RST queda NC |
+| 8 | `DIANA_PIN_ETH_RST` | W5500 RST; salida, pulso de reset hardware en el arranque |
 | 9 | `DIANA_PIN_ETH_INT` | Reservado; W5500 INT queda NC |
 | 10 | `DIANA_PIN_ETH_CS` | W5500 chip select |
 | 11 | `DIANA_PIN_ETH_MOSI` | SPI MOSI |
