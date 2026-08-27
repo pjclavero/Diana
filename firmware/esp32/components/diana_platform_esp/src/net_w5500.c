@@ -1,7 +1,7 @@
 /**
  * @file net_w5500.c
  * @brief Driver Ethernet W5500 por SPI: DHCP, IP estatica, deteccion de enlace
- *        y reconexion (dosier 8.3, 12.2). NO COMPILADO.
+ *        y reconexion (dosier 8.3, 12.2).
  */
 #include "platform_internal.h"
 
@@ -110,8 +110,33 @@ int diana_pf_net_init(struct diana_platform *p)
     if (gpio_config(&cs_cfg) != ESP_OK) return -4;
     gpio_set_level(DIANA_PIN_ETH_CS, 1);
 
+    /* RSTn del W5500 esta cableado a DIANA_PIN_ETH_RST. Se conduce desde el
+     * primer instante: si el pin quedase como entrada, RSTn colgaria de una
+     * linea flotante y el chip podria arrancar retenido en reset. Ese es el
+     * modo de fallo que se observaba como `w5500_reset: reset timeout` (MISO
+     * sin conducir, MR leido con el bit RST siempre a 1) y que solo se
+     * recuperaba cortando la alimentacion del modulo a mano. */
+    gpio_config_t rst_cfg = {
+        .pin_bit_mask = (1ULL << DIANA_PIN_ETH_RST),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    if (gpio_config(&rst_cfg) != ESP_OK) return -5;
+    gpio_set_level(DIANA_PIN_ETH_RST, 1);
+
+    /* Pulso de reset hardware con margen sobre el datasheet del W5500, que
+     * exige RSTn bajo durante al menos 500 us. No se delega en el reset_hw de
+     * ESP-IDF porque solo mantiene 100 us (por debajo del minimo) y libera el
+     * reset sin esperar al bloqueo del PLL antes de `mac->init`. */
+    gpio_set_level(DIANA_PIN_ETH_RST, 0);
+    vTaskDelay(pdMS_TO_TICKS(5));
+    gpio_set_level(DIANA_PIN_ETH_RST, 1);
+
     /* El modulo puede compartir la secuencia de encendido con el ESP32 o usar
-     * una fuente externa. Se deja margen antes del primer acceso SPI. */
+     * una fuente externa. Se deja margen antes del primer acceso SPI; tambien
+     * cubre de sobra el bloqueo del PLL tras soltar RSTn. */
     vTaskDelay(pdMS_TO_TICKS(1500));
 
     esp_err_t err = esp_netif_init();
@@ -159,9 +184,9 @@ int diana_pf_net_init(struct diana_platform *p)
 
     eth_mac_config_t mac_cfg = ETH_MAC_DEFAULT_CONFIG();
     eth_phy_config_t phy_cfg = ETH_PHY_DEFAULT_CONFIG();
-    /* El modulo comercial mantiene RESET alto internamente. El ejemplo oficial
-     * de ESP-IDF para W5500 deja el reset fisico sin conectar y el MAC realiza
-     * el reset software durante esp_eth_start(). */
+    /* RSTn ya se ha pulsado arriba con la temporizacion del datasheet, asi que
+     * el PHY no debe volver a tocarlo: el reset_hw de ESP-IDF reasertaria el
+     * pin solo 100 us justo antes de `mac->init`, sin margen para el PLL. */
     phy_cfg.reset_gpio_num = -1;
     phy_cfg.autonego_timeout_ms = 5000;
 
