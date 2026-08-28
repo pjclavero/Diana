@@ -7,6 +7,45 @@ sin mirar.
 
 Actualizado: **2026-08-25**.
 
+## LA LÍNEA A SEGUIR
+
+```
+mp0/integration @ 9b5e161      <-- TRABAJA AQUÍ
+```
+
+**Todo desarrollo nuevo se hace sobre `mp0/integration`.** Es la única rama que
+reúne las tres cosas a la vez:
+
+```
+firmware verificado en banco  +  contratos e identidad  +  D1b (DEVICE_MANAGEMENT)
+```
+
+Cualquier otra rama tiene **una parte** del producto, no el conjunto. Si trabajas
+sobre otra, tu trabajo habrá que reconciliarlo después — que es exactamente lo
+que ya nos ha costado dos rondas de arqueología.
+
+### Cómo empezar
+
+```bash
+git fetch origin
+git checkout mp0/integration
+git pull --ff-only origin mp0/integration
+```
+
+### Si has trabajado en otra rama
+
+No la fusiones. Avisa y se porta el delta, que es lo que se ha hecho con el
+trabajo de banco: **por fichero y con justificación**, nunca con `git merge`.
+
+### Lo único que aún NO está en esta línea
+
+| falta | dónde está | cuándo entra |
+|---|---|---|
+| Arreglo de `RSTn` del W5500 | `fix/w5500-reset-hardware@f52d013` | pendiente de portar |
+| TLS 8883 de P0-2 | `hotfix/p02-tls-6da16d4@ad2d166` | tras MP0-F |
+
+---
+
 ## Estado actual
 
 | ref | commit | estatus |
@@ -18,6 +57,7 @@ Actualizado: **2026-08-25**.
 | `feat/wp04-firmware` | `73f5f93` | `VALIDATED_FIRMWARE_SNAPSHOT` + `SUPERSEDED_AS_INTEGRATION_BASE` |
 | `archive/mp0-integration-27652ed` | `27652ed` | preservación; última cabeza sobre la base física anterior |
 | `hotfix/p02-tls-6da16d4` | `ad2d166` | TLS de P0-2, desplegado en producción, **sin fusionar** |
+| `fix/w5500-reset-hardware` | `f52d013` | **MUST_RECONCILE** · arreglo de `RSTn`, causa raíz de `VERSIONR=0x00` |
 
 ## `feat/wp04-firmware@73f5f93` — leer esto antes de fusionarla
 

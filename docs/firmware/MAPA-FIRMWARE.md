@@ -10,7 +10,7 @@ Actualizado: **2026-08-25**. Ver también `CANONICAL_BRANCHES.md` en la raíz.
 
 | quiero… | uso |
 |---|---|
-| **Trabajar en firmware ahora** | `mp0/integration` |
+| **Trabajar en firmware ahora** | **`mp0/integration`** — es la línea a seguir |
 | **Reproducir lo probado en banco** | `codex/hardware-prototipo-v1` |
 | **Leer el estado físico del prototipo** | `docs/hardware/current/` |
 | **Fusionar `feat/wp04-firmware`** | **NO. Ver abajo.** |
@@ -115,6 +115,33 @@ pendiente. No se meten referencias artificiales para inflar el ELF.
 existe en el enum del firmware (hoy son 9) ni tiene esquema en `contracts/mqtt/`
 (hoy son 13). Los `TopicKind` están congelados y ampliarlos exige ADR.
 Ver `CONTRACT_GAP-PROVISION-TOPIC`.
+
+## Pendiente de portar a esta línea
+
+`fix/w5500-reset-hardware@f52d013` **cierra `FW/HW_GAP-W5500-VERSIONR-00`** y aún
+no está aquí.
+
+Causa raíz confirmada el 2026-08-28: **nadie conducía `RSTn`**. El firmware sólo
+configuraba CS, así que GPIO8 quedaba como entrada en alta impedancia y `RSTn`
+—activo a nivel bajo— colgaba de una línea flotante. El síntoma era
+`w5500_reset: reset timeout`: MR se leía con el bit RST permanentemente a 1, es
+decir el chip fuera del bus con MISO sin conducir. Sólo se recuperaba cortando la
+alimentación a mano.
+
+El arreglo conduce `RSTn` desde el primer instante y lo pulsa con la
+temporización del datasheet (≥500 µs; usa 5 ms). **No delega en el `reset_hw` de
+ESP-IDF**, que sólo mantiene 100 µs —por debajo del mínimo— y suelta el reset sin
+margen para el bloqueo del PLL.
+
+Evidencia: **10/10 arranques consecutivos** con `SPI=OK` y DHCP, con reset por
+RTS. Diez de diez importa porque el fallo era intermitente.
+
+Esto **supera** la decisión de `3c51847`, que dejaba `reset_gpio_num = -1` con
+RST/INT sin conectar. Evidencia física nueva sobre evidencia física anterior.
+
+Ojo al linaje: esa rama parte de `develop@21c09db` y **no contiene `3a1d180`**
+—el LED por diana, el antirrebote de IDENTIFY y los buffers en heap—, así que el
+port debe ser del delta de `net_w5500.c` y su documentación, no un merge.
 
 ## Antes de fabricar PCB
 
