@@ -88,6 +88,12 @@ typedef struct {
      * prueba antirregresion: la ruta de impacto DO-only debe dejarlo a CERO
      * incluso con el ADC disponible. */
     uint32_t piezo_reads;
+
+    /* Escrituras a NVS. Es el EFECTO OBSERVABLE del plano DEVICE_MANAGEMENT:
+     * una orden valida persiste autoridad, una invalida no debe escribir nada.
+     * Sin este contador, los casos negativos pasarian aunque el runtime no
+     * ejecutase absolutamente nada. */
+    uint32_t kv_writes;
     diana_hal_rgb led[DIANA_LED_CHAINS][DIANA_LEDS_PER_CHAIN];
     int  selector;
     bool button;

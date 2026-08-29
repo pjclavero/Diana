@@ -51,6 +51,7 @@ static int h_kv_get(void *c, const char *ns, const char *key, void *out,
 static int h_kv_set(void *c, const char *ns, const char *key, const void *data,
                     size_t len)
 {
+    ((host_hal_ctx *)c)->kv_writes++;
     host_hal_ctx *ctx = (host_hal_ctx *)c;
     if (len > HOST_KV_VALMAX) return DIANA_HAL_ERR_NO_SPACE;
     host_kv_entry *e = kv_find(ctx->nv, ns, key);

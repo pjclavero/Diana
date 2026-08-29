@@ -914,9 +914,176 @@ static void test_seq_guard_d1b_used_paths(void)
     }
 }
 
+
+/* ===========================================================================
+ * PASO 6 · GATE ADVERSARIAL DEL CAMINO DE ORDENES
+ * ===========================================================================
+ * Las secciones anteriores comprueban VEREDICTOS. Esta comprueba EFECTOS.
+ *
+ * La diferencia importa: cinco casos negativos pueden pasar sin que el runtime
+ * ejecute absolutamente nada. Por eso van dos controles positivos delante -- si
+ * una orden valida no produce efecto observable, los negativos no demuestran
+ * nada y esta suite debe morir ahi.
+ *
+ * Efecto observable = escritura en NVS (hal.kv_writes) + estado persistido.
+ *
+ * PROPIEDAD: una orden DEVICE_MANAGEMENT valida produce EXACTAMENTE un efecto;
+ * cualquier orden invalida o repetida produce CERO.
+ * =========================================================================== */
+
+/* Efecto medido de una orden.
+ *
+ * OJO a la distincion, que costo dos fallos descubrir: contar escrituras a NVS
+ * es DEMASIADO GRUESO. Una delegacion que verifica es una credencial valida en
+ * si misma y SUS efectos se persisten aunque la orden que la acompana termine
+ * rechazada -- esta declarado en provisioning.c:689-693. Asi que una firma
+ * invalida SI deja una escritura, y eso es correcto.
+ *
+ * El efecto de la ORDEN es otra cosa: epoch activo, secuencia consumida y
+ * estado. Eso es lo que debe quedar en cero cuando la orden no vale. */
+typedef struct {
+    uint32_t escrituras;   /* incluye la adopcion de delegacion: NO es el criterio */
+    bool     aplicada;
+    char     epoch[DIANA_PROV_UUID_BUF];
+    uint64_t secuencia;    /* last_provisioning_sequence: se consume solo si vale */
+    uint8_t  estado;
+} efecto;
+
+static efecto medir(fixture *f, const char *orden, const pv_delegation *deleg,
+                    bool retenida)
+{
+    efecto e;
+    uint32_t antes = f->hctx.kv_writes;
+    diana_prov_outcome o;
+    run_order(f, orden, deleg, retenida, &o);
+    e.escrituras = f->hctx.kv_writes - antes;
+    e.aplicada = o.applied;
+    snprintf(e.epoch, sizeof(e.epoch), "%s", f->prov.st.active_epoch);
+    e.secuencia = f->prov.st.last_provisioning_sequence;
+    e.estado = f->prov.st.state;
+    return e;
+}
+
+static void test_gate_adversarial_ordenes(void)
+{
+    SECTION("GATE ADVERSARIAL · CONTROL A: una orden valida SI produce efecto");
+    {
+        fixture f; fixture_init(&f);
+        efecto e = medir(&f, "provision_ok", &PV_DELEGS[0], false);
+        CHECK(e.aplicada, "CONTROL A: la orden valida se aplica");
+        CHECK(e.escrituras >= 1, "CONTROL A: deja al menos una escritura en NVS");
+        CHECK(e.epoch[0] != '\0', "CONTROL A: la autoridad queda con epoch activo");
+        /* Sin este control, los cinco negativos de abajo pasarian aunque el
+         * runtime no ejecutase nada en absoluto. */
+    }
+
+    SECTION("GATE ADVERSARIAL · CONTROL B: dos ordenes validas, dos efectos");
+    {
+        fixture f; diana_prov_outcome o; fixture_init(&f);
+        efecto e1 = medir(&f, "provision_ok", &PV_DELEGS[0], false);
+        run_order(&f, "prepare_ok", &PV_DELEGS[0], false, &o);
+        efecto e2 = medir(&f, "commit_ok", &PV_DELEGS[0], false);
+        CHECK(e1.aplicada && e2.aplicada, "CONTROL B: ambas ordenes se aplican");
+        CHECK(e1.escrituras >= 1 && e2.escrituras >= 1,
+              "CONTROL B: cada una deja su propia escritura");
+        CHECK(strcmp(e1.epoch, e2.epoch) != 0,
+              "CONTROL B: producen efectos DISTINTOS, no el mismo dos veces");
+    }
+
+    /* --- los seis negativos. Todos exigen CERO efectos. ------------------- */
+
+    SECTION("GATE ADVERSARIAL · firma invalida -> 0 efectos");
+    {
+        /* No hay vector "bad_sig": se firma con la clave operativa 2, que ESTA
+         * delegacion no autoriza. Misma tecnica que la seccion de firma
+         * manipulada, pero midiendo EFECTO en vez de veredicto. */
+        fixture f; diana_prov_outcome o; fixture_init(&f);
+        const pv_order *v = order_named("provision_ok");
+        diana_prov_command c;
+        build_cmd(&c, v, &PV_DELEGS[0]);
+        copy(c.signature, sizeof(c.signature), v->signature_op2);
+
+        uint32_t antes = f.hctx.kv_writes;
+        diana_prov_handle(&f.prov, &c, false, &o);
+        uint32_t escrituras = f.hctx.kv_writes - antes;
+
+        CHECK(!o.applied, "firma invalida: no se aplica");
+        CHECK_EQ_STR(f.prov.st.active_epoch, "",
+                     "firma invalida: CERO efecto de la orden (autoridad vacia)");
+        CHECK_EQ_INT((int)f.prov.st.last_provisioning_sequence, 0,
+                     "firma invalida: la secuencia NO se consume");
+        CHECK(f.prov.st.state == DIANA_PROV_UNPROVISIONED,
+              "firma invalida: el estado no avanza");
+        /* La escritura que SI ocurre es la adopcion de la delegacion, que es una
+         * credencial valida por si misma. Se comprueba explicitamente para que
+         * quede documentado y no parezca un descuido. */
+        CHECK_EQ_INT((int)escrituras, 1,
+                     "la unica escritura es la adopcion de la delegacion, no la orden");
+    }
+
+    SECTION("GATE ADVERSARIAL · device_id ajeno -> 0 efectos");
+    {
+        fixture f; fixture_init(&f);
+        efecto e = medir(&f, "provision_other_device", &PV_DELEGS[0], false);
+        CHECK(!e.aplicada, "device ajeno: no se aplica");
+        CHECK_EQ_STR(e.epoch, "", "device ajeno: CERO efecto de la orden");
+        CHECK_EQ_INT((int)e.secuencia, 0, "device ajeno: la secuencia NO se consume");
+    }
+
+    SECTION("GATE ADVERSARIAL · retenido (replay del broker) -> 0 efectos");
+    {
+        fixture f; fixture_init(&f);
+        efecto e = medir(&f, "provision_ok", &PV_DELEGS[0], true);
+        CHECK(!e.aplicada, "retenido: no se aplica AUNQUE la firma sea valida");
+        CHECK_EQ_STR(e.epoch, "", "retenido: CERO efecto de la orden");
+        CHECK_EQ_INT((int)e.secuencia, 0, "retenido: la secuencia NO se consume");
+    }
+
+    SECTION("GATE ADVERSARIAL · replay de secuencia consumida -> 0 efectos ADICIONALES");
+    {
+        fixture f; fixture_init(&f);
+        efecto primera = medir(&f, "provision_ok", &PV_DELEGS[0], false);
+        CHECK(primera.escrituras >= 1, "la primera SI tiene efecto (control interno)");
+        efecto repetida = medir(&f, "provision_ok", &PV_DELEGS[0], false);
+        CHECK(!repetida.aplicada, "replay: no se aplica");
+        CHECK_EQ_STR(repetida.epoch, primera.epoch,
+                     "replay: CERO efecto de la orden (la autoridad no cambia)");
+        CHECK(repetida.secuencia == primera.secuencia,
+              "replay: la secuencia NO avanza por segunda vez");
+        CHECK(repetida.estado == primera.estado, "replay: el estado no cambia");
+    }
+
+    SECTION("GATE ADVERSARIAL · huella de raiz ajena -> 0 efectos");
+    {
+        fixture f; fixture_init(&f);
+        efecto e = medir(&f, "provision_bad_fp", &PV_DELEGS[0], false);
+        CHECK(!e.aplicada, "raiz ajena: no se aplica");
+        CHECK_EQ_STR(e.epoch, "", "raiz ajena: CERO efecto de la orden");
+        CHECK_EQ_INT((int)e.secuencia, 0, "raiz ajena: la secuencia NO se consume");
+    }
+
+    SECTION("GATE ADVERSARIAL · sin root_key -> FALLO CERRADO, 0 efectos");
+    {
+        /* Fixture SIN diana_prov_set_root_key: es el estado real de un modulo
+         * que no ha pasado por el utillaje de fabrica, que todavia no existe. */
+        fixture f;
+        host_persistent_reset(&f.nv, 16);
+        host_hal_init(&f.hctx, &f.nv, &f.hal, 7);
+        diana_prov_init(&f.prov, &f.hal, PV_DEVICE_ID, PV_SYSTEM_ID, PV_FINGERPRINT);
+
+        efecto e = medir(&f, "provision_ok", &PV_DELEGS[0], false);
+        CHECK(!e.aplicada, "sin root_key: no se aplica NI CON firma valida");
+        CHECK_EQ_INT((int)e.secuencia, 0, "sin root_key: la secuencia NO se consume");
+        CHECK_EQ_STR(e.epoch, "", "sin root_key: la autoridad sigue vacia");
+        CHECK(f.prov.st.state == DIANA_PROV_UNPROVISIONED,
+              "sin root_key: queda SIN APROVISIONAR, que es fallar cerrado");
+    }
+}
+
 int run_provisioning(void)
 {
     TEST_SUITE("provisioning");
+    test_gate_adversarial_ordenes();
     test_seq_guard_d1b_used_paths();
     int before = g_tests_failed;
 
