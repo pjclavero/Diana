@@ -68,6 +68,10 @@ test: $(BIN)
 contracts:
 	@$(PYTHON) $(FW)/tools/validate_messages.py --dir $(MSGDIR)
 
+# El arreglo de RSTn del W5500 se fija sobre el propio fuente: net_w5500.c NO se
+# compila en la suite de host, asi que ninguna prueba en C puede cubrirlo.
+	@$(PYTHON) $(FW)/tools/check_w5500_reset.py
+
 # ADR-0007. Valida los payloads que llevan `detection_method` contra el contrato
 # reconciliado de $(ADR7REF), extraido a un directorio temporal fuera del repo.
 # Si esa referencia no existe, se dice y se falla: no se da por bueno en silencio.
