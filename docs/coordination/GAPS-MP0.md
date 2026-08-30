@@ -69,3 +69,35 @@ build del portátil es **sólo compilación: no se flashea**.
   defecto estructural corregido en la rama de P0-2 y nunca devuelto al repo.
 - `npm run typecheck` del backend falla por `@prisma/client` ausente en
   `server/worker`. Preexistente.
+
+### `CONTRACT_GAP-H4-EMPTY-VS-ABSENT`
+
+Al ampliar el corpus de canonicalización de D1b (paso 7) se midió el trato que la
+canónica da a un campo opcional **vacío** frente a uno **ausente**.
+
+Resultado medido, no supuesto: producen **la misma cadena canónica**, byte a byte.
+
+| vector | `canon_len` | SHA-256 de la canónica |
+|---|---|---|
+| `canon_vacio_explicito` (`rotation_id=""`, `current_epoch=""`, `provision_id=""`) | 174 | `a82ad2c7…4b20fcd53` |
+| `canon_vacio_ausente` (los tres campos ausentes) | 174 | `a82ad2c7…4b20fcd53` |
+
+Es **intencional** y está documentado en `prov_canonical.c`: `canon_record()` emite
+`0xFFFFFFFF` (ausente) tanto para `NULL` como para `""`, y la equivalencia es
+además **inevitable en C**, porque `diana_prov_command` usa arrays fijos y no
+puede representar la diferencia. La prueba de pareja de `test_provisioning.c` lo
+deja fijado como propiedad, no como accidente.
+
+Lo que sí es un hueco de contrato: **`contracts/` no contiene hoy ningún esquema
+del plano `DEVICE_MANAGEMENT`**. Comprobado: ningún fichero fuera de `firmware/`
+menciona `provisioning_sequence`, y `contracts/mqtt/` no tiene esquema de
+aprovisionamiento. Por tanto:
+
+- no existe una tercera opinión contractual contra la que cruzar la canónica; la
+  única referencia externa es `firmware/esp32/tools/gen_prov_vectors.py` (Python,
+  independiente), y el cruce C ↔ Python está verde en los 19 vectores;
+- **no se abre el contrato durante D1b** (gobernanza vigente: no autorizar nuevos
+  `TopicKind` ni contrato MQTT v2 en esta fase). Queda registrado para MP0-F, que
+  es donde toca decidir si el plano firmado entra en `contracts/**` y, si entra,
+  si el esquema debe distinguir `""` de ausente — decisión que, de tomarse en
+  sentido distinguidor, **obligaría a cambiar la canónica y a rotar los vectores**.

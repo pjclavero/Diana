@@ -217,6 +217,43 @@ static void test_canonical(void)
 
     SECTION("cadena canonica: propiedades estructurales");
 
+    /* Parejas del corpus ampliado. El bucle de arriba solo demuestra
+     * C == Python vector a vector; la RELACION entre dos vectores es una
+     * afirmacion distinta y se comprueba aparte.
+     *
+     * CONTRACT_GAP-H4-EMPTY-VS-ABSENT: en esta canonica una cadena vacia y un
+     * campo ausente producen exactamente los mismos bytes. Es intencional aqui
+     * y esta medido; queda registrado porque contracts/validate.py SI los
+     * distingue a nivel de esquema. */
+    uint8_t pa[DIANA_PROV_CANON_MAX], pb[DIANA_PROV_CANON_MAX];
+    diana_prov_command pc1, pc2;
+
+    /* CONTRACT_GAP-H4-EMPTY-VS-ABSENT: en esta canonica una cadena vacia y un
+     * campo ausente producen exactamente los mismos bytes. Se canonicaliza en C
+     * y se comparan los bytes reales, no los digestos de la referencia.
+     * OJO: diana_prov_command usa arrays fijos, asi que en C la distincion ni
+     * siquiera es representable; quien detecta una divergencia con el contrato
+     * es el bucle de cruce contra Python de arriba, no esta comprobacion.
+     * No hay tercera opinion posible hoy: contracts/ NO contiene ningun esquema
+     * del plano DEVICE_MANAGEMENT (comprobado: 0 ficheros mencionan
+     * provisioning_sequence fuera de firmware/), asi que la unica referencia
+     * externa es tools/gen_prov_vectors.py. */
+    build_cmd(&pc1, order_named("canon_vacio_explicito"), NULL);
+    build_cmd(&pc2, order_named("canon_vacio_ausente"), NULL);
+    size_t npa = diana_prov_canonical(&pc1, pa, sizeof(pa));
+    size_t npb = diana_prov_canonical(&pc2, pb, sizeof(pb));
+    CHECK(npa == npb && npa > 0 && memcmp(pa, pb, npa) == 0,
+          "cadena vacia y campo ausente producen la MISMA canonica");
+
+    /* Un solo byte de diferencia en un campo: misma longitud, otra canonica.
+     * Si coincidiesen, la firma de una orden valdria para otra distinta. */
+    build_cmd(&pc1, order_named("canon_un_byte_a"), NULL);
+    build_cmd(&pc2, order_named("canon_un_byte_b"), NULL);
+    npa = diana_prov_canonical(&pc1, pa, sizeof(pa));
+    npb = diana_prov_canonical(&pc2, pb, sizeof(pb));
+    CHECK(npa == npb && npa > 0 && memcmp(pa, pb, npa) != 0,
+          "un byte de diferencia produce OTRA canonica de igual longitud");
+
     diana_prov_command a, b;
     const pv_order *ov = order_named("provision_ok");
     build_cmd(&a, ov, NULL);
