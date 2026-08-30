@@ -72,6 +72,10 @@ contracts:
 # compila en la suite de host, asi que ninguna prueba en C puede cubrirlo.
 	@$(PYTHON) $(FW)/tools/check_w5500_reset.py
 
+# DEVICE_MANAGEMENT_COMMAND_PATH = UNIQUE. Propiedad ESTRUCTURAL: no la
+# cubre ninguna prueba de comportamiento, y se rompe sin que nada falle.
+	@$(PYTHON) $(FW)/tools/check_d1b_unique_path.py
+
 # ADR-0007. Valida los payloads que llevan `detection_method` contra el contrato
 # reconciliado de $(ADR7REF), extraido a un directorio temporal fuera del repo.
 # Si esa referencia no existe, se dice y se falla: no se da por bueno en silencio.

@@ -3,7 +3,11 @@
  * @brief Camino de RUNTIME del plano DEVICE_MANAGEMENT (D1b).
  *
  *   MQTT -> diana_platform_rx (con retained) -> diana_prov_message()
- *        -> diana_prov_handle() -> NVS -> targets/v1/module/{id}/provision/state
+ *        -> diana_prov_handle() -> NVS
+ *
+ *   La cadena TERMINA en NVS. NO se publica estado: el contrato v1 no tiene
+ *   topico para ello y sus TopicKind estan congelados
+ *   (CONTRACT_GAP-PROVISION-STATE-TOPIC). Se decide en MP1 con ADR.
  *
  * Este fichero es DELIBERADAMENTE fino. Todo lo que decide algo —parseo,
  * conformidad, delegacion, ECDSA, maquina de estados, persistencia, serializado
