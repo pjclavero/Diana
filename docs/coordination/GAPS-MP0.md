@@ -70,7 +70,7 @@ build del portátil es **sólo compilación: no se flashea**.
 - `npm run typecheck` del backend falla por `@prisma/client` ausente en
   `server/worker`. Preexistente.
 
-### `CONTRACT_GAP-H4-EMPTY-VS-ABSENT`
+### `CONTRACT_GAP-H4-EMPTY-VS-ABSENT` — **NO GAP / hipotesis descartada**
 
 Al ampliar el corpus de canonicalización de D1b (paso 7) se midió el trato que la
 canónica da a un campo opcional **vacío** frente a uno **ausente**.
@@ -101,3 +101,32 @@ aprovisionamiento. Por tanto:
   es donde toca decidir si el plano firmado entra en `contracts/**` y, si entra,
   si el esquema debe distinguir `""` de ausente — decisión que, de tomarse en
   sentido distinguidor, **obligaría a cambiar la canónica y a rotar los vectores**.
+
+
+> **Reclasificacion (decision del operador).** `""` == ausente es sencillamente la
+> semantica de la implementacion actual, y no existe un tercer contrato formal que
+> la contradiga. No es un hueco del producto. Se conserva la medicion de arriba
+> como caracterizacion, no como deuda.
+
+### `CONTRACT_GAP-DEVICE-MANAGEMENT-SCHEMA` — OPEN
+
+`contracts/` no contiene **ningun** esquema del plano `DEVICE_MANAGEMENT`.
+Comprobado: ningun fichero fuera de `firmware/` menciona `provisioning_sequence`,
+y `contracts/mqtt/` no tiene esquema de aprovisionamiento.
+
+Consecuencia medible: el cruce de canonicalizacion demuestra **C == Python**, no
+**C == contrato**. Un cambio coordinado en ambos lados pasaria inadvertido. Es la
+limitacion intrinseca de un cruce de dos implementaciones, y hoy no hay tercero
+posible.
+
+**No se resuelve dentro de D1b**: abrirlo es evolucion contractual, prohibida en
+esta fase. Corresponde a MP0-F decidir si el plano firmado entra en
+`contracts/**`.
+
+### `CONTRACT_GAP-PROVISION-STATE-TOPIC` — OPEN
+
+Sigue abierto y sin cambios: `app_provision.c` deja `out.publish` sin consumir a
+proposito. El plano **recibe y aplica** autoridad pero no **publica** el estado
+de autoridad resultante (`DEVICE_MANAGEMENT_STATE_PATH = NOT_IMPLEMENTED`).
+MP0-F querra leer ese estado, asi que probablemente sea el primer gap a cerrar
+alli, ya con el contrato abierto.
