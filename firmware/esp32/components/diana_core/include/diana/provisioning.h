@@ -86,9 +86,10 @@ extern "C" {
 /** Cota superior del tamano de una cadena canonica (13 registros holgados). */
 #define DIANA_PROV_CANON_MAX       1024
 
-/** NVS: espacio y clave del estado de aprovisionamiento. */
-#define DIANA_PROV_NVS_NS          "diana_prov"
-#define DIANA_PROV_NVS_KEY         "state"
+/* NVS: el espacio y la clave de la autoridad YA NO son publicos. Viven en
+ * components/diana_core/src/prov_nvs.h porque nombrar el espacio ES la
+ * capacidad de escribir en el. Para leer material de fabrica desde fuera del
+ * nucleo existe diana_prov_factory_read(), declarada mas abajo. */
 
 /* ----------------------------------------------------------------- tipos -- */
 
@@ -326,6 +327,20 @@ void diana_prov_init(diana_prov_ctx *ctx, const diana_hal *hal,
 void diana_prov_set_root_key(diana_prov_ctx *ctx,
                              const uint8_t root_key[DIANA_P256_PUBKEY_LEN],
                              const char *root_key_id);
+
+/**
+ * Lee material de FABRICA del espacio NVS de la autoridad. SOLO LECTURA.
+ *
+ * Es la unica via por la que un fichero fuera de diana_core puede tocar ese
+ * espacio, y por construccion no puede escribir: el espacio no se nombra
+ * desde fuera. Sirve para cargar la raiz de aprovisionamiento y el
+ * fingerprint que deja el utillaje de fabrica.
+ *
+ * Devuelve true si la clave existe y se leyo entera. Cualquier otro caso es
+ * false y el llamante debe fallar cerrado.
+ */
+bool diana_prov_factory_read(const diana_hal *hal, const char *key,
+                             void *out, size_t cap, size_t *out_len);
 
 /** Asocia las guardas antirrepeticion por plano (opcional). */
 void diana_prov_set_guards(diana_prov_ctx *ctx, diana_seq_guard_set *guards);

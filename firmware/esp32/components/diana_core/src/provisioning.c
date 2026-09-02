@@ -6,6 +6,7 @@
 
 #include <string.h>
 
+#include "prov_nvs.h"   /* espacio NVS de la autoridad: privado de diana_core */
 #include "diana/base64url.h"
 #include "diana/json.h"
 #include "diana/sha256.h"
@@ -181,6 +182,24 @@ void diana_prov_init(diana_prov_ctx *ctx, const diana_hal *hal,
     str_copy(ctx->system_id, sizeof(ctx->system_id), system_id);
     diana_prov_factory_state(&ctx->st, fingerprint_hex);
     (void)diana_prov_load(ctx);
+}
+
+bool diana_prov_factory_read(const diana_hal *hal, const char *key,
+                             void *out, size_t cap, size_t *out_len)
+{
+    /* SOLO LECTURA, a proposito. Esta funcion existe para que app_provision.c
+     * pueda cargar la raiz de fabrica SIN que el espacio de la autoridad sea
+     * nombrable desde fuera de diana_core. Si algun dia hiciera falta escribir
+     * desde fuera, la respuesta correcta NO es anadir aqui un kv_set: es
+     * revisar por que algo fuera del nucleo quiere mutar la autoridad. */
+    size_t len = cap;
+    if (hal == NULL || hal->kv_get == NULL || key == NULL || out == NULL)
+        return false;
+    if (hal->kv_get(hal->ctx, DIANA_PROV_NVS_NS, key, out, cap, &len)
+            != DIANA_HAL_OK)
+        return false;
+    if (out_len != NULL) *out_len = len;
+    return true;
 }
 
 void diana_prov_set_root_key(diana_prov_ctx *ctx,

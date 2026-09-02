@@ -32,7 +32,8 @@
 static const char *TAG = "diana.prov";
 
 /** Claves de fabrica en NVS. El namespace es el mismo que usa el estado
- *  persistente del modulo (DIANA_PROV_NVS_NS): son datos del mismo dominio. */
+ *  persistente del modulo: son datos del mismo dominio. El espacio en si ya
+ *  no es nombrable desde aqui; se lee con diana_prov_factory_read(). */
 #define PROV_NVS_ROOT_KEY  "root_key"
 #define PROV_NVS_ROOT_ID   "root_key_id"
 #define PROV_NVS_FP        "prov_fp"
@@ -46,8 +47,7 @@ void diana_prov_app_init(diana_app *a)
     char fp[DIANA_PROV_FP_HEX_BUF];
     size_t len = sizeof(fp);
     memset(fp, 0, sizeof(fp));
-    if (a->hal.kv_get(a->hal.ctx, DIANA_PROV_NVS_NS, PROV_NVS_FP, fp,
-                      sizeof(fp) - 1u, &len) != DIANA_HAL_OK)
+    if (!diana_prov_factory_read(&a->hal, PROV_NVS_FP, fp, sizeof(fp) - 1u, &len))
         fp[0] = '\0';
 
     diana_prov_init(&a->prov, &a->hal, a->id.module_id, a->cfg.system_id, fp);
@@ -57,11 +57,10 @@ void diana_prov_app_init(diana_app *a)
     char root_id[DIANA_PROV_ID_BUF];
     size_t idlen = sizeof(root_id);
     memset(root_id, 0, sizeof(root_id));
-    if (a->hal.kv_get(a->hal.ctx, DIANA_PROV_NVS_NS, PROV_NVS_ROOT_KEY, root,
-                      sizeof(root), &len) == DIANA_HAL_OK &&
+    if (diana_prov_factory_read(&a->hal, PROV_NVS_ROOT_KEY, root, sizeof(root), &len) &&
         len == sizeof(root)) {
-        if (a->hal.kv_get(a->hal.ctx, DIANA_PROV_NVS_NS, PROV_NVS_ROOT_ID,
-                          root_id, sizeof(root_id) - 1u, &idlen) != DIANA_HAL_OK)
+        if (!diana_prov_factory_read(&a->hal, PROV_NVS_ROOT_ID, root_id,
+                                     sizeof(root_id) - 1u, &idlen))
             root_id[0] = '\0';
         diana_prov_set_root_key(&a->prov, root, root_id);
         ESP_LOGI(TAG, "raiz de aprovisionamiento cargada de NVS (%s)",

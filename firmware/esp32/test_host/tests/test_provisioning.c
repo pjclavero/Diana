@@ -15,6 +15,10 @@
 #include "diana/base64url.h"
 #include "diana/p256.h"
 #include "diana/provisioning.h"
+/* Cabecera PRIVADA de diana_core: la prueba simula corrupcion del estado
+ * persistido, asi que necesita nombrar el espacio. Excepcion declarada; el
+ * analizador estructural excluye test_host. */
+#include "../../components/diana_core/src/prov_nvs.h"
 #include "diana/sha256.h"
 #include "hal_host.h"
 #include "test_util.h"
