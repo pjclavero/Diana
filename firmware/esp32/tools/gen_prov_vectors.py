@@ -185,6 +185,26 @@ def main() -> int:
               provisioning_sequence=30, rotation_id=ROT_1),
         order("commit_unknown", action="COMMIT", mode="EMERGENCY",
               provisioning_sequence=31, rotation_id=ROT_2),
+
+        # --- casos abiertos por la supervision independiente ---------------
+        #
+        # prepare_seq_vieja: PREPARE que la maquina de dominio ACEPTARIA (el
+        # dispositivo esta READY y current_epoch es el vigente), con secuencia
+        # 5 POR DEBAJO de la ya consumida. Existe porque el unico replay del
+        # gate era `provision_ok` dos veces, y ahi la segunda la para el estado
+        # de dominio (`already_provisioned`), no la barrera: el caso era
+        # DEGENERADO y no distinguia una cosa de la otra. Con este vector la
+        # barrera de secuencia es lo UNICO que puede rechazar.
+        order("prepare_seq_vieja", action="PREPARE", mode="NORMAL", provisioning_sequence=5,
+              rotation_id=ROT_2, current_epoch=EPOCH_A, next_epoch=EPOCH_C),
+
+        # provision_other_system: firma criptograficamente valida, delegacion
+        # valida y device CORRECTO, pero system_id ajeno. Existe porque el
+        # unico vector con sistema ajeno era una DELEGACION, asi que la
+        # comprobacion de system_id de la ORDEN no la mataba ninguna prueba.
+        order("provision_other_system", action="PROVISION",
+              provisioning_sequence=13, epoch=EPOCH_C, provision_id=PROV_ID,
+              system_id="system-z"),
     
         # --- FRONTERAS DE CANONICALIZACION (paso 7) ----------------------------
         # El bucle de test_provisioning.c recorre TODOS los vectores comparando

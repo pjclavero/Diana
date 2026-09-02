@@ -372,10 +372,21 @@ static bool resolve_operational_key(diana_prov_ctx *ctx, const diana_prov_comman
      * venga en el propio mensaje. */
     trace_push(out, "delegation-signature");
     if (!ctx->has_root_key) {
+        /* Marca de traza PROPIA. Sin ella, "sin raiz" y "firmado con otra
+         * raiz" son indistinguibles desde fuera, y la guarda no es
+         * comprobable: si alguien la borrase, la verificacion P-256 contra una
+         * clave de ceros rechazaria igual y NINGUNA prueba se pondria roja.
+         * Son dos propiedades distintas y se miden por separado:
+         *   NO_ROOT_KEY_FAIL_CLOSED = el sistema no se abre (defensa en fondo)
+         *   NO_ROOT_KEY_EARLY_GUARD = se para AQUI, antes de verificar nada */
+        trace_push(out, "missing-root-key");
         set_reject(ctx, out, DIANA_PROV_REASON_DELEGATION_INVALID_SIGNATURE);
         return false;
     }
-    /* El algoritmo de la credencial tampoco se negocia. */
+    /* El algoritmo de la credencial tampoco se negocia.
+     * DEFENSE_IN_DEPTH, por el mismo motivo que delegation-version-check: el
+     * campo esta dentro de la canonica firmada, asi que esta rama es
+     * inalcanzable con una credencial firmada. Redundante y declarado. */
     if (!str_eq(d->signature_alg, DIANA_PROV_SIGNATURE_ALG)) {
         set_reject(ctx, out, DIANA_PROV_REASON_DELEGATION_INVALID_SIGNATURE);
         return false;
@@ -395,13 +406,22 @@ static bool resolve_operational_key(diana_prov_ctx *ctx, const diana_prov_comman
         return false;
     }
 
-    /* system_mismatch cubre a la vez la orden y la credencial que la acompana. */
+    /* Comparte el MOTIVO (system_mismatch) con el direccionamiento de la
+     * orden, pero es OTRA comprobacion y otra rama: aquella mira
+     * cmd->system_id (traza addressing-check), esta mira el de la
+     * credencial. Un mismo motivo no es una misma cobertura: cada una
+     * necesita su propio vector y su propia prueba. */
     trace_push(out, "delegation-system-check");
     if (!str_eq(d->system_id, ctx->system_id)) {
         set_reject(ctx, out, DIANA_PROV_REASON_SYSTEM_MISMATCH);
         return false;
     }
 
+    /* DEFENSE_IN_DEPTH. Este campo viaja DENTRO de la canonica firmada de
+     * la credencial, asi que alterarlo la invalida por firma antes de
+     * llegar hasta aqui: no existe vector firmado que alcance esta rama y
+     * por eso ninguna prueba puede matarla. Se declara redundante a
+     * proposito en vez de aparentar una cobertura que no existe. */
     trace_push(out, "delegation-version-check");
     if (d->delegation_version != (uint64_t)DIANA_PROV_DELEGATION_VERSION) {
         set_reject(ctx, out, DIANA_PROV_REASON_DELEGATION_VERSION_REJECTED);

@@ -524,9 +524,15 @@ static void test_state_machine(void)
                      "scope distinto del const: mensaje no conforme");
 
         /* (c bis) credencial REALMENTE firmada por la raiz pero emitida para
-         * OTRO sistema. system_mismatch cubre a la vez la orden y la
-         * credencial que la acompana: una credencial legitima de otro
-         * despliegue no autoriza nada aqui. */
+         * OTRO sistema: una credencial legitima de otro despliegue no autoriza
+         * nada aqui.
+         *
+         * Este vector cubre la CREDENCIAL (traza delegation-system-check) y
+         * NADA MAS. La afirmacion anterior -- "cubre a la vez la orden y la
+         * credencial" -- era FALSA: una supervision independiente demostro que
+         * desactivar el system_id de la ORDEN dejaba la suite entera en verde.
+         * El caso de la orden vive en el gate adversarial, con su propio
+         * vector provision_other_system y su traza addressing-check. */
         diana_prov_command c2;
         build_cmd(&c2, order_named("provision_ok"), &PV_DELEGS[3]);
         diana_prov_handle(&f.prov, &c2, false, &o);
@@ -891,6 +897,159 @@ static int guards_con_epoch_igual_a(const diana_seq_guard_set *g, const uint8_t 
     return n;
 }
 
+/*
+ * SEQ_GUARD_CHECK_TRUTH_TABLE
+ * ---------------------------
+ * Bateria DIRECTA sobre diana_seq_guard_check(). Existe porque una supervision
+ * independiente demostro que esta funcion no se invocaba NI UNA VEZ en todo el
+ * arbol de pruebas: cuatro mutaciones que abren el replay de par en par
+ * (aceptar duplicados, ventana infinita, ignorar el epoch, `>` por `>=`)
+ * dejaban la suite entera en verde.
+ *
+ * Se fija la politica REAL medida sobre el codigo, no la que uno esperaria:
+ * SEQ_POLICY_GAP acepta reordenamientos dentro de la ventana, asi que N-1 NO
+ * es un rechazo, es GAP_ACCEPTED. Fijar aqui la expectativa equivocada
+ * (N-1 -> REJECT) seria peor que no tener prueba.
+ *
+ * OJO AL ALCANCE: hoy ningun runtime llama a esta funcion (--gc-sections la
+ * elimina del ELF). El motor de ventana sigue siendo
+ * SEQ_GUARD_FULL_ANTI_REPLAY = DEFERRED_TO_A3_B5; lo que esta bateria impide
+ * es que llegue a conectarse sin una sola prueba detras.
+ */
+static void test_seq_guard_check_truth_table(void)
+{
+    uint8_t eA[16]; memset(eA, 0xA1, sizeof(eA));
+    uint8_t eB[16]; memset(eB, 0xB2, sizeof(eB));
+
+    SECTION("SEQ_GUARD_CHECK_TRUTH_TABLE: epoch");
+    {
+        fixture f; fixture_init(&f);
+        diana_seq_guard g;
+        diana_seq_guard_init(&g, &f.hal);
+
+        /* Sin provisionar no hay epoch: el plano esta CERRADO, no abierto. */
+        CHECK_EQ_INT(diana_seq_guard_check(&g, eA, 1, "r0", NULL),
+                     DIANA_SEQ_REJECTED_NO_EPOCH,
+                     "sin epoch configurado se rechaza (NO_EPOCH), no se acepta");
+
+        diana_seq_guard_reprovision(&g, eA);
+        CHECK_EQ_INT(diana_seq_guard_check(&g, eB, 1, "r1", NULL),
+                     DIANA_SEQ_REJECTED_EPOCH,
+                     "un epoch AJENO se rechaza aunque la secuencia sea nueva");
+        CHECK_EQ_INT((int)diana_seq_guard_max_seq(&g), 0,
+                     "un rechazo por epoch NO avanza la ventana");
+    }
+
+    SECTION("SEQ_GUARD_CHECK_TRUTH_TABLE: N / replay / N+1 / N-1");
+    {
+        fixture f; fixture_init(&f);
+        diana_seq_guard g;
+        diana_seq_guard_init(&g, &f.hal);
+        diana_seq_guard_reprovision(&g, eA);
+
+        CHECK_EQ_INT(diana_seq_guard_check(&g, eA, 10, "n", NULL),
+                     DIANA_SEQ_ACCEPTED, "N=10 nueva: ACCEPTED");
+        CHECK_EQ_INT((int)diana_seq_guard_max_seq(&g), 10,
+                     "la ventana avanza hasta N");
+
+        CHECK_EQ_INT(diana_seq_guard_check(&g, eA, 10, "n", NULL),
+                     DIANA_SEQ_DUPLICATE, "la MISMA N repetida: DUPLICATE (replay)");
+        CHECK_EQ_INT((int)diana_seq_guard_max_seq(&g), 10,
+                     "un duplicado NO avanza la ventana");
+
+        CHECK_EQ_INT(diana_seq_guard_check(&g, eA, 11, "n+1", NULL),
+                     DIANA_SEQ_ACCEPTED, "N+1: ACCEPTED");
+
+        /* Politica SEQ_POLICY_GAP: hacia atras DENTRO de ventana se acepta.
+         * No es un descuido: esta declarado en seq_guard.h y el riesgo
+         * residual queda delegado a TLS+ACL del broker. */
+        CHECK_EQ_INT(diana_seq_guard_check(&g, eA, 9, "n-1", NULL),
+                     DIANA_SEQ_GAP_ACCEPTED,
+                     "N-1 dentro de ventana: GAP_ACCEPTED (politica SEQ_POLICY_GAP)");
+        CHECK_EQ_INT(diana_seq_guard_check(&g, eA, 9, "n-1", NULL),
+                     DIANA_SEQ_DUPLICATE,
+                     "pero ese hueco queda MARCADO: repetirlo ya es DUPLICATE");
+    }
+
+    SECTION("SEQ_GUARD_CHECK_TRUTH_TABLE: borde exacto de la ventana");
+    {
+        fixture f; fixture_init(&f);
+        diana_seq_guard g;
+        diana_seq_guard_init(&g, &f.hal);
+        diana_seq_guard_reprovision(&g, eA);
+
+        CHECK_EQ_INT(diana_seq_guard_check(&g, eA, 1000, "base", NULL),
+                     DIANA_SEQ_ACCEPTED, "base 1000: ACCEPTED");
+
+        /* El borde se comprueba POR AMBOS LADOS. Con un solo lado, una ventana
+         * infinita (mutacion `offset >= 128` -> `>= 128000000`) pasaria. */
+        CHECK_EQ_INT(diana_seq_guard_check(&g, eA, 1000 - 127, "off127", NULL),
+                     DIANA_SEQ_GAP_ACCEPTED, "offset 127 (ultimo dentro): GAP_ACCEPTED");
+        CHECK_EQ_INT(diana_seq_guard_check(&g, eA, 1000 - 128, "off128", NULL),
+                     DIANA_SEQ_REJECTED_TOO_OLD, "offset 128 (primero fuera): TOO_OLD");
+        CHECK_EQ_INT(diana_seq_guard_check(&g, eA, 1, "muyvieja", NULL),
+                     DIANA_SEQ_REJECTED_TOO_OLD, "muy antigua: TOO_OLD");
+
+        /* Salto grande hacia ADELANTE: la ventana solo limita hacia atras. */
+        CHECK_EQ_INT(diana_seq_guard_check(&g, eA, 1000 + 1000, "salto", NULL),
+                     DIANA_SEQ_ACCEPTED, "salto grande adelante: ACCEPTED (sin ventana hacia delante)");
+        CHECK_EQ_INT((int)diana_seq_guard_max_seq(&g), 2000,
+                     "y la ventana se recoloca en el salto");
+    }
+
+    SECTION("SEQ_GUARD_CHECK_TRUTH_TABLE: extremos de uint64");
+    {
+        fixture f; fixture_init(&f);
+        diana_seq_guard g;
+        diana_seq_guard_init(&g, &f.hal);
+        diana_seq_guard_reprovision(&g, eA);
+
+        CHECK_EQ_INT(diana_seq_guard_check(&g, eA, 0, "cero", NULL),
+                     DIANA_SEQ_ACCEPTED, "seq=0 como primera: ACCEPTED");
+        CHECK_EQ_INT(diana_seq_guard_check(&g, eA, 0, "cero", NULL),
+                     DIANA_SEQ_DUPLICATE, "seq=0 repetida: DUPLICATE");
+
+        const uint64_t MAXSEQ = 18446744073709551615ULL;
+        CHECK_EQ_INT(diana_seq_guard_check(&g, eA, MAXSEQ, "max", NULL),
+                     DIANA_SEQ_ACCEPTED, "seq = 2^64-1: ACCEPTED");
+        CHECK_EQ_INT(diana_seq_guard_check(&g, eA, MAXSEQ, "max", NULL),
+                     DIANA_SEQ_DUPLICATE, "replay de 2^64-1: DUPLICATE");
+
+        /* Inmediatamente despues del maximo NO puede haber desbordamiento: el
+         * desplazamiento del bitmap tiene guarda `delta >= 128 -> memset`, que
+         * evita truncar a uint8_t y un memmove de tamano negativo. Si eso se
+         * rompiera, seq=0 volveria a parecer nueva. */
+        CHECK_EQ_INT(diana_seq_guard_check(&g, eA, 0, "cero-tras-max", NULL),
+                     DIANA_SEQ_REJECTED_TOO_OLD,
+                     "tras 2^64-1, seq=0 es TOO_OLD: no hay desbordamiento del bitmap");
+        CHECK_EQ_INT(diana_seq_guard_check(&g, eA, MAXSEQ - 1, "max-1", NULL),
+                     DIANA_SEQ_GAP_ACCEPTED, "max-1 sigue dentro de ventana");
+    }
+
+    SECTION("SEQ_GUARD_CHECK_TRUTH_TABLE: reprovision reabre la secuencia");
+    {
+        fixture f; fixture_init(&f);
+        diana_seq_guard g;
+        diana_seq_guard_init(&g, &f.hal);
+        diana_seq_guard_reprovision(&g, eA);
+
+        CHECK_EQ_INT(diana_seq_guard_check(&g, eA, 500, "a", NULL),
+                     DIANA_SEQ_ACCEPTED, "epoch A, seq 500: ACCEPTED");
+        CHECK_EQ_INT(diana_seq_guard_check(&g, eA, 5, "b", NULL),
+                     DIANA_SEQ_REJECTED_TOO_OLD, "epoch A, seq 5: TOO_OLD");
+
+        diana_seq_guard_reprovision(&g, eB);
+        CHECK_EQ_INT(diana_seq_guard_check(&g, eB, 5, "c", NULL),
+                     DIANA_SEQ_ACCEPTED,
+                     "epoch NUEVO: la misma seq 5 vuelve a ser aceptable");
+        /* Y el epoch viejo deja de valer: una orden del epoch anterior no
+         * puede colarse por el hecho de que la ventana se reiniciara. */
+        CHECK_EQ_INT(diana_seq_guard_check(&g, eA, 6, "d", NULL),
+                     DIANA_SEQ_REJECTED_EPOCH,
+                     "el epoch ANTERIOR se rechaza tras reprovisionar");
+    }
+}
+
 static void test_seq_guard_d1b_used_paths(void)
 {
     const int TODAS = SEQ_GUARD_ISSUER_COUNT * SEQ_GUARD_PLANE_COUNT;
@@ -1090,6 +1249,70 @@ static void test_gate_adversarial_ordenes(void)
         CHECK(repetida.estado == primera.estado, "replay: el estado no cambia");
     }
 
+    SECTION("GATE ADVERSARIAL · replay NO DEGENERADO: lo para la BARRERA, no el dominio");
+    {
+        /* El caso de arriba (provision_ok dos veces) es degenerado: la segunda
+         * vez el dispositivo ya esta READY, asi que la maquina de dominio
+         * responde already_provisioned y NADA llega a la barrera. Una
+         * supervision independiente lo demostro moviendo apply_* delante de la
+         * barrera de secuencia: la suite entera seguia verde.
+         *
+         * Aqui la orden es un PREPARE que el dominio SI aceptaria -- se
+         * demuestra abajo con el control positivo -- pero con secuencia 5, por
+         * debajo de la ya consumida. La barrera es lo UNICO que puede pararlo. */
+        fixture f; diana_prov_outcome o; fixture_init(&f);
+        efecto prov = medir(&f, "provision_ok", &PV_DELEGS[0], false);
+        CHECK(prov.aplicada, "control interno: la PROVISION previa se aplica");
+
+        efecto vieja = medir(&f, "prepare_seq_vieja", &PV_DELEGS[0], false);
+        CHECK(!vieja.aplicada, "secuencia vieja: no se aplica");
+        CHECK(vieja.secuencia == prov.secuencia,
+              "secuencia vieja: la secuencia consumida NO retrocede ni avanza");
+        CHECK_EQ_STR(vieja.epoch, prov.epoch, "secuencia vieja: la autoridad no cambia");
+        CHECK(vieja.estado == prov.estado, "secuencia vieja: el estado no cambia");
+
+        /* La parte que hace NO degenerado el caso: se para en la barrera y NI
+         * SIQUIERA llega a la maquina de dominio. Sin esta comprobacion,
+         * "rechazado" no distingue quien lo rechazo. */
+        run_order(&f, "prepare_seq_vieja", &PV_DELEGS[0], false, &o);
+        CHECK(trace_has(&o, "provisioning-sequence-check"),
+              "secuencia vieja: la barrera de secuencia SI se evalua");
+        CHECK(!trace_has(&o, "domain-state-machine"),
+              "secuencia vieja: NO llega a la maquina de dominio (lo para la barrera)");
+    }
+
+    SECTION("GATE ADVERSARIAL · CONTROL C: la misma orden con secuencia buena SI se aplica");
+    {
+        /* Control positivo del caso anterior. Sin el, "no se aplica" podria
+         * deberse a que ese PREPARE es invalido por cualquier otro motivo, y
+         * la seccion de arriba pasaria por la razon equivocada. */
+        fixture f; diana_prov_outcome o; fixture_init(&f);
+        run_order(&f, "provision_ok", &PV_DELEGS[0], false, &o);
+        efecto e = medir(&f, "prepare_ok", &PV_DELEGS[0], false);
+        CHECK(e.aplicada,
+              "CONTROL C: el mismo PREPARE con secuencia por encima SI se aplica");
+    }
+
+    SECTION("GATE ADVERSARIAL · system_id ajeno EN LA ORDEN -> 0 efectos");
+    {
+        /* Firma criptograficamente valida, delegacion valida, device correcto:
+         * lo unico ajeno es el system_id de la ORDEN. Existia una afirmacion de
+         * cobertura FALSA en este repo que daba por cubierta esta comprobacion
+         * con un vector de DELEGACION con sistema ajeno, que recorre otra rama
+         * (delegation-system-check). Son dos comprobaciones distintas. */
+        fixture f; diana_prov_outcome o; fixture_init(&f);
+        efecto e = medir(&f, "provision_other_system", &PV_DELEGS[0], false);
+        CHECK(!e.aplicada, "sistema ajeno: no se aplica");
+        CHECK_EQ_STR(e.epoch, "", "sistema ajeno: CERO efecto de la orden");
+        CHECK_EQ_INT((int)e.secuencia, 0, "sistema ajeno: la secuencia NO se consume");
+
+        run_order(&f, "provision_other_system", &PV_DELEGS[0], false, &o);
+        CHECK(trace_has(&o, "addressing-check"),
+              "sistema ajeno: lo para el direccionamiento de la ORDEN");
+        CHECK(!trace_has(&o, "domain-state-machine"),
+              "sistema ajeno: NO llega a la maquina de dominio");
+    }
+
     SECTION("GATE ADVERSARIAL · huella de raiz ajena -> 0 efectos");
     {
         fixture f; fixture_init(&f);
@@ -1115,6 +1338,43 @@ static void test_gate_adversarial_ordenes(void)
         CHECK(f.prov.st.state == DIANA_PROV_UNPROVISIONED,
               "sin root_key: queda SIN APROVISIONAR, que es fallar cerrado");
     }
+
+    SECTION("GATE ADVERSARIAL · NO_ROOT_KEY_EARLY_GUARD: se para ANTES de verificar");
+    {
+        /* La seccion de arriba mide NO_ROOT_KEY_FAIL_CLOSED: el sistema no se
+         * abre. Pero esa propiedad se sostiene sola aunque se borre la guarda,
+         * porque sin raiz la clave es todo ceros y la verificacion P-256 falla
+         * igual. Una supervision independiente lo demostro: quitar la guarda
+         * dejaba las 838 comprobaciones en verde.
+         *
+         * Esta seccion mide otra cosa: que la guarda EXPLICITA existe y corta
+         * en su sitio. Si alguien la borra, el sistema probablemente seguira
+         * siendo seguro -- y esta prueba se pondra roja igualmente, que es
+         * justo lo que se quiere. */
+        fixture f;
+        host_persistent_reset(&f.nv, 16);
+        host_hal_init(&f.hctx, &f.nv, &f.hal, 7);
+        diana_prov_init(&f.prov, &f.hal, PV_DEVICE_ID, PV_SYSTEM_ID, PV_FINGERPRINT);
+
+        diana_prov_outcome o;
+        run_order(&f, "provision_ok", &PV_DELEGS[0], false, &o);
+        CHECK(trace_has(&o, "missing-root-key"),
+              "EARLY_GUARD: la ausencia de raiz se declara con su propia marca");
+        CHECK(!trace_has(&o, "delegation-system-check"),
+              "EARLY_GUARD: no sigue evaluando la credencial");
+        CHECK(!trace_has(&o, "order-signature"),
+              "EARLY_GUARD: no llega a verificar la firma de la orden");
+        CHECK(!trace_has(&o, "domain-state-machine"),
+              "EARLY_GUARD: no llega a la maquina de dominio");
+
+        /* Control positivo: CON raiz, esa marca NO aparece. Sin esto, la
+         * comprobacion pasaria aunque la marca se empujara siempre. */
+        fixture f2; fixture_init(&f2);
+        diana_prov_outcome o2;
+        run_order(&f2, "provision_ok", &PV_DELEGS[0], false, &o2);
+        CHECK(!trace_has(&o2, "missing-root-key"),
+              "EARLY_GUARD control positivo: con raiz la marca NO se emite");
+    }
 }
 
 int run_provisioning(void)
@@ -1122,6 +1382,7 @@ int run_provisioning(void)
     TEST_SUITE("provisioning");
     test_gate_adversarial_ordenes();
     test_seq_guard_d1b_used_paths();
+    test_seq_guard_check_truth_table();
     int before = g_tests_failed;
 
     test_base64url();
