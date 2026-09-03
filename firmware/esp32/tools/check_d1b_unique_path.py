@@ -3,6 +3,15 @@
 
 Historia, porque explica el diseno. Este guardian ha sido evadido dos veces:
 
+  4ª ronda (revision de cierre): el recurso viajando por una VARIABLE de
+     ambito de fichero (invisible porque solo se miraban cuerpos de
+     funcion), incluida una exportada con extern que permitia escribir
+     desde fuera del nucleo sin nombrar nada; y el SHADOWING de un nombre
+     de LECTURAS_OK, que era una whitelist por identificador... elegido
+     por quien escribe el bypass. Se corrige propagando tambien variables
+     globales a punto fijo entre unidades, y exigiendo que un nombre de
+     lectura solo cuente como tal si NO esta definido en la unidad.
+
   3ª ronda (supervision final): indireccion ENTRE unidades de traduccion --
      el grafo se construia dentro de una unidad, asi que bastaba partir el
      bypass en dos ficheros; y el alias del puntero a kv_set, que esquivaba una
@@ -81,6 +90,12 @@ Tabla adversarial, medida ejecutando cada caso (no razonada):
     escribe con el resultado, sin nombrarlo         ROJO
   ALIAS del puntero: diana_hal_kv_set_fn w =
     hal->kv_set; w(ctx, "diana_prov", ...)          ROJO
+  VARIABLE DE AMBITO DE FICHERO con el recurso     ROJO
+  variable EXPORTADA + extern: escritura en otra
+    unidad que nunca nombra el literal              ROJO
+  TABLA global  {"otro", DIANA_PROV_NVS_NS}        ROJO
+  SHADOWING de un nombre de lectura (definir un
+    kv_get propio que por dentro escribe)           ROJO
 
   namespace CONSTRUIDO EN EJECUCION (strcpy+strcat) SOBREVIVE
 
@@ -349,10 +364,24 @@ def llamadas(t: str):
 # todo lo demas que reciba el espacio se considera capaz de escribir. Se invierte
 # la carga a proposito -- antes se listaban los nombres de escritura y bastaba
 # llamar al envoltorio `w` (un alias del puntero) para no estar en la lista.
-LECTURAS_OK = {
+_LECTURAS_NOMBRE = {
     "kv_get", "diana_prov_factory_read",
     "strcmp", "strncmp", "strlen", "memcmp", "snprintf", "printf", "strstr",
 }
+
+def lecturas_de(t: str):
+    """Nombres que se admiten como LECTURA en ESTA unidad.
+
+    No basta con el nombre: el nombre lo elige quien escribe el bypass. Bastaba
+    definir `static int kv_get(...)` que por dentro llamase a kv_set para que la
+    llamada quedara exenta Y la funcion quedase fuera del punto fijo. Doble
+    fallo, y por un identificador.
+
+    Regla: un nombre de la lista solo cuenta como lectura si NO esta DEFINIDO en
+    la unidad. Si alguien define aqui algo llamado `kv_get` o `strcmp`, es una
+    funcion suya y se analiza como cualquier otra."""
+    definidas = {n for n, _, _ in funciones(t)}
+    return _LECTURAS_NOMBRE - definidas
 
 def proveedores_de_espacio(t: str, espacio: str, conocidos):
     """Funciones de ESTA unidad que DEVUELVEN el recurso: directamente, o
@@ -371,31 +400,91 @@ def proveedores_de_espacio(t: str, espacio: str, conocidos):
                 salida.add(nombre); break
     return salida
 
-def analizar_unidad(t: str, espacio: str, proveedores):
+def sin_cuerpos(t: str) -> str:
+    """El texto de la unidad SIN los cuerpos de funcion: lo que queda es
+    ambito de fichero. Necesario para no confundir una variable global con
+    cualquier asignacion local, que fue justo el falso positivo al primer
+    intento (variables llamadas `n` o `p` envenenaban el analisis entero)."""
+    fuera, pos = [], 0
+    for m in re.finditer(r'\{', t):
+        if m.start() < pos:
+            continue
+        prof, i = 0, m.start()
+        while i < len(t):
+            if t[i] == '{': prof += 1
+            elif t[i] == '}':
+                prof -= 1
+                if prof == 0: break
+            i += 1
+        fuera.append(t[pos:m.start()])
+        pos = i + 1
+    fuera.append(t[pos:])
+    return "\n".join(fuera)
+
+def variables_con_espacio(t: str, espacio: str, proveedores):
+    """Variables de AMBITO DE FICHERO inicializadas con el recurso.
+
+    Se recogen aparte de las funciones porque cruzan la frontera de unidad por
+    otra via: `const char *G = DIANA_PROV_NVS_NS;` en el nucleo y un `extern` en
+    otra unidad que escribe sin nombrar nada. Sin esto, la propagacion entre
+    unidades solo cubria funciones y quedaba ese hueco.
+
+    Se exige que la declaracion sea de tipo cadena (char* o array de char) y que
+    este FUERA de toda funcion: recoger cualquier asignacion daba un falso
+    positivo que tenia por sospechosos a quince ficheros."""
+    lit = '"%s"' % espacio
+    cabeza = sin_cuerpos(t)
+    salida = set()
+    patron = (r'(?:static\s+|extern\s+|const\s+)*char\s*(?:\*\s*(?:const\s*)?)*'
+              r'(\w+)\s*(?:\[[^\]]*\])?\s*=\s*([^;]+);')
+    for m in re.finditer(patron, cabeza):
+        var, val = m.group(1), m.group(2)
+        if lit in val or any(re.search(r'\b%s\b' % re.escape(pv), val)
+                             for pv in proveedores):
+            salida.add(var)
+    return salida
+
+def analizar_unidad(t: str, espacio: str, proveedores, variables):
     """Devuelve (tiene_recurso, alcanza_escritura, entrypoints) para una unidad
     ya preprocesada y normalizada."""
     lit = '"%s"' % espacio
     defs = list(funciones(t))
+    LECTURAS_OK = lecturas_de(t)
 
     # OJO: solo dentro de CUERPOS de funcion. Al preprocesar, las cabeceras
     # meten sus DECLARACIONES en todas las unidades, y una declaracion
     # `bool diana_prov_message(...)` se parece a una llamada.
     cuerpos = "\n".join(c for _, _, c in defs)
 
+    # Precalculo, UNA vez por unidad. Antes esto se recomputaba por cada
+    # argumento de cada llamada y el guardian tardaba 38 s; uno lento acaba
+    # desactivado, que es la peor forma de perder una garantia.
+    _re_prov = re.compile(r'\b(?:%s)\s*\(' % "|".join(re.escape(x) for x in proveedores)) \
+               if proveedores else None
+    _re_vars = re.compile(r'\b(?:%s)\b' % "|".join(re.escape(x) for x in variables)) \
+               if variables else None
+
+    locales = set()
+    for m in re.finditer(r'\b(\w+)\s*(?:\[[^\]]*\])?\s*=\s*([^;]+);', t):
+        val = m.group(2)
+        if lit in val or (_re_prov and _re_prov.search(val)) or \
+           (_re_vars and _re_vars.search(val)):
+            locales.add(m.group(1))
+    _re_loc = re.compile(r'\b(?:%s)\b' % "|".join(re.escape(x) for x in locales)) \
+              if locales else None
+
     def es_recurso(arg: str) -> bool:
         """El argumento ES el recurso: el literal, una llamada a un proveedor,
-        o una variable a la que se le asigno cualquiera de las dos."""
+        una variable global que lo lleva (posiblemente de OTRA unidad, via
+        extern: aqui solo se ve su nombre y con eso basta), o una variable a la
+        que se le asigno cualquiera de las tres."""
         if lit in arg:
             return True
-        if any(re.search(r'\b%s\s*\(' % re.escape(pv), arg) for pv in proveedores):
+        if _re_prov and _re_prov.search(arg):
             return True
-        for m in re.finditer(r'\b(\w+)\s*(?:\[[^\]]*\])?\s*=\s*([^;]+);', cuerpos):
-            var, val = m.group(1), m.group(2)
-            if (lit in val or any(re.search(r'\b%s\s*\(' % re.escape(pv), val)
-                                  for pv in proveedores)) \
-               and re.search(r'\b%s\b' % re.escape(var), arg):
-                return True
-        return False
+        if _re_vars and _re_vars.search(arg):
+            return True
+        return bool(_re_loc and _re_loc.search(arg))
 
     # Punto fijo LOCAL: funciones que, recibiendo el recurso por parametro, lo
     # pasan a algo capaz de escribir. Se propaga por parametro, no por nombre.
@@ -426,7 +515,8 @@ def analizar_unidad(t: str, espacio: str, proveedores):
             escribe = True; break
 
     tiene = (lit in t) or any(
-        re.search(r'\b%s\s*\(' % re.escape(pv), cuerpos) for pv in proveedores)
+        re.search(r'\b%s\s*\(' % re.escape(pv), cuerpos) for pv in proveedores) \
+        or any(re.search(r'\b%s\b' % re.escape(v), cuerpos) for v in variables)
 
     entradas = set()
     for llamada, _ in llamadas(cuerpos):
@@ -458,17 +548,20 @@ def main() -> int:
                 continue
             textos[p] = normalizar_valores(unir_literales(t), espacio)
 
-        proveedores, cambio = set(), True
+        proveedores, variables, cambio = set(), set(), True
         while cambio:
             cambio = False
             for t in textos.values():
                 nuevos = proveedores_de_espacio(t, espacio, proveedores)
                 if not nuevos.issubset(proveedores):
                     proveedores |= nuevos; cambio = True
+                nvar = variables_con_espacio(t, espacio, proveedores)
+                if not nvar.issubset(variables):
+                    variables |= nvar; cambio = True
 
         # PASADA 2 - analisis con ese conjunto ya cerrado.
         for p, t in textos.items():
-            nombra, escribe, entradas = analizar_unidad(t, espacio, proveedores)
+            nombra, escribe, entradas = analizar_unidad(t, espacio, proveedores, variables)
             rel = str(p.relative_to(FW))
             if nombra and not es_nucleo(p):
                 nombradores.append(rel)

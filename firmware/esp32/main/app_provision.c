@@ -2,12 +2,26 @@
  * @file app_provision.c
  * @brief Camino de RUNTIME del plano DEVICE_MANAGEMENT (D1b).
  *
- *   MQTT -> diana_platform_rx (con retained) -> diana_prov_message()
+ *   [ningun topico suscrito]  X  diana_platform_rx (con retained)
+ *        -> diana_prov_app_handle() -> diana_prov_message()
  *        -> diana_prov_handle() -> NVS
  *
- *   La cadena TERMINA en NVS. NO se publica estado: el contrato v1 no tiene
- *   topico para ello y sus TopicKind estan congelados
- *   (CONTRACT_GAP-PROVISION-STATE-TOPIC). Se decide en MP1 con ADR.
+ *   OJO A LA PRIMERA FLECHA, QUE NO EXISTE. El firmware NO se suscribe a
+ *   ningun topico de provisioning: mqtt_client.c suscribe command,
+ *   config/desired, ota y el estado de partida, y este interceptor empareja por
+ *   sufijo `/provision`, que nunca llega. Es decir, la cadena esta cableada y
+ *   presente en el ELF, pero HOY NO ES ALCANZABLE POR TRANSPORTE
+ *   (CONTRACT_GAP-PROVISION-COMMAND-TOPIC).
+ *
+ *   La cadena TERMINA en NVS. Tampoco se publica estado: el contrato v1 no
+ *   tiene topico para ello y sus TopicKind estan congelados
+ *   (CONTRACT_GAP-PROVISION-STATE-TOPIC).
+ *
+ *   Ninguno de los dos huecos se resuelve anadiendo un topico suelto: exigiria
+ *   un TopicKind nuevo, o sea modificar de facto el contrato v1 para poner
+ *   verde un gate. Ambos estan transferidos a MP0-F.0 (PROVISIONING CONTRACT
+ *   GATE), con ADR y evolucion contractual completa. NO es MP1: se movio al
+ *   descubrirse que faltaba tambien el camino de ENTRADA, no solo el de salida.
  *
  * Este fichero es DELIBERADAMENTE fino. Todo lo que decide algo —parseo,
  * conformidad, delegacion, ECDSA, maquina de estados, persistencia, serializado
