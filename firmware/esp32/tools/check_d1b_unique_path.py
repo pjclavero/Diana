@@ -97,6 +97,10 @@ Tabla adversarial, medida ejecutando cada caso (no razonada):
   SHADOWING de un nombre de lectura (definir un
     kv_get propio que por dentro escribe)           ROJO
 
+  superstring + desplazamiento  "zzdiana_prov"+2   ROJO
+  macro superstring + indice    &S[2]               ROJO
+  array con RELLENO tras el cero {...,0,'q'}        ROJO
+
   namespace CONSTRUIDO EN EJECUCION (strcpy+strcat) SOBREVIVE
 
 RESIDUAL DECLARADO:
@@ -104,6 +108,14 @@ RESIDUAL DECLARADO:
     D1B_PATH_STATIC_ANALYSIS_RESIDUAL = dynamic-namespace-construction
 
     strcpy(ns, "diana"); strcat(ns, "_prov");
+
+Y solo eso. La revision de cierre encontro tres formas ESTATICAS que el residual
+declarado NO cubria -- superstring desplazada, macro superstring indexada y array
+con relleno tras el cero -- porque el analisis comparaba el token entrecomillado
+EXACTO. Se arreglo el analisis en vez de ensanchar la declaracion: ahora el
+recurso se reconoce por CONTENIDO de cualquier literal, en un unico punto
+(contiene_espacio). Ensanchar la frase habria sido mas barato y menos honesto:
+esas tres no construian nada en ejecucion.
 
 Ningun analisis estatico de texto puede verlo: el valor no existe hasta que
 corre el programa. Cerrarlo exigiria analisis de flujo de datos o una barrera
@@ -318,7 +330,9 @@ def normalizar_valores(t: str, espacio: str) -> str:
                     return m.group(0)
                 continue
             return m.group(0)   # algo que no es constante: no se toca
-        s2 = "".join(out).rstrip("\0")
+        # Sin rstrip("\0") a secas: un relleno DESPUES del cero
+        # ({'d',...,'v',0,'q'}) desactivaba la reconstruccion entera.
+        s2 = "".join(out).replace("\0", "")
         return '= "%s"' % s2 if s2 else m.group(0)
     t = re.sub(r'=\s*\{([^{}]*)\}', _arr, t)
     return t
@@ -383,6 +397,16 @@ def lecturas_de(t: str):
     definidas = {n for n, _, _ in funciones(t)}
     return _LECTURAS_NOMBRE - definidas
 
+def contiene_espacio(texto: str, espacio: str) -> bool:
+    """El recurso esta presente si ALGUN literal del texto lo CONTIENE.
+
+    Unico punto donde se decide esto. Antes habia tres comparaciones sueltas
+    contra el token entrecomillado exacto, y bastaba una superstring
+    ("zzdiana_prov" + 2) o un relleno a la derecha ({...,0,'q'}) para que
+    ninguna lo viera. Al centralizarlo, arreglar aqui arregla las tres."""
+    return any(espacio in m.group(1)
+               for m in re.finditer(r'"((?:[^"\\]|\\.)*)"', texto))
+
 def proveedores_de_espacio(t: str, espacio: str, conocidos):
     """Funciones de ESTA unidad que DEVUELVEN el recurso: directamente, o
     devolviendo el resultado de otro proveedor ya conocido (de cualquier
@@ -395,8 +419,8 @@ def proveedores_de_espacio(t: str, espacio: str, conocidos):
     for nombre, _, cuerpo in funciones(t):
         for m in re.finditer(r'\breturn\b([^;]*);', cuerpo):
             expr = m.group(1)
-            if lit in expr or any(re.search(r'\b%s\s*\(' % re.escape(k), expr)
-                                  for k in conocidos):
+            if contiene_espacio(expr, espacio) or \
+               any(re.search(r'\b%s\s*\(' % re.escape(k), expr) for k in conocidos):
                 salida.add(nombre); break
     return salida
 
@@ -439,8 +463,8 @@ def variables_con_espacio(t: str, espacio: str, proveedores):
               r'(\w+)\s*(?:\[[^\]]*\])?\s*=\s*([^;]+);')
     for m in re.finditer(patron, cabeza):
         var, val = m.group(1), m.group(2)
-        if lit in val or any(re.search(r'\b%s\b' % re.escape(pv), val)
-                             for pv in proveedores):
+        if contiene_espacio(val, espacio) or \
+           any(re.search(r'\b%s\b' % re.escape(pv), val) for pv in proveedores):
             salida.add(var)
     return salida
 
@@ -467,7 +491,7 @@ def analizar_unidad(t: str, espacio: str, proveedores, variables):
     locales = set()
     for m in re.finditer(r'\b(\w+)\s*(?:\[[^\]]*\])?\s*=\s*([^;]+);', t):
         val = m.group(2)
-        if lit in val or (_re_prov and _re_prov.search(val)) or \
+        if contiene_espacio(val, espacio) or (_re_prov and _re_prov.search(val)) or \
            (_re_vars and _re_vars.search(val)):
             locales.add(m.group(1))
     _re_loc = re.compile(r'\b(?:%s)\b' % "|".join(re.escape(x) for x in locales)) \
@@ -478,7 +502,7 @@ def analizar_unidad(t: str, espacio: str, proveedores, variables):
         una variable global que lo lleva (posiblemente de OTRA unidad, via
         extern: aqui solo se ve su nombre y con eso basta), o una variable a la
         que se le asigno cualquiera de las tres."""
-        if lit in arg:
+        if contiene_espacio(arg, espacio):
             return True
         if _re_prov and _re_prov.search(arg):
             return True
@@ -514,7 +538,7 @@ def analizar_unidad(t: str, espacio: str, proveedores, variables):
         if any(es_recurso(a) for a in args):
             escribe = True; break
 
-    tiene = (lit in t) or any(
+    tiene = contiene_espacio(t, espacio) or any(
         re.search(r'\b%s\s*\(' % re.escape(pv), cuerpos) for pv in proveedores) \
         or any(re.search(r'\b%s\b' % re.escape(v), cuerpos) for v in variables)
 

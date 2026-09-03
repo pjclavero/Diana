@@ -132,9 +132,25 @@ MP0_INTEGRATION_PREVIOUS  = 27652ed6cd7ea20989180e1da8165381cf166f6a
   `hotfix/p02-tls-6da16d4`, desplegado en producción pero sin fusionar. El
   provisioning V1 presupone MQTTS/8883, así que **P0-2 debe reconciliarse antes de
   crear `PROVISIONING_BASE`**.
-- **D1b no está en el build de firmware.** Sus seis fuentes están en el árbol pero
-  no en `SRCS` de `diana_core/CMakeLists.txt`: sólo se compilan con gcc de host.
-  `DEVICE_MANAGEMENT_PATH = UNIQUE` **NO está conseguido**.
+- ~~**D1b no está en el build de firmware.**~~ **CADUCADO — ya no es cierto.**
+  Este punto describía el árbol en `9b5e161` (2026-08-25). Desde entonces las seis
+  fuentes de D1b están en `SRCS` de `diana_core/CMakeLists.txt`, compilan con el
+  toolchain xtensa y **23 símbolos D1b sobreviven a `--gc-sections`** en el ELF
+  final (medido con `xtensa-esp32s3-elf-nm`, imagen `espressif/idf:v5.5`).
+
+  Estado vigente, con las propiedades separadas porque no son la misma:
+
+  ```
+  D1B_CORE_IMPLEMENTED                        = YES
+  D1B_RUNTIME_DISPATCH_WIRED                  = YES
+  D1B_SYMBOLS_IN_ELF                          = YES
+  DEVICE_MANAGEMENT_COMMAND_PATH_CURRENT_TREE = UNIQUE
+  DEVICE_MANAGEMENT_COMMAND_TRANSPORT         = NOT_REACHABLE
+  ```
+
+  Ver `docs/firmware/MAPA-FIRMWARE.md` para el detalle. Se corrige aquí porque
+  este fichero abre con «Léeme antes de fusionar nada»: una subafirmación caducada
+  no engaña sobre garantías, pero desinforma igual a quien llegue hoy.
 
 ## Cifras de test: sólo las reproducibles
 

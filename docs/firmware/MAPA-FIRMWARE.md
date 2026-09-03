@@ -135,6 +135,18 @@ CONTRACT_GAP-PROVISION-COMMAND-TOPIC = OPEN
 CONTRACT_GAP-PROVISION-STATE-TOPIC   = OPEN
 ```
 
+Y el límite que sólo cierra el hardware, escrito aquí porque es donde se lee el
+estado y hasta ahora no estaba en ninguna parte del árbol:
+
+```
+D1B_PHYSICAL_CRYPTO_COST = PENDING_PHYSICAL_VALIDATION
+```
+
+El coste real de una verificación P-256 en el ESP32-S3 no se ha medido: la suite
+es de host y el build cruzado demuestra que el código entra en el binario, no lo
+que tarda en ejecutarse. Es un gate físico distinto y no bloquea el cierre del
+núcleo software.
+
 **Bloqueo abierto:** D1b necesita publicar en `provision/state`, un tópico que no
 existe en el enum del firmware (hoy son 9) ni tiene esquema en `contracts/mqtt/`
 (hoy son 13). Los `TopicKind` están congelados y ampliarlos exige ADR.
