@@ -126,7 +126,56 @@ esta fase. Corresponde a MP0-F decidir si el plano firmado entra en
 ### `CONTRACT_GAP-PROVISION-STATE-TOPIC` — OPEN
 
 Sigue abierto y sin cambios: `app_provision.c` deja `out.publish` sin consumir a
-proposito. El plano **recibe y aplica** autoridad pero no **publica** el estado
+proposito. El plano **puede aplicar** autoridad pero no **publica** el estado
 de autoridad resultante (`DEVICE_MANAGEMENT_STATE_PATH = NOT_IMPLEMENTED`).
 MP0-F querra leer ese estado, asi que probablemente sea el primer gap a cerrar
 alli, ya con el contrato abierto.
+
+
+### `CONTRACT_GAP-PROVISION-COMMAND-TOPIC` — OPEN
+
+Hallado por la supervisión final, y es el gap **simétrico** del de estado: el
+firmware **no se suscribe a ningún tópico de provisioning**.
+
+`components/diana_platform_esp/src/mqtt_client.c` suscribe exactamente
+`targets/v1/module/{id}/command`, `.../config/desired`, `.../ota` y
+`targets/v1/system/+/game/state`. El interceptor `diana_prov_app_handle`
+empareja por sufijo `/provision`, que nunca llega. Por tanto, en el binario
+real, **el plano D1b no puede recibir una orden**.
+
+Afirmación correcta, y la única que debe aparecer en el repo:
+
+> D1b puede validar y aplicar una orden que llegue a su entrypoint, pero el
+> firmware actual no dispone de un tópico MQTT contractual suscrito que pueda
+> entregársela.
+
+Estado medido, separando propiedades que no son la misma:
+
+```
+D1B_CORE_IMPLEMENTED                = YES
+D1B_RUNTIME_DISPATCH_WIRED          = YES
+D1B_PRESENT_IN_ELF                  = YES
+DEVICE_MANAGEMENT_COMMAND_TRANSPORT = NOT_REACHABLE
+DEVICE_MANAGEMENT_STATE_PATH        = NOT_IMPLEMENTED
+```
+
+**No se resuelve añadiendo el tópico ahora.** Hacerlo obligaría a introducir un
+`TopicKind` nuevo, es decir a modificar de facto el contrato v1 congelado, y
+justamente para poner verde un gate. Cuando se abra esa puerta debe hacerse
+deliberadamente: ADR, decisión de versión contractual, tópico de comando,
+estado/reporting necesario y esquemas — provisioning completo, no un tópico
+huérfano.
+
+Se transfiere explícitamente, y no desaparece al cerrar MP0:
+
+```
+MP0_ACCEPTED_BLOCKER:
+    CONTRACT_GAP-PROVISION-COMMAND-TOPIC
+    CONTRACT_GAP-PROVISION-STATE-TOPIC
+        -> MP0-F.0 (PROVISIONING CONTRACT GATE)
+```
+
+Consecuencia de alcance, dicha en voz alta: esto **ya no puede esperar a MP1**.
+Antes se creía que sólo faltaba la publicación del estado; ahora se sabe que
+falta también el camino de entrada. Por eso el primer trabajo de MP0-F no es
+escribir `root_key`, sino MP0-F.0.

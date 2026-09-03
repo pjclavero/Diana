@@ -81,9 +81,18 @@ void diana_prov_app_init(diana_app *a)
              diana_prov_state_str((diana_prov_state)a->prov.st.state));
 }
 
-/** Publica module-provision-state. QoS y retain salen de la tabla del contrato,
- *  no de literales: este topico NUNCA se retiene. */
-
+/**
+ * Atiende una orden del plano DEVICE_MANAGEMENT. NO publica nada: el estado de
+ * autoridad resultante se queda sin emitir a proposito
+ * (CONTRACT_GAP-PROVISION-STATE-TOPIC). El comentario que habia aqui hablaba de
+ * publicar module-provision-state y contradecia al `(void)out.publish;` de unas
+ * lineas mas abajo; era un resto de un publicador que no existe.
+ *
+ * OJO AL ALCANCE: esta funcion empareja por sufijo `/provision`, y el firmware
+ * NO se suscribe a ningun topico de provisioning
+ * (CONTRACT_GAP-PROVISION-COMMAND-TOPIC). Es decir, hoy es alcanzable desde el
+ * despacho pero NO desde el transporte.
+ */
 bool diana_prov_app_handle(diana_app *a, const diana_platform_rx *rx)
 {
     /* Emparejado por SUFIJO exacto. Con strstr(), un topico

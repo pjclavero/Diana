@@ -100,16 +100,40 @@ completo falla. No está cableado a CI.
 
 ## Estado de D1b (plano DEVICE_MANAGEMENT firmado)
 
+Este bloque mezclaba tres propiedades distintas y estaba **caducado**: decía
+`D1B_RUNTIME_LINKED = NO` y que ningún símbolo sobrevivía al enlazado, cuando
+sobreviven 23 (medido con `xtensa-esp32s3-elf-nm` sobre el ELF real). Se separan
+las tres, porque confundirlas es justo lo que hay que evitar al acercarse a
+`main`:
+
 ```
-D1B_SOURCES_IN_CMAKE = YES
-D1B_XTENSA_COMPILE   = PASS     los 6 fuentes producen objeto, 0 warnings
-D1B_RUNTIME_LINKED   = NO       --gc-sections los elimina: nada los llama aún
-DEVICE_MANAGEMENT_PATH = NO ES UNIQUE todavía
+D1B_CORE_IMPLEMENTED       = YES
+D1B_SOURCES_IN_CMAKE       = YES
+D1B_XTENSA_COMPILE         = PASS   los 6 fuentes producen objeto, 0 warnings
+D1B_RUNTIME_DISPATCH_WIRED = YES    app_commands.c intercepta antes del juego
+D1B_SYMBOLS_IN_ELF         = YES    23 símbolos D1b tras --gc-sections
+D1B_MQTT_REACHABLE         = NO     ← el firmware NO se suscribe a /provision
 ```
 
-El binario no crece porque ningún símbolo de D1b sobrevive al enlazado.
-**Es el estado esperado**, no un fallo: el cableado del runtime es trabajo
-pendiente. No se meten referencias artificiales para inflar el ELF.
+**La distinción importa.** D1b puede validar y aplicar una orden que llegue a su
+entrypoint, y todo eso está de verdad dentro del firmware: parse,
+canonicalización, firma P-256, raíz y delegación, direccionamiento, epoch,
+secuencia/replay, runtime, persistencia y fallo cerrado. Lo que falta es el
+**puente**: `mqtt_client.c` suscribe `command`, `config/desired`, `ota` y el
+estado de partida, y ningún tópico de provisioning. El interceptor empareja por
+sufijo `/provision`, así que hoy no puede recibir nada.
+
+No se añade ese tópico ahora, y es una decisión deliberada: hacerlo exigiría un
+`TopicKind` nuevo, es decir modificar de facto el contrato v1 congelado sólo
+para poner verde un gate. Se abrirá como parte de **MP0-F.0 (PROVISIONING
+CONTRACT GATE)**, con ADR y evolución contractual completa —comando, estado y
+lo que corresponda—, no con un tópico huérfano.
+
+```
+DEVICE_MANAGEMENT_COMMAND_TRANSPORT  = NOT_REACHABLE
+CONTRACT_GAP-PROVISION-COMMAND-TOPIC = OPEN
+CONTRACT_GAP-PROVISION-STATE-TOPIC   = OPEN
+```
 
 **Bloqueo abierto:** D1b necesita publicar en `provision/state`, un tópico que no
 existe en el enum del firmware (hoy son 9) ni tiene esquema en `contracts/mqtt/`
