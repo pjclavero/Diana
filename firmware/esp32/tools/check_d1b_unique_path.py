@@ -37,30 +37,54 @@ Por eso ahora hay dos capas independientes:
   depender del NOMBRE del envoltorio. Asi caen wrapper -> wrapper -> kv_set y
   las funciones llamadas `persist`, `flush` o `put`.
 
-LIMITE RESIDUAL, DECLARADO (no descubierto por un revisor: medido aqui).
+QUE SE PUEDE Y QUE NO SE PUEDE AFIRMAR CON ESTO
 
-Ninguna de las dos capas es una garantia semantica completa: no hay AST ni
-analisis de flujo de datos. Se probaron adversarialmente las variantes
-conocidas y este es el resultado exacto:
+Esta herramienta NO demuestra una propiedad matematica sobre todo programa C
+posible. No hay AST ni analisis de flujo de datos. Por eso hay DOS afirmaciones
+distintas, y conviene no confundirlas nunca:
 
-  wrapper -> wrapper -> kv_set (dos saltos)        ROJO
-  funcion que DEVUELVE el namespace                ROJO
-  static const char ns[] = "diana_prov"            ROJO
+  DEVICE_MANAGEMENT_COMMAND_PATH_CURRENT_TREE = UNIQUE
+      Sobre el arbol compilado ACTUAL: no existe un segundo camino. Es una
+      afirmacion sobre este codigo, verificada sobre las unidades reales.
+
+  D1B_PATH_REGRESSION_GUARD = PASS_WITH_DECLARED_DYNAMIC_RESIDUAL
+      La herramienta pone rojo manana si alguien introduce un bypass, CON un
+      residual declarado abajo.
+
+Tabla adversarial, medida ejecutando cada caso (no razonada):
+
+  literal directo                                   ROJO
+  literal concatenado  "diana" "_prov"              ROJO
+  escape hexadecimal   "\x64iana_prov"              ROJO
+  array de caracteres  {'d','i','a',...}            ROJO
+  array de codigos     {100,105,97,...}             ROJO
+  array hexadecimal    {0x64,0x69,...}              ROJO
+  macro de dos niveles                              ROJO
+  envoltorio kv_set_str                             ROJO
+  wrapper -> wrapper -> kv_set                      ROJO
+  funcion que devuelve el namespace                 ROJO
+  static inline que escribe, en cabecera            ROJO
+  cabecera en directorio no listado (stub)          ROJO
+  colision de nombre base en otro componente        ROJO
+  segundo entrypoint inline en cabecera             ROJO
+  diana_prov_handle directo desde el runtime        ROJO
+  interceptor que no corta el flujo                 ROJO
+
   namespace CONSTRUIDO EN EJECUCION (strcpy+strcat) SOBREVIVE
 
-El ultimo no lo puede ver ningun analisis de texto, por bueno que sea: el valor
-no existe hasta que corre el programa. Cerrarlo exigiria analisis de flujo de
-datos o una barrera en tiempo de ejecucion en el propio HAL. Queda declarado
-como
+RESIDUAL DECLARADO:
 
     D1B_PATH_STATIC_ANALYSIS_RESIDUAL = dynamic-namespace-construction
 
-y se documenta a proposito: la funcion de este guardian es que una regresion
-honesta o un anadido descuidado se pongan rojos manana, no detener a alguien
-que ya esta escribiendo firmware y construye el nombre a mano para esconderlo.
+    strcpy(ns, "diana"); strcat(ns, "_prov");
 
-Por eso la propiedad se declara UNIQUE solo cuando AMBAS capas pasan, y con
-este limite dicho en voz alta.
+Ningun analisis estatico de texto puede verlo: el valor no existe hasta que
+corre el programa. Cerrarlo exigiria analisis de flujo de datos o una barrera
+en tiempo de ejecucion en el propio HAL, y construir eso dentro de D1b seria
+otro nivel de tooling. Se declara en voz alta en vez de vender el analisis
+estatico como garantia absoluta: la funcion de este guardian es que una
+regresion honesta se ponga roja manana, no detener a quien ya escribe firmware
+y construye el nombre a mano para esconderlo.
 
 Propiedades:
   P1  El VALOR del espacio de autoridad solo aparece en unidades de diana_core.
@@ -100,39 +124,95 @@ def cabeceras():
         yield p
 
 def incluidos():
-    dirs = [FW / "components" / d / "include" for d in os.listdir(FW / "components")
-            if (FW / "components" / d / "include").is_dir()]
-    dirs += [FW / "main", FW / "boards", FW / "components"]
-    dirs += [d for d in (FW / "components").glob("*/src")]
-    return [str(d) for d in dirs if d.is_dir()]
+    """TODO directorio del arbol que contenga cabeceras, mas el de stubs
+    explicitos. Antes solo se miraban unos pocos directorios elegidos a mano, y
+    una cabecera real del build que viviera fuera de esa lista acababa
+    convertida en un stub vacio (evasion 11c). Aqui no se elige: se incluye
+    cualquier sitio donde el proyecto tenga una cabecera."""
+    dirs = {str(FW), str(FW / "tools/idf_stubs")}
+    for h in FW.rglob("*.h"):
+        if any(x in h.parts for x in EXCLUIDOS):
+            continue
+        dirs.add(str(h.parent))
+        # tambien el directorio padre, para los includes con prefijo
+        # ("freertos/queue.h", "diana/provisioning.h", ...)
+        dirs.add(str(h.parent.parent))
+    return sorted(dirs)
+
+# Cabeceras EXTERNAS admitidas. Todo lo que falte y no case con esto es FALLO
+# DURO: la lista es explicita a proposito, para que anadir una dependencia
+# externa sea una decision visible y no un stub silencioso.
+EXTERNAS_OK = (
+    "esp_", "driver/", "freertos/", "nvs", "mqtt_client.h", "cJSON.h",
+    "led_strip", "spi_flash_", "sdkconfig.h", "soc/", "hal/", "sys/",
+    "lwip/", "unity", "protocol_examples",
+)
+
+def es_externa_admitida(h: str) -> bool:
+    return any(h.startswith(x) or h.split("/")[-1].startswith(x) for x in EXTERNAS_OK)
+
+def existe_en_repo(h: str):
+    """Ruta real si la cabecera pertenece al proyecto. Se compara por sufijo de
+    ruta y, si no, por nombre de fichero."""
+    for c in FW.rglob("*.h"):
+        if any(x in c.parts for x in EXCLUIDOS):
+            continue
+        # Si el include lleva prefijo de directorio ("freertos/queue.h"), se
+        # exige que coincida la RUTA, no el nombre suelto: `diana/queue.h` no
+        # es `freertos/queue.h`, y confundirlos daba diez falsos rojos.
+        if "/" in h:
+            if str(c).endswith("/" + h):
+                return c
+        elif c.name == h:
+            return c
+    return None
 
 def preprocesar(p: pathlib.Path, stubs: pathlib.Path, incs):
-    """`gcc -E` tolerante: las cabeceras de ESP-IDF no estan en esta maquina, y
-    no hacen falta para esta comprobacion. Se generan stubs vacios para lo que
-    falte, iterando hasta que la unidad se preprocesa. Si aun asi no sale, se
-    devuelve None y el llamante lo declara NO ANALIZADA en vez de callarselo."""
-    cmd_base = ["gcc", "-E", "-P", "-nostdinc", "-I", str(stubs)]
+    """Preprocesa una unidad. Devuelve (texto, error).
+
+    Reglas, sin excepciones:
+      - cabecera del PROYECTO que no resuelve  -> FALLO DURO (error), nunca stub.
+      - cabecera EXTERNA de la lista explicita -> stub (del directorio
+        tools/idf_stubs si existe uno curado; vacio si no).
+      - cualquier otra cosa que falte          -> FALLO DURO.
+
+    Antes se generaba un stub vacio para TODO lo que faltara, en silencio. Eso
+    permitia esconder un bypass en una cabecera que el guardian no supiera
+    localizar: le amputaba el contenido y daba la unidad por buena."""
+    curados = FW / "tools/idf_stubs"
+    cmd_base = ["gcc", "-E", "-P"]
     for d in incs:
         cmd_base += ["-I", d]
+    cmd_base += ["-I", str(stubs)]
     for _ in range(400):
         r = subprocess.run(cmd_base + [str(p)], capture_output=True, text=True)
         if r.returncode == 0:
-            return r.stdout
-        falta = re.findall(r'([\w/\.\-\+]+\.h): No such file or directory', r.stderr)
+            return r.stdout, None
+        falta = re.findall(r"([\w/\.\-\+]+\.h): No such file or directory", r.stderr)
         falta += re.findall(r"fatal error: ([\w/\.\-\+]+\.h)", r.stderr)
         if not falta:
-            return None
+            return None, "no preprocesa: %s" % r.stderr.strip().splitlines()[-1:]
         creado = False
-        for h in set(falta):
+        for h in sorted(set(falta)):
             destino = stubs / h
             if destino.exists():
                 continue
+            real = existe_en_repo(h)
+            if real is not None:
+                return None, ("la cabecera '%s' EXISTE en el proyecto (%s) pero no se "
+                              "resolvio. NO se estuba: seria justo donde esconder un "
+                              "bypass." % (h, real.relative_to(FW)))
+            if not es_externa_admitida(h):
+                return None, ("cabecera desconocida '%s': no esta en el proyecto ni en "
+                              "la lista de externas admitidas. Anadela a EXTERNAS_OK "
+                              "conscientemente." % h)
             destino.parent.mkdir(parents=True, exist_ok=True)
-            destino.write_text("")
+            curado = curados / h
+            destino.write_text(curado.read_text() if curado.is_file() else "")
             creado = True
         if not creado:
-            return None
-    return None
+            return None, "no progresa resolviendo cabeceras"
+    return None, "demasiadas iteraciones resolviendo cabeceras"
 
 def unir_literales(t: str) -> str:
     """El preprocesador NO concatena literales adyacentes: es la fase 6 del
@@ -141,6 +221,79 @@ def unir_literales(t: str) -> str:
     while ant != t:
         ant = t
         t = re.sub(r'"((?:[^"\\]|\\.)*)"\s*"((?:[^"\\]|\\.)*)"', r'"\1\2"', t)
+    return t
+
+ESCAPES = {'n': '\n', 't': '\t', 'r': '\r', '0': '\0', '\\': '\\',
+           '"': '"', "'": "'", 'a': '\a', 'b': '\b', 'f': '\f', 'v': '\v'}
+
+def valor_literal(cuerpo: str) -> str:
+    """Contenido efectivo de un literal C, deshaciendo escapes. Sin esto,
+    "\\x64iana_prov" no se parecia a "diana_prov" y atravesaba el guardian
+    (evasion 11a)."""
+    out, i = [], 0
+    while i < len(cuerpo):
+        c = cuerpo[i]
+        if c != '\\':
+            out.append(c); i += 1; continue
+        i += 1
+        if i >= len(cuerpo): break
+        e = cuerpo[i]
+        if e == 'x':
+            j = i + 1
+            while j < len(cuerpo) and cuerpo[j] in "0123456789abcdefABCDEF":
+                j += 1
+            if j > i + 1:
+                out.append(chr(int(cuerpo[i+1:j], 16))); i = j; continue
+            out.append('x'); i += 1; continue
+        if e in "01234567":
+            j = i
+            while j < len(cuerpo) and j < i + 3 and cuerpo[j] in "01234567":
+                j += 1
+            out.append(chr(int(cuerpo[i:j], 8))); i = j; continue
+        out.append(ESCAPES.get(e, e)); i += 1
+    return "".join(out)
+
+def normalizar_valores(t: str, espacio: str) -> str:
+    """Deja el texto en una forma donde el recurso sea reconocible con
+    independencia de COMO se haya escrito. Dos normalizaciones, cada una nacida
+    de una evasion real y medida:
+
+      11a  "\\x64iana_prov"                        -> escapes deshechos
+      11b  {'d','i','a','n','a','_','p','r','o','v'} -> inicializador por
+           caracteres reconstruido, siempre que sea constante evaluable.
+
+    NO cubre la construccion en ejecucion (strcpy+strcat): ese residual queda
+    declarado, no disimulado."""
+    def _lit(m):
+        return '"%s"' % valor_literal(m.group(1))
+    t = re.sub(r'"((?:[^"\\]|\\.)*)"', _lit, t)
+
+    def _arr(m):
+        """Reconstruye un inicializador constante de caracteres. Acepta las tres
+        formas equivalentes, porque las tres producen el mismo recurso:
+          {'d','i','a',...}          caracteres
+          {100, 105, 97, ...}        codigos decimales
+          {0x64, 0x69, ...}          codigos hexadecimales, con o sin (char)"""
+        piezas = [x.strip() for x in m.group(1).split(",")]
+        if not piezas or len(piezas) < 2:
+            return m.group(0)
+        out = []
+        for z in piezas:
+            z = re.sub(r"^\(\s*(?:unsigned\s+|signed\s+)?char\s*\)\s*", "", z)
+            mc = re.fullmatch(r"'((?:[^'\\\\]|\\\\.)*)'", z)
+            if mc:
+                out.append(valor_literal(mc.group(1))); continue
+            mn = re.fullmatch(r"(0[xX][0-9a-fA-F]+|\d+)", z)
+            if mn:
+                try:
+                    out.append(chr(int(mn.group(1), 0)))
+                except ValueError:
+                    return m.group(0)
+                continue
+            return m.group(0)   # algo que no es constante: no se toca
+        s2 = "".join(out).rstrip("\0")
+        return '= "%s"' % s2 if s2 else m.group(0)
+    t = re.sub(r'=\s*\{([^{}]*)\}', _arr, t)
     return t
 
 def argumentos(texto: str, pos: int):
@@ -244,11 +397,11 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         stubs = pathlib.Path(tmp)
         for p in unidades():
-            t = preprocesar(p, stubs, incs)
+            t, err = preprocesar(p, stubs, incs)
             if t is None:
-                no_analizadas.append(str(p.relative_to(FW)))
+                no_analizadas.append("%s: %s" % (p.relative_to(FW), err))
                 continue
-            t = unir_literales(t)
+            t = normalizar_valores(unir_literales(t), espacio)
             nombra, escribe, entradas = analizar_unidad(t, espacio)
             rel = str(p.relative_to(FW))
             if nombra and not es_nucleo(p):
@@ -316,7 +469,8 @@ def main() -> int:
         print("D1b camino unico: %d FALLOS" % len(fallos))
         for f in fallos: print("  FALLO %s" % f)
         return 1
-    print("D1b camino unico: preprocesado + grafo de llamadas  ok")
+    print("D1b camino unico: CURRENT_TREE = UNIQUE · guarda de regresion PASS "
+          "(residual declarado: construccion dinamica del namespace)")
     return 0
 
 if __name__ == "__main__":

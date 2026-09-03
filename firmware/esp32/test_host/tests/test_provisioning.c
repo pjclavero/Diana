@@ -871,6 +871,22 @@ static void test_vocabulary(void)
  *
  *     SEQ_GUARD_FULL_ANTI_REPLAY = DEFERRED_TO_A3_B5
  *
+ * AVISO DE ALCANCE (revision independiente, 2a ronda). Las pruebas de este
+ * bloque asocian las guardas A MANO con diana_prov_set_guards(). En el firmware
+ * NADIE lo hace: no hay ni una llamada a diana_prov_set_guards,
+ * diana_seq_guard_set_init ni diana_seq_guard_check en main/ ni en components/,
+ * y diana_seq_guard_check ni siquiera esta en el ELF (--gc-sections lo retira).
+ * Es decir, en el binario ctx->guards == NULL siempre y reprovision_guards()
+ * retorna en su primera linea.
+ *
+ * Por tanto estas secciones son prueba de API/unidad, NO evidencia del
+ * comportamiento del binario. Distincion que se mantiene explicita:
+ *
+ *     D1B_PROVISIONING_REPLAY_GUARD = WIRED + ACTIVE
+ *         (la barrera de D1b es last_provisioning_sequence en provisioning.c,
+ *          esa SI se ejecuta y SI esta en el ELF)
+ *     MULTIPLANE_SEQ_GUARDS         = NOT_WIRED, DEFERRED_TO_A3_B5
+ *
  * Lo que SI se cubre ya, porque dejo de ser hipotetico: la ventana deslizante
  * de `check`, incluido el replay en offsets cercanos al maximo. Se saco de lo
  * diferido cuando se demostro, ejecutando, que una mutacion pequena de
@@ -938,6 +954,43 @@ static void test_seq_guard_check_truth_table(void)
 {
     uint8_t eA[16]; memset(eA, 0xA1, sizeof(eA));
     uint8_t eB[16]; memset(eB, 0xB2, sizeof(eB));
+
+    SECTION("SEQ_GUARD_CHECK_TRUTH_TABLE: el epoch se compara ENTERO (16 bytes)");
+    {
+        /* Los epoch de esta bateria eran 0xA1 x16 y 0xB2 x16: difieren en TODOS
+         * los bytes, asi que comparar solo el primero bastaba para pasar. Una
+         * revision independiente lo demostro dejando la suite en verde con
+         * memcmp(..., 1). Un epoch forjado que compartiera el primer byte
+         * habria atravesado la barrera.
+         *
+         * Aqui las parejas difieren en EXACTAMENTE UN BYTE, y se cubren las
+         * posiciones que distinguen un memcmp truncado a 1, 8 o 15. */
+        static const int POS[] = {0, 1, 7, 14, 15};
+        for (size_t k = 0; k < sizeof(POS) / sizeof(POS[0]); ++k) {
+            uint8_t base[16], var[16];
+            for (int i = 0; i < 16; ++i) base[i] = (uint8_t)(i * 0x11);
+            memcpy(var, base, 16);
+            var[POS[k]] = (uint8_t)(var[POS[k]] ^ 0x01u);  /* un solo bit */
+
+            fixture f; fixture_init(&f);
+            diana_seq_guard g;
+            diana_seq_guard_init(&g, &f.hal);
+            diana_seq_guard_reprovision(&g, base);
+
+            char desc[96];
+            snprintf(desc, sizeof(desc),
+                     "epoch que difiere SOLO en el byte %d: RECHAZADO", POS[k]);
+            CHECK_EQ_INT(diana_seq_guard_check(&g, var, 1, "x", NULL),
+                         DIANA_SEQ_REJECTED_EPOCH, desc);
+
+            /* Control positivo: el epoch identico SI pasa. Sin esto, la
+             * comprobacion de arriba pasaria aunque se rechazara todo. */
+            snprintf(desc, sizeof(desc),
+                     "control byte %d: el epoch IDENTICO se acepta", POS[k]);
+            CHECK_EQ_INT(diana_seq_guard_check(&g, base, 1, "y", NULL),
+                         DIANA_SEQ_ACCEPTED, desc);
+        }
+    }
 
     SECTION("SEQ_GUARD_CHECK_TRUTH_TABLE: epoch");
     {
@@ -1118,7 +1171,7 @@ static void test_seq_guard_d1b_used_paths(void)
 {
     const int TODAS = SEQ_GUARD_ISSUER_COUNT * SEQ_GUARD_PLANE_COUNT;
 
-    SECTION("SEQ_GUARD_D1B_USED_PATHS: reprovision cambia el epoch y limpia la ventana");
+    SECTION("SEQ_GUARD_API_ONLY [NOT_WIRED]: reprovision cambia el epoch y limpia la ventana");
     {
         fixture f; fixture_init(&f);
         diana_seq_guard g;
@@ -1147,7 +1200,7 @@ static void test_seq_guard_d1b_used_paths(void)
         CHECK(!g.state.has_seq, "reprovision borra la marca de secuencia vista");
     }
 
-    SECTION("SEQ_GUARD_D1B_USED_PATHS: COMMIT reprovisiona las nueve con el epoch NUEVO");
+    SECTION("SEQ_GUARD_API_ONLY [NOT_WIRED]: COMMIT reprovisionaria las nueve, SI estuvieran asociadas");
     {
         fixture f; diana_prov_outcome o; fixture_init(&f);
         static diana_seq_guard_set guards;
