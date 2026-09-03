@@ -1,52 +1,83 @@
 #!/usr/bin/env python3
-"""DEVICE_MANAGEMENT_COMMAND_PATH = UNIQUE, fijado sobre el codigo.
+"""DEVICE_MANAGEMENT_COMMAND_PATH, fijado sobre el codigo en DOS CAPAS.
 
-Afirmar que "no hay otro camino" es facil de escribir y facil de romper sin
-enterarse. La version anterior de este guardian lo intentaba con expresiones
-regulares y una supervision independiente la evadio por TRES vias triviales,
-todas con la suite entera en verde:
+Historia, porque explica el diseno. Este guardian ha sido evadido dos veces:
 
-  a) kv_set(..., "diana_prov", ...) con el literal en vez de la macro;
-  b) kv_set_str(hal, DIANA_PROV_NVS_NS, ...), un envoltorio que ya existia en
-     el arbol y que el patron `kv_set\\s*\\(` no reconocia;
-  c) un fichero en otro componente con el MISMO nombre base, porque se
-     comparaban nombres (p.name) en vez de rutas.
+  1ª ronda (supervision S1), sobre fuente cruda y nombres base:
+     (a) literal "diana_prov" en vez de la macro;
+     (b) envoltorio kv_set_str, que ya existia en el arbol;
+     (c) fichero con el MISMO nombre base en otro componente.
 
-La leccion no es "mejor regex". Es que una propiedad estructural no puede
-depender de detectar al infractor. Por eso la proteccion es ahora, en este
-orden:
+  2ª ronda (revision post-fix), sobre fuente cruda con parentesis equilibrados:
+     (A-1) concatenacion de literales adyacentes: "diana" "_prov";
+     (A-2) static inline que escribe, dentro de una cabecera;
+     (A-3) igual, en boards/, fuera de components/ y main/;
+     (A-4) macro de dos niveles: NS_LVL2 -> NS_LVL1 -> "diana_prov";
+     (A-5) segundo entrypoint static inline en una cabecera.
 
-  1. ENCAPSULACION. El espacio NVS de la autoridad ya no es publico: vive en
-     components/diana_core/src/prov_nvs.h. Fuera de diana_core nadie puede
-     NOMBRARLO, y nombrarlo es la capacidad de escribir en el. La unica via
-     desde fuera es diana_prov_factory_read(), que es de solo lectura.
-  2. Este analizador, que comprueba que la encapsulacion sigue en pie y que el
-     camino de entrada sigue siendo uno. Trabaja sobre RUTAS, resuelve las
-     macros hasta su valor y sigue los envoltorios; no busca una forma de
-     escribir una llamada.
+La leccion de las dos rondas es la misma: mientras el analisis mire TEXTO
+FUENTE, siempre hay otra forma de escribir lo mismo. Y la encapsulacion sola
+tampoco basta: protege la MACRO, no el RECURSO -- "diana_prov" son diez
+caracteres que cualquiera puede teclear.
 
-Propiedades comprobadas:
+Por eso ahora hay dos capas independientes:
 
-  P1  El VALOR del espacio de autoridad solo aparece en diana_core.
-  P2  La cabecera privada solo se incluye desde diana_core.
-  P3  Nadie fuera de diana_core escribe ese espacio, ni directamente ni a
-      traves de un envoltorio.
-  P4  El plano tiene UN solo punto de entrada desde el runtime, y por la
-      puerta correcta (diana_prov_message, no diana_prov_handle).
-  P5  El interceptor se ejecuta ANTES del despacho de juego y corta el flujo.
+  CAPA A · PREPROCESADO. Se preprocesa cada unidad de traduccion real con
+  `gcc -E`. Ahi las macros ya estan expandidas (a cualquier profundidad), los
+  `static inline` de las cabeceras estan materializados dentro de la unidad, y
+  las cabeceras de cualquier directorio entran por inclusion. Ademas se
+  concatenan los literales adyacentes, que el preprocesador NO une (es una fase
+  posterior del compilador). Asi "diana" "_prov", NS_LVL2 y "diana_prov" son el
+  mismo token.
 
-Las tres evasiones de la supervision son ahora mutaciones permanentes: cada una
-tiene que poner esto en rojo. Se comprueban con --autotest.
+  CAPA B · GRAFO DE LLAMADAS. Sobre esa misma unidad preprocesada se construye
+  el grafo de llamadas y se PROPAGA el recurso: si una funcion recibe el
+  espacio como argumento y lo pasa a otra, la marca viaja. El conjunto de
+  funciones persistentes se calcula por punto fijo partiendo de kv_set, sin
+  depender del NOMBRE del envoltorio. Asi caen wrapper -> wrapper -> kv_set y
+  las funciones llamadas `persist`, `flush` o `put`.
+
+LIMITE RESIDUAL, DECLARADO (no descubierto por un revisor: medido aqui).
+
+Ninguna de las dos capas es una garantia semantica completa: no hay AST ni
+analisis de flujo de datos. Se probaron adversarialmente las variantes
+conocidas y este es el resultado exacto:
+
+  wrapper -> wrapper -> kv_set (dos saltos)        ROJO
+  funcion que DEVUELVE el namespace                ROJO
+  static const char ns[] = "diana_prov"            ROJO
+  namespace CONSTRUIDO EN EJECUCION (strcpy+strcat) SOBREVIVE
+
+El ultimo no lo puede ver ningun analisis de texto, por bueno que sea: el valor
+no existe hasta que corre el programa. Cerrarlo exigiria analisis de flujo de
+datos o una barrera en tiempo de ejecucion en el propio HAL. Queda declarado
+como
+
+    D1B_PATH_STATIC_ANALYSIS_RESIDUAL = dynamic-namespace-construction
+
+y se documenta a proposito: la funcion de este guardian es que una regresion
+honesta o un anadido descuidado se pongan rojos manana, no detener a alguien
+que ya esta escribiendo firmware y construye el nombre a mano para esconderlo.
+
+Por eso la propiedad se declara UNIQUE solo cuando AMBAS capas pasan, y con
+este limite dicho en voz alta.
+
+Propiedades:
+  P1  El VALOR del espacio de autoridad solo aparece en unidades de diana_core.
+  P2  La cabecera privada prov_nvs.h no se incluye fuera de diana_core.
+  P3  Solo provisioning.c alcanza una escritura con ese recurso (punto fijo).
+  P4  Un unico entrypoint desde fuera del nucleo, y por la puerta correcta.
+  P5  El interceptor va ANTES del despacho de juego y corta el flujo.
 """
-import re, sys, pathlib
+import re, os, sys, subprocess, tempfile, pathlib
 
 FW = pathlib.Path(__file__).resolve().parents[1]
 NUCLEO_DIR = FW / "components/diana_core"
 PRIV = NUCLEO_DIR / "src/prov_nvs.h"
 DESPACHO = FW / "main/app_commands.c"
 
-# Nombre del espacio NVS de la autoridad, leido de la cabecera privada. No se
-# escribe aqui a mano: si alguien lo renombra, esto lo sigue.
+EXCLUIDOS = ("build", "build-host", "test_host", "managed_components", "diagnostics")
+
 def valor_espacio() -> str:
     m = re.search(r'#define\s+DIANA_PROV_NVS_NS\s+"([^"]+)"',
                   PRIV.read_text(encoding="utf8"))
@@ -54,47 +85,65 @@ def valor_espacio() -> str:
         raise SystemExit("no encuentro DIANA_PROV_NVS_NS en %s" % PRIV)
     return m.group(1)
 
-def ficheros(exts=(".c", ".h")):
-    """Solo arboles de FUENTE. `build/` contiene generados y enlaces rotos de
-    ESP-IDF; `diagnostics/` es otro proyecto; test_host es codigo de prueba con
-    acceso privado DECLARADO (simula corrupcion del estado persistido)."""
-    for base in ("components", "main"):
-        for p in sorted((FW / base).rglob("*")):
-            if p.suffix not in exts or not p.is_file():
+def unidades():
+    """Unidades de traduccion reales del firmware. Se recorre TODO el arbol, no
+    solo components/ y main/: una cabecera en boards/ era una de las evasiones."""
+    for p in sorted(FW.rglob("*.c")):
+        if any(x in p.parts for x in EXCLUIDOS):
+            continue
+        yield p
+
+def cabeceras():
+    for p in sorted(FW.rglob("*.h")):
+        if any(x in p.parts for x in EXCLUIDOS):
+            continue
+        yield p
+
+def incluidos():
+    dirs = [FW / "components" / d / "include" for d in os.listdir(FW / "components")
+            if (FW / "components" / d / "include").is_dir()]
+    dirs += [FW / "main", FW / "boards", FW / "components"]
+    dirs += [d for d in (FW / "components").glob("*/src")]
+    return [str(d) for d in dirs if d.is_dir()]
+
+def preprocesar(p: pathlib.Path, stubs: pathlib.Path, incs):
+    """`gcc -E` tolerante: las cabeceras de ESP-IDF no estan en esta maquina, y
+    no hacen falta para esta comprobacion. Se generan stubs vacios para lo que
+    falte, iterando hasta que la unidad se preprocesa. Si aun asi no sale, se
+    devuelve None y el llamante lo declara NO ANALIZADA en vez de callarselo."""
+    cmd_base = ["gcc", "-E", "-P", "-nostdinc", "-I", str(stubs)]
+    for d in incs:
+        cmd_base += ["-I", d]
+    for _ in range(400):
+        r = subprocess.run(cmd_base + [str(p)], capture_output=True, text=True)
+        if r.returncode == 0:
+            return r.stdout
+        falta = re.findall(r'([\w/\.\-\+]+\.h): No such file or directory', r.stderr)
+        falta += re.findall(r"fatal error: ([\w/\.\-\+]+\.h)", r.stderr)
+        if not falta:
+            return None
+        creado = False
+        for h in set(falta):
+            destino = stubs / h
+            if destino.exists():
                 continue
-            if "build" in p.parts or "test_host" in p.parts:
-                continue
-            yield p
+            destino.parent.mkdir(parents=True, exist_ok=True)
+            destino.write_text("")
+            creado = True
+        if not creado:
+            return None
+    return None
 
-def rel(p: pathlib.Path) -> str:
-    return str(p.relative_to(FW))
-
-def codigo(p: pathlib.Path) -> str:
-    """Sin comentarios: un comentario que menciona kv_set no escribe nada."""
-    t = p.read_text(encoding="utf8", errors="ignore")
-    t = re.sub(r'/\*.*?\*/', ' ', t, flags=re.S)
-    return re.sub(r'//[^\n]*', ' ', t)
-
-def es_nucleo(p: pathlib.Path) -> bool:
-    """Por RUTA, no por nombre. Un fichero llamado igual en otro componente NO
-    es el nucleo: esa colision de nombre base era una de las evasiones."""
-    return NUCLEO_DIR in p.parents
-
-def macros_del_espacio(espacio: str):
-    """Todo identificador que se expanda al valor del espacio, en cualquier
-    cabecera del arbol. Asi da igual que se use la macro o el literal: las dos
-    formas quedan reducidas al mismo hecho -- el fichero nombra el recurso."""
-    nombres = set()
-    for p in ficheros((".h",)):
-        for m in re.finditer(r'#define\s+(\w+)\s+"([^"]*)"', p.read_text(encoding="utf8", errors="ignore")):
-            if m.group(2) == espacio:
-                nombres.add(m.group(1))
-    return nombres
+def unir_literales(t: str) -> str:
+    """El preprocesador NO concatena literales adyacentes: es la fase 6 del
+    compilador. Aqui se hace, porque "diana" "_prov" es el mismo recurso."""
+    ant = None
+    while ant != t:
+        ant = t
+        t = re.sub(r'"((?:[^"\\]|\\.)*)"\s*"((?:[^"\\]|\\.)*)"', r'"\1\2"', t)
+    return t
 
 def argumentos(texto: str, pos: int):
-    """Lista de argumentos de la llamada que empieza en `pos` (indice del '('),
-    con parentesis EQUILIBRADOS. La version anterior usaba `[^;]*`, que se
-    perdia en cuanto habia una llamada anidada o un ';' dentro."""
     prof, ini, args = 0, pos + 1, []
     i = pos
     while i < len(texto):
@@ -110,92 +159,145 @@ def argumentos(texto: str, pos: int):
         i += 1
     return args, len(texto)
 
-def llamadas(texto: str):
-    """(nombre, [argumentos]) de cada llamada del fichero."""
-    for m in re.finditer(r'\b(\w+)\s*\(', texto):
-        args, fin = argumentos(texto, m.end() - 1)
+DEF_FUNC = re.compile(r'(?:^|[};])\s*(?:static\s+|inline\s+|extern\s+)*'
+                      r'[\w\*\s]+?\b(\w+)\s*\(([^;{)]*)\)\s*\{', re.M)
+
+def funciones(t: str):
+    """(nombre, parametros, cuerpo) de cada definicion de la unidad."""
+    for m in DEF_FUNC.finditer(t):
+        ini = t.index('{', m.end() - 1)
+        prof, i = 0, ini
+        while i < len(t):
+            if t[i] == '{': prof += 1
+            elif t[i] == '}':
+                prof -= 1
+                if prof == 0: break
+            i += 1
+        yield m.group(1), m.group(2), t[ini:i]
+
+def llamadas(t: str):
+    for m in re.finditer(r'\b(\w+)\s*\(', t):
+        args, _ = argumentos(t, m.end() - 1)
         yield m.group(1), args
 
-def analizar(espacio: str):
-    fallos = []
-    tokens = macros_del_espacio(espacio) | {'"%s"' % espacio}
+def analizar_unidad(t: str, espacio: str):
+    """Devuelve (nombra, alcanza_escritura, entrypoints) para una unidad ya
+    preprocesada y con literales unidos."""
+    lit = '"%s"' % espacio
+    nombra = lit in t
 
-    def nombra_espacio(arg: str) -> bool:
-        a = arg.strip()
-        if '"%s"' % espacio in a:
-            return True
-        return any(re.search(r'\b%s\b' % re.escape(t), a) for t in tokens if not t.startswith('"'))
-
-    # --- P1 y P3: quien puede nombrar el espacio, y quien escribe en el ------
-    #
-    # Escribir requiere nombrar. Se recogen las dos cosas por separado para que
-    # el diagnostico diga cual de las dos se rompio.
-    nombradores, escritores = [], []
-    for p in ficheros((".c",)):
-        c = codigo(p)
-        if not any(nombra_espacio(c) for _ in (0,)) and not any(
-                re.search(r'\b%s\b' % re.escape(t), c) for t in tokens if not t.startswith('"')) \
-           and '"%s"' % espacio not in c:
-            continue
-        nombradores.append(rel(p))
-        # Envoltorios: cualquier funcion cuyo nombre contenga kv_set o set_str y
-        # reciba el espacio como argumento. No se busca UNA forma de escribir:
-        # se busca que el recurso viaje a una llamada de escritura.
-        for nombre, args in llamadas(c):
-            if not any(nombra_espacio(a) for a in args):
+    # Punto fijo: funciones que, recibiendo el recurso, terminan escribiendo.
+    persistentes = {"kv_set"}
+    defs = list(funciones(t))
+    cambio = True
+    while cambio:
+        cambio = False
+        for nombre, params, cuerpo in defs:
+            if nombre in persistentes:
                 continue
-            if re.search(r'(^|_)(kv_)?set(_|$)|write|save|store|erase', nombre, re.I):
-                escritores.append(rel(p))
-                break
+            nombres_param = re.findall(r'\b(\w+)\s*(?:\[[^\]]*\])?\s*(?:,|$)', params)
+            for llamada, args in llamadas(cuerpo):
+                if llamada not in persistentes:
+                    continue
+                # el recurso llega literal, o llega por un parametro propio
+                if any(lit in a for a in args) or \
+                   any(any(re.search(r'\b%s\b' % re.escape(pn), a) for pn in nombres_param)
+                       for a in args):
+                    persistentes.add(nombre); cambio = True; break
 
-    fuera_nucleo = [f for f in sorted(set(nombradores))
-                    if not es_nucleo(FW / f)]
-    if fuera_nucleo:
+    # OJO: solo dentro de CUERPOS de funcion. Al preprocesar, las cabeceras
+    # meten sus DECLARACIONES en todas las unidades, y una declaracion
+    # `bool diana_prov_message(...)` se parece a una llamada. Confundirlas daba
+    # cuatro falsos positivos.
+    cuerpos = "\n".join(c for _, _, c in defs)
+
+    escribe = False
+    for llamada, args in llamadas(cuerpos):
+        if llamada in persistentes and any(lit in a for a in args):
+            escribe = True; break
+    # y tambien: llamada a algo persistente cuyo argumento es una variable a la
+    # que se asigno el literal en la misma unidad
+    if not escribe:
+        for m in re.finditer(r'\b(\w+)\s*(?:\[\s*\])?\s*=\s*%s' % re.escape(lit), t):
+            var = m.group(1)
+            for llamada, args in llamadas(cuerpos):
+                if llamada in persistentes and any(re.search(r'\b%s\b' % var, a) for a in args):
+                    escribe = True; break
+            if escribe: break
+
+    entradas = set()
+    for llamada, _ in llamadas(cuerpos):
+        if llamada in ("diana_prov_message", "diana_prov_handle"):
+            entradas.add(llamada)
+    return nombra, escribe, entradas
+
+def es_nucleo(p: pathlib.Path) -> bool:
+    return NUCLEO_DIR in p.parents
+
+def main() -> int:
+    espacio = valor_espacio()
+    fallos, no_analizadas = [], []
+    incs = incluidos()
+
+    nombradores, escritores, entradas_fuera, directos_fuera = [], [], [], []
+
+    with tempfile.TemporaryDirectory() as tmp:
+        stubs = pathlib.Path(tmp)
+        for p in unidades():
+            t = preprocesar(p, stubs, incs)
+            if t is None:
+                no_analizadas.append(str(p.relative_to(FW)))
+                continue
+            t = unir_literales(t)
+            nombra, escribe, entradas = analizar_unidad(t, espacio)
+            rel = str(p.relative_to(FW))
+            if nombra and not es_nucleo(p):
+                nombradores.append(rel)
+            if escribe:
+                escritores.append(rel)
+            if not es_nucleo(p):
+                if "diana_prov_message" in entradas: entradas_fuera.append(rel)
+                if "diana_prov_handle" in entradas: directos_fuera.append(rel)
+
+    # Una unidad que no se puede analizar NO se da por buena: seria justo el
+    # sitio donde esconder un bypass.
+    if no_analizadas:
+        fallos.append("unidades que no se pudieron preprocesar (no se dan por "
+                      "buenas): %s" % sorted(no_analizadas))
+
+    # P1
+    if nombradores:
         fallos.append("nombran el espacio de la autoridad fuera de diana_core: %s. "
-                      "El espacio es privado (src/prov_nvs.h): nombrarlo ES poder "
-                      "escribir en el. Para leer material de fabrica esta "
-                      "diana_prov_factory_read()." % fuera_nucleo)
-
+                      "El valor esta en la cabecera privada src/prov_nvs.h y la "
+                      "unica via de lectura desde fuera es "
+                      "diana_prov_factory_read()." % sorted(set(nombradores)))
+    # P2
+    filtran = [str(p.relative_to(FW)) for p in list(cabeceras()) + list(unidades())
+               if not es_nucleo(p) and
+               re.search(r'#\s*include\s*[<"][^">]*prov_nvs\.h',
+                         p.read_text(encoding="utf8", errors="ignore"))]
+    if filtran:
+        fallos.append("incluyen la cabecera PRIVADA prov_nvs.h fuera de diana_core: %s"
+                      % sorted(set(filtran)))
+    # P3
     escritores = sorted(set(escritores))
     if escritores != ["components/diana_core/src/provisioning.c"]:
-        fallos.append("escriben el espacio NVS de la autoridad: %s. Debe ser solo "
-                      "components/diana_core/src/provisioning.c, y solo por "
-                      "diana_prov_save()." % (escritores or "nadie"))
-
-    # --- P2: la cabecera privada no se filtra fuera del nucleo ---------------
-    filtran = [rel(p) for p in ficheros()
-               if not es_nucleo(p) and re.search(r'#\s*include\s*[<"][^">]*prov_nvs\.h', codigo(p))]
-    if filtran:
-        fallos.append("incluyen la cabecera PRIVADA prov_nvs.h fuera de diana_core: "
-                      "%s. Eso reabre la capacidad de escribir en la autoridad." % filtran)
-
-    # --- P4: un unico punto de entrada, por la puerta correcta ---------------
-    #
-    # components/diana_core/src es la IMPLEMENTACION de la cadena: prov_parse.c
-    # define diana_prov_message() y encadena a diana_prov_handle(). Eso no es un
-    # bypass. Lo seria que el runtime llamase a diana_prov_handle() saltandose
-    # el parser.
-    fuera, directos = [], []
-    for p in ficheros((".c",)):
-        if es_nucleo(p):
-            continue
-        c = codigo(p)
-        for nombre, _ in llamadas(c):
-            if nombre == "diana_prov_message":
-                fuera.append(rel(p))
-            elif nombre == "diana_prov_handle":
-                directos.append(rel(p))
-    fuera = sorted(set(fuera))
-    if fuera != ["main/app_provision.c"]:
-        fallos.append("entran al plano desde fuera del nucleo: %s. Debe haber UN "
-                      "solo punto de entrada (main/app_provision.c)." % (fuera or "ningun sitio"))
-    if directos:
+        fallos.append("alcanzan una escritura del espacio de la autoridad: %s. Debe "
+                      "ser solo components/diana_core/src/provisioning.c."
+                      % (escritores or "nadie"))
+    # P4
+    entradas_fuera = sorted(set(entradas_fuera))
+    if entradas_fuera != ["main/app_provision.c"]:
+        fallos.append("entran al plano desde fuera del nucleo: %s. Debe haber UN solo "
+                      "punto de entrada (main/app_provision.c)."
+                      % (entradas_fuera or "ningun sitio"))
+    if directos_fuera:
         fallos.append("llaman a diana_prov_handle() DIRECTAMENTE desde fuera del "
-                      "nucleo: %s. Eso salta el parser; hay que entrar por "
-                      "diana_prov_message()." % sorted(set(directos)))
-
-    # --- P5: el interceptor, antes del despacho de juego y cortando ----------
-    d = codigo(DESPACHO)
+                      "nucleo: %s. Eso salta el parser." % sorted(set(directos_fuera)))
+    # P5
+    d = DESPACHO.read_text(encoding="utf8")
+    d = re.sub(r'/\*.*?\*/', ' ', d, flags=re.S)
+    d = re.sub(r'//[^\n]*', ' ', d)
     m = re.search(r'void\s+diana_handle_message\s*\([^)]*\)\s*\{', d)
     if not m:
         fallos.append("no encuentro diana_handle_message")
@@ -204,25 +306,18 @@ def analizar(espacio: str):
         icept = cuerpo.find("diana_prov_app_handle")
         parse = re.search(r'cJSON_Parse\w*\s*\(', cuerpo)
         if icept < 0:
-            fallos.append("diana_handle_message NO llama a diana_prov_app_handle: "
-                          "una orden de DEVICE_MANAGEMENT entraria por el canal de juego")
+            fallos.append("diana_handle_message NO llama a diana_prov_app_handle")
         elif parse and icept > parse.start():
-            fallos.append("el interceptor de DEVICE_MANAGEMENT va DESPUES del parseo "
-                          "del canal de juego: debe ir antes")
+            fallos.append("el interceptor de DEVICE_MANAGEMENT va DESPUES del parseo")
         elif not re.search(r'if\s*\(\s*diana_prov_app_handle\s*\([^)]*\)\s*\)\s*return\s*;', cuerpo):
-            fallos.append("el interceptor no corta el flujo: debe ser "
-                          "`if (diana_prov_app_handle(...)) return;`")
-    return fallos
+            fallos.append("el interceptor no corta el flujo")
 
-def main(argv) -> int:
-    espacio = valor_espacio()
-    fallos = analizar(espacio)
     if fallos:
         print("D1b camino unico: %d FALLOS" % len(fallos))
         for f in fallos: print("  FALLO %s" % f)
         return 1
-    print("D1b camino unico: encapsulacion, persistencia, entrada e interceptor  ok")
+    print("D1b camino unico: preprocesado + grafo de llamadas  ok")
     return 0
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(main())

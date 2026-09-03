@@ -47,7 +47,12 @@ static void bitmap_set(uint8_t *bm, uint8_t pos)
  */
 static void bitmap_shift_by(uint8_t *bm, uint64_t delta)
 {
-    /* Si avanza >= 128 posiciones, toda la ventana anterior queda obsoleta. */
+    /* Si avanza >= 128 posiciones, toda la ventana anterior queda obsoleta.
+     * ATAJO EQUIVALENTE, no una rama de comportamiento: con delta >= 128 el
+     * camino largo daria byte_d >= 16, es decir un memmove de 0 bytes y un
+     * memset de los 16 -- exactamente esto. Comprobado ejecutando. Por eso
+     * ninguna prueba puede matar una mutacion de este umbral, y se declara
+     * aqui en vez de aparentar que esta cubierto. */
     if (delta >= 128) {
         memset(bm, 0, 16);  /* 16 literal */
         return;

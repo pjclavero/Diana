@@ -425,10 +425,31 @@ static void shamir(jpoint *r, const uint32_t u1[LIMBS], const jpoint *g,
 
 /* ------------------------------------------------------------ verificacion -- */
 
+/*
+ * Contador de INVOCACIONES del verificador.
+ *
+ * Existe por una razon concreta y medida: la prueba de la guarda temprana de
+ * root_key afirmaba "se para ANTES de verificar" apoyandose en una marca de
+ * traza, y una revision independiente demostro que eso no lo demuestra --
+ * inserto una llamada real a diana_p256_verify_message() detras de la marca y
+ * la suite entera siguio verde. Una marca dice que se empujo una cadena, no
+ * que no se verifico nada.
+ *
+ * Contar invocaciones si es observable: "cero llamadas al verificador" pasa a
+ * ser una afirmacion falsable. Es de solo lectura desde fuera y no altera
+ * ninguna decision; su unico coste es un incremento por verificacion.
+ */
+static uint64_t g_verify_calls = 0;
+
+uint64_t diana_p256_verify_calls(void)      { return g_verify_calls; }
+void     diana_p256_verify_calls_reset(void) { g_verify_calls = 0; }
+
+
 bool diana_p256_verify(const uint8_t pubkey[DIANA_P256_PUBKEY_LEN],
                        const uint8_t digest[DIANA_P256_DIGEST_LEN],
                        const uint8_t sig[DIANA_P256_SIG_LEN])
 {
+    g_verify_calls++;
     if (pubkey == NULL || digest == NULL || sig == NULL) return false;
     /* Solo punto NO comprimido. Nada de descomprimir un punto de un byte de
      * paridad: menos formas de entrada, menos superficie. */
@@ -494,6 +515,10 @@ bool diana_p256_verify_message(const uint8_t pubkey[DIANA_P256_PUBKEY_LEN],
                                const void *msg, size_t msg_len,
                                const uint8_t sig[DIANA_P256_SIG_LEN])
 {
+    /* Se cuenta aqui TAMBIEN, y no solo en diana_p256_verify(), porque un
+     * rechazo temprano de esta funcion no llegaria a la otra y la llamada
+     * quedaria sin contar. */
+    g_verify_calls++;
     if (msg == NULL && msg_len != 0) return false;
     uint8_t digest[DIANA_P256_DIGEST_LEN];
     diana_sha256 ctx;

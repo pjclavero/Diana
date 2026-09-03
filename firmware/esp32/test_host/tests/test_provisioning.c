@@ -856,11 +856,25 @@ static void test_vocabulary(void)
  *     diana_seq_guard_reprovision (sobre las 9 combinaciones issuer x plane)
  *     diana_seq_guard_has_epoch
  *
- * NO se cubre aqui, y NO debe atribuirsele a MP0, el motor de ventana
- * deslizante — check, cache_result, max_seq, init_slot — que D1b no ejecuta y
- * que pertenece al filtrado por plano de A3/B5:
+ * ACTUALIZACION (revision independiente post-fix). Esta declaracion se habia
+ * quedado desfasada: decia que `check` no estaba cubierto cuando ya existe
+ * test_seq_guard_check_truth_table(), que lo ejerce de forma directa. Lo que
+ * SIGUE sin cubrir, dicho con exactitud:
+ *
+ *     diana_seq_guard_cache_result   (cache de resultado por request_id)
+ *     diana_seq_guard_init_slot      (validacion de longitud del estado leido)
+ *     persist()                      (escritura NVS del estado antirreplay)
+ *     build_key()                    (unicidad de clave entre las 9 ranuras)
+ *
+ * Una revision independiente demostro que los cuatro admiten mutantes vivos.
+ * Ninguno lo ejecuta D1b: pertenecen al filtrado por plano de A3/B5.
  *
  *     SEQ_GUARD_FULL_ANTI_REPLAY = DEFERRED_TO_A3_B5
+ *
+ * Lo que SI se cubre ya, porque dejo de ser hipotetico: la ventana deslizante
+ * de `check`, incluido el replay en offsets cercanos al maximo. Se saco de lo
+ * diferido cuando se demostro, ejecutando, que una mutacion pequena de
+ * bitmap_shift_by hace que un replay real pase de DUPLICATE a GAP_ACCEPTED.
  * =========================================================================== */
 
 /** UUID textual -> 16 bytes, para poder comparar QUE epoch quedo, no solo que
@@ -973,6 +987,52 @@ static void test_seq_guard_check_truth_table(void)
         CHECK_EQ_INT(diana_seq_guard_check(&g, eA, 9, "n-1", NULL),
                      DIANA_SEQ_DUPLICATE,
                      "pero ese hueco queda MARCADO: repetirlo ya es DUPLICATE");
+    }
+
+    SECTION("SEQ_GUARD_CHECK_TRUTH_TABLE: replay en offsets CERCANOS al maximo");
+    {
+        /* Este bloque existe por un mutante concreto y ejecutado: desactivar el
+         * desplazamiento bit a bit de bitmap_shift_by hace que un replay REAL
+         * pase de DUPLICATE a GAP_ACCEPTED. La tabla anterior no lo veia porque
+         * solo probaba un hueco en offset 2, nunca un replay en offset 1 tras
+         * un avance de delta 1: al desplazar una sola posicion, el bit del
+         * maximo anterior tiene que MOVERSE, y si no se mueve el replay entra.
+         *
+         * Se fijan los tres vecinos, no solo el caso que fallo. */
+        uint8_t e[16]; memset(e, 0xC3, sizeof(e));
+
+        {   /* 10 -> 11 -> replay 10 : desplazamiento de UNA posicion */
+            fixture f; fixture_init(&f);
+            diana_seq_guard g; diana_seq_guard_init(&g, &f.hal);
+            diana_seq_guard_reprovision(&g, e);
+            CHECK_EQ_INT(diana_seq_guard_check(&g, e, 10, "a", NULL),
+                         DIANA_SEQ_ACCEPTED, "delta 1: se acepta 10");
+            CHECK_EQ_INT(diana_seq_guard_check(&g, e, 11, "b", NULL),
+                         DIANA_SEQ_ACCEPTED, "delta 1: se acepta 11");
+            CHECK_EQ_INT(diana_seq_guard_check(&g, e, 10, "c", NULL),
+                         DIANA_SEQ_DUPLICATE,
+                         "delta 1: el replay de 10 en offset 1 es DUPLICATE, no un hueco");
+        }
+        {   /* 10 -> 12 -> replay 11 : offset 1 NUNCA visto, si es hueco */
+            fixture f; fixture_init(&f);
+            diana_seq_guard g; diana_seq_guard_init(&g, &f.hal);
+            diana_seq_guard_reprovision(&g, e);
+            (void)diana_seq_guard_check(&g, e, 10, "a", NULL);
+            (void)diana_seq_guard_check(&g, e, 12, "b", NULL);
+            CHECK_EQ_INT(diana_seq_guard_check(&g, e, 11, "c", NULL),
+                         DIANA_SEQ_GAP_ACCEPTED,
+                         "delta 2: el 11 nunca se vio, es hueco legitimo");
+        }
+        {   /* 10 -> 12 -> replay 10 : offset 2 SI visto */
+            fixture f; fixture_init(&f);
+            diana_seq_guard g; diana_seq_guard_init(&g, &f.hal);
+            diana_seq_guard_reprovision(&g, e);
+            (void)diana_seq_guard_check(&g, e, 10, "a", NULL);
+            (void)diana_seq_guard_check(&g, e, 12, "b", NULL);
+            CHECK_EQ_INT(diana_seq_guard_check(&g, e, 10, "c", NULL),
+                         DIANA_SEQ_DUPLICATE,
+                         "delta 2: el replay de 10 en offset 2 sigue siendo DUPLICATE");
+        }
     }
 
     SECTION("SEQ_GUARD_CHECK_TRUTH_TABLE: borde exacto de la ventana");
@@ -1360,8 +1420,15 @@ static void test_gate_adversarial_ordenes(void)
         host_hal_init(&f.hctx, &f.nv, &f.hal, 7);
         diana_prov_init(&f.prov, &f.hal, PV_DEVICE_ID, PV_SYSTEM_ID, PV_FINGERPRINT);
 
+        /* La marca de traza NO demuestra que no se verifico nada: una revision
+         * independiente lo probo insertando una llamada real al verificador
+         * detras de la marca, con la suite entera en verde. Lo que se mide de
+         * verdad es el CONTADOR de invocaciones del verificador. */
         diana_prov_outcome o;
+        diana_p256_verify_calls_reset();
         run_order(&f, "provision_ok", &PV_DELEGS[0], false, &o);
+        CHECK_EQ_INT((int)diana_p256_verify_calls(), 0,
+                     "EARLY_GUARD: CERO invocaciones del verificador P-256");
         CHECK(trace_has(&o, "missing-root-key"),
               "EARLY_GUARD: la ausencia de raiz se declara con su propia marca");
         CHECK(!trace_has(&o, "delegation-system-check"),
@@ -1375,7 +1442,10 @@ static void test_gate_adversarial_ordenes(void)
          * comprobacion pasaria aunque la marca se empujara siempre. */
         fixture f2; fixture_init(&f2);
         diana_prov_outcome o2;
+        diana_p256_verify_calls_reset();
         run_order(&f2, "provision_ok", &PV_DELEGS[0], false, &o2);
+        CHECK(diana_p256_verify_calls() > 0,
+              "EARLY_GUARD control positivo: CON raiz el verificador SI se invoca");
         CHECK(!trace_has(&o2, "missing-root-key"),
               "EARLY_GUARD control positivo: con raiz la marca NO se emite");
     }

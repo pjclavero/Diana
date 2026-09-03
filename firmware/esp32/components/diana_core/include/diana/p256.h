@@ -49,6 +49,15 @@ extern "C" {
  *         r o s fuera de [1, n-1], longitudes malas) devuelve false: fallo
  *         CERRADO, nunca "no se pudo comprobar, se acepta".
  */
+/**
+ * Invocaciones acumuladas del verificador (ambas puertas publicas).
+ *
+ * Sirve para que "aqui NO se verifica nada" sea una afirmacion falsable en vez
+ * de una marca de traza. Solo lectura; no influye en ninguna decision.
+ */
+uint64_t diana_p256_verify_calls(void);
+void     diana_p256_verify_calls_reset(void);
+
 bool diana_p256_verify(const uint8_t pubkey[DIANA_P256_PUBKEY_LEN],
                        const uint8_t digest[DIANA_P256_DIGEST_LEN],
                        const uint8_t sig[DIANA_P256_SIG_LEN]);
