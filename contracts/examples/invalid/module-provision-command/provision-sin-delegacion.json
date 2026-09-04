@@ -1,0 +1,17 @@
+{
+  "_schema": "module-provision-command.schema.json",
+  "schema_version": 1,
+  "command_plane": "DEVICE_MANAGEMENT",
+  "request_id": "8f14e45f-ceea-467a-9e3e-8f14e45fceea",
+  "device_id": "module-07",
+  "system_id": "system-a",
+  "provisioning_key_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "signature_alg": "ECDSA-P256-SHA256-P1363-B64URL",
+  "signature": "MEUCIQDexampleexampleexampleexampleexampleexampleexampleexampleAA",
+  "issued_at_ms": 1788000000000,
+  "action": "PROVISION",
+  "provisioning_sequence": 10,
+  "epoch": "22222222-2222-4222-8222-222222222222",
+  "provision_id": "33333333-3333-4333-8333-333333333333",
+  "_reason": "PROVISION sin delegation: el bootstrap la exige, sin ella no hay clave operativa que verificar."
+}

@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diana.seccionnueve/contracts/mqtt/module-provision-state.schema.json",
+  "title": "Estado reportado de autoridad (plano DEVICE_MANAGEMENT)",
+  "description": "targets/v1/module/{module_id}/provision/state · QoS 1 · retain=true. Ampliación v1.2, ADR-0008. ES REPORTED STATE Y SÓLO ESO: nunca constituye autoridad, orden, desired state ejecutable ni fuente para modificar configuración por sí mismo, y ninguna decisión del módulo puede depender de lo que se publique aquí. Se retiene porque quien se suscriba debe poder leer la última fotografía sin esperar al siguiente cambio. Los campos son exactamente los que ya serializa diana_prov_response() en el firmware.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "const": 1 },
+    "command_plane": { "const": "DEVICE_MANAGEMENT" },
+    "request_id": {
+      "$ref": "../schemas/common.schema.json#/$defs/uuid",
+      "description": "Correlación con la orden. Ausente si la orden no lo traía o no llegó a parsearse."
+    },
+    "device_id": { "$ref": "../schemas/common.schema.json#/$defs/identifier" },
+    "system_id": { "$ref": "../schemas/common.schema.json#/$defs/identifier" },
+    "result": {
+      "enum": ["PROVISIONED", "PREPARED", "COMMITTED", "AUTHORITY_UNPROVISIONED", "AUTHORITY_STALE", "REJECTED"],
+      "description": "Resultado de la ÚLTIMA orden atendida, o la declaración de autoridad al conectar."
+    },
+    "state": {
+      "enum": ["UNPROVISIONED", "READY", "PREPARED", "STALE", "QUARANTINED"],
+      "description": "Los cinco estados del contrato. Ni uno más."
+    },
+    "active_epoch": {
+      "oneOf": [
+        { "$ref": "../schemas/common.schema.json#/$defs/uuid" },
+        { "type": "null" }
+      ],
+      "description": "null mientras no hay autoridad. Se emite explícitamente como null en vez de omitirse: la ausencia de autoridad es una afirmación, no un silencio."
+    },
+    "pending_epoch": {
+      "oneOf": [
+        { "$ref": "../schemas/common.schema.json#/$defs/uuid" },
+        { "type": "null" }
+      ]
+    },
+    "rotation_id": {
+      "$ref": "../schemas/common.schema.json#/$defs/uuid",
+      "description": "SÓLO en PREPARED y COMMITTED. El esquema prohíbe cruzarlo con provision_id: cruzarlos mezclaría los dos dominios de identidad que el contrato separa."
+    },
+    "provision_id": {
+      "$ref": "../schemas/common.schema.json#/$defs/uuid",
+      "description": "SÓLO en PROVISIONED."
+    },
+    "last_provisioning_sequence": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Última secuencia CONSUMIDA. Se publica para que el emisor sepa desde dónde continuar. Avanza aunque el resultado sea un rechazo por estado, porque el mensaje ya estaba autenticado y es fresco: se consume exactamente una vez."
+    },
+    "last_delegation_sequence": { "type": "integer", "minimum": 0 },
+    "provisioning_key_fingerprint": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{64})?$",
+      "description": "Huella PÚBLICA de la clave de aprovisionamiento de fábrica que el módulo espera. Es un identificador, no material secreto: cadena vacía si el módulo no la tiene (fallo cerrado, no aprovisionado)."
+    },
+    "reason": {
+      "enum": [
+        "invalid_signature", "signature_algorithm_rejected", "provisioning_key_mismatch",
+        "provisioning_sequence_rejected", "rotation_id_replayed", "rotation_id_unknown",
+        "current_epoch_mismatch", "epoch_not_provisioned", "epoch_reuse_rejected",
+        "already_provisioned", "retained_provisioning_rejected", "device_mismatch",
+        "system_mismatch", "malformed_provisioning_message", "delegation_missing",
+        "delegation_invalid_signature", "delegation_root_key_mismatch",
+        "delegation_sequence_rejected", "delegation_sequence_conflict",
+        "delegation_version_rejected"
+      ],
+      "description": "Presente sólo cuando hay rechazo. Lista cerrada de 20 motivos, idéntica a la del firmware: un rechazo sin motivo exacto es un diagnóstico deshonesto."
+    }
+  },
+  "required": [
+    "schema_version", "command_plane", "device_id", "system_id",
+    "result", "state", "active_epoch", "pending_epoch",
+    "last_provisioning_sequence", "last_delegation_sequence",
+    "provisioning_key_fingerprint"
+  ],
+  "additionalProperties": false,
+  "$comment": "NO_SECRET_IN_STATE: additionalProperties=false es la mitad de la barrera. Este mensaje NO puede llevar root_key, ninguna clave privada, la contraseña MQTT ni material derivado. La otra mitad es una prueba que lo compruebe, no una promesa: ver el gate NO_SECRET_IN_STATE de MP0-F.0.",
+  "allOf": [
+    {
+      "if": { "properties": { "result": { "const": "REJECTED" } }, "required": ["result"] },
+      "then": { "required": ["reason"] }
+    },
+    {
+      "if": { "properties": { "result": { "const": "PROVISIONED" } }, "required": ["result"] },
+      "then": { "not": { "required": ["rotation_id"] } }
+    },
+    {
+      "if": { "properties": { "result": { "const": "PREPARED" } }, "required": ["result"] },
+      "then": { "not": { "required": ["provision_id"] } }
+    },
+    {
+      "if": { "properties": { "result": { "const": "COMMITTED" } }, "required": ["result"] },
+      "then": { "not": { "required": ["provision_id"] } }
+    }
+  ]
+}

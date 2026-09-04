@@ -1,6 +1,6 @@
 # ADR-0008 · Contrato MQTT del plano DEVICE_MANAGEMENT (provisioning)
 
-**Estado:** PROPUESTO · 2026-09-04
+**Estado:** ACEPTADO · 2026-09-04
 **Bloque:** MP0-F.0 — PROVISIONING CONTRACT GATE
 **Cierra:** `CONTRACT_GAP-PROVISION-COMMAND-TOPIC`, `CONTRACT_GAP-PROVISION-STATE-TOPIC`
 **Contrato tocado:** `contracts/mqtt/**`, `server/backend/src/contracts/topics.ts`
@@ -96,6 +96,14 @@ justificarlo por semántica, no presentarlo como obligación.
 
 ## 4. Decisión
 
+```
+PROVISIONING_CONTRACT_EVOLUTION = V1_COMPATIBLE_EXTENSION
+CONTRACT_RELEASE                = v1.2
+TOPIC_ROOT                      = targets/v1
+ADR_REQUIRED                    = YES
+V2_REQUIRED                     = NO
+```
+
 **Se elige A: ampliar el contrato v1 con la etiqueta documental «v1.2»**, con las
 condiciones de §5, que son las que evitan que «ampliar» degenere en «modificar de
 facto».
@@ -118,7 +126,25 @@ lados. `RETAINED_EXECUTABLE_COMMAND = REJECTED` es una propiedad del sistema, no
 sólo del firmware.
 
 El estado **sí** se retiene: es observacional y quien se suscriba debe poder leer
-el último estado conocido sin esperar al siguiente cambio.
+el último estado conocido sin esperar al siguiente cambio. Con un límite que no
+admite lectura amable:
+
+> **`module-provision-state` NUNCA constituye autoridad, orden, `desired state`
+> ejecutable ni fuente para modificar configuración por sí mismo.** Es *reported
+> state*. Ninguna decisión del módulo puede depender de lo que se publique ahí.
+
+La defensa contra el comando retenido es **en cuatro capas**, y sólo cuenta si
+las cuatro existen:
+
+| Capa | Qué impone |
+|---|---|
+| contrato | comando ejecutable retenido PROHIBIDO |
+| publicador (backend/coordinador) | nunca publica con `retain` |
+| firmware D1b | `retained` → rechazo **antes** de verificar la firma |
+| prueba | una orden **criptográficamente válida en todo** salvo `retained=true` → CERO efectos |
+
+La última es la que vale: si el vector de prueba fuese inválido por otro motivo,
+pasaría por la razón equivocada y la barrera quedaría sin medir.
 
 ### 4.1 Lo que este ADR NO decide
 
@@ -151,6 +177,45 @@ Tampoco decide la implementación definitiva de `root_key`, que es MP0-F.1.
 
 ---
 
+## 5-bis. REGLA CONTRACTUAL ÚNICA (resuelve el §2)
+
+A partir de este ADR, ésta es **la** regla, y `contracts/mqtt/README.md` y
+`server/backend/src/contracts/topics.ts` deben enunciarla con las mismas
+palabras. No puede volver a haber una «regla canónica» distinta según el fichero
+que se lea.
+
+**ADITIVO Y COMPATIBLE** — puede permanecer bajo `targets/v1`:
+- añadir un tópico nuevo que no reescribe ninguno existente;
+- añadir campos opcionales a un mensaje.
+
+Requiere: revisión contractual, incremento de la **versión documental** del
+contrato, y **ADR cuando introduce semántica o un plano nuevos** (como aquí).
+
+**ROMPE O REINTERPRETA ALGO EXISTENTE** — exige `v2` y ADR obligatorio:
+- renombrar un tópico;
+- cambiar un comodín;
+- cambiar la dirección publicador/suscriptor;
+- cambiar `retain`;
+- cambiar el payload de forma incompatible;
+- cambiar el significado de un `TopicKind`;
+- cambiar la seguridad o la autoridad de algo existente.
+
+### Qué significa realmente «congelado»
+
+> `targets/v1` **no** significa «inmutable para siempre». Significa que cualquier
+> extensión debe seguir siendo **compatible con todos los consumidores v1
+> existentes**. En cuanto deje de serlo, toca `v2`.
+
+### El precedente no es autorización
+
+`module-maintenance-command` entró en v1.1 **sin ADR**. Este ADR lo usa como
+evidencia de **compatibilidad técnica** — demuestra que añadir un `TopicKind`
+aditivo no rompió nada — y **NO** como autorización para seguir cambiando
+contratos sin decisión formal. Desde aquí, un plano o semántica nuevos exigen ADR
+aunque el cambio sea aditivo.
+
+---
+
 ## 6. Modelo ACL
 
 Autoridad por dominio, no por disponibilidad — la misma doctrina que ya separa
@@ -171,6 +236,24 @@ que es la invariante F-02 ya vigente en producción.
 La reconciliación con TLS/8883 (P0-2) es posterior y no bloquea este ADR, pero la
 **semántica** ACL queda fijada aquí.
 
+**Y se prueba contra Mosquitto real, no leyendo el fichero ACL.** Un fichero que
+«parece correcto» no es evidencia; la matriz mínima a ejecutar es:
+
+```
+modulo A -> publica command A      DENIED
+modulo A -> publica command B      DENIED
+modulo A -> publica state  A       ALLOWED
+modulo A -> publica state  B       DENIED
+modulo A <- suscribe command A     ALLOWED
+modulo A <- suscribe command B     DENIED
+```
+
+Recordatorio medido en P0-2 y que aquí importa: en MQTT 5 un fallo de
+autenticación da `rc=135`, pero **una denegación de ACL en publicación devuelve
+`rc=0`** con un `Warning: Publish failed: Not authorized`. El código de salida no
+distingue ambos casos, así que la prueba debe observar el mensaje o la ausencia
+de efecto, nunca el `rc`.
+
 ---
 
 ## 7. Consecuencias
@@ -190,19 +273,28 @@ La reconciliación con TLS/8883 (P0-2) es posterior y no bloquea este ADR, pero 
 ## 8. Criterio de aceptación
 
 ```
-ADR_PROVISIONING_CONTRACT            = ACCEPTED
-PROVISIONING_COMMAND_SCHEMA          = PASS
-PROVISIONING_STATE_SCHEMA            = PASS
-TOPICKIND_GOVERNANCE                 = PASS
-DEVICE_MANAGEMENT_COMMAND_TRANSPORT  = REACHABLE
-DEVICE_MANAGEMENT_STATE_PATH         = IMPLEMENTED
-MQTT_TO_D1B_E2E                      = PASS
-D1B_TO_STATE_E2E                     = PASS
-RETAINED_EXECUTABLE_COMMAND          = REJECTED
-ACL_MODEL                            = DEFINED
-NO_SECRET_IN_STATE                   = PASS
-CONTRACT_GAP-PROVISION-COMMAND-TOPIC = CLOSED
-CONTRACT_GAP-PROVISION-STATE-TOPIC   = CLOSED
+ADR_PROVISIONING_CONTRACT             = ACCEPTED
+CONTRACT_VERSION                      = v1.2
+TOPIC_ROOT                            = targets/v1
+
+PROVISION_COMMAND_SCHEMA              = PASS
+PROVISION_STATE_SCHEMA                = PASS
+TOPICKIND_GOVERNANCE                  = CONSISTENT
+
+PROVISION_COMMAND_RETAINED            = FORBIDDEN
+PROVISION_STATE_RETAINED              = ALLOWED_OBSERVATIONAL_ONLY
+
+DEVICE_MANAGEMENT_COMMAND_TRANSPORT   = REACHABLE
+DEVICE_MANAGEMENT_STATE_PATH          = IMPLEMENTED
+
+MQTT_TO_D1B_E2E                       = PASS
+D1B_TO_STATE_E2E                      = PASS
+
+ACL_CROSS_MODULE_ISOLATION            = PASS
+NO_SECRET_IN_STATE                    = PASS
+
+CONTRACT_GAP-PROVISION-COMMAND-TOPIC  = CLOSED
+CONTRACT_GAP-PROVISION-STATE-TOPIC    = CLOSED
 ```
 
 El E2E se ejecuta contra **Mosquitto real**, con control positivo (una orden

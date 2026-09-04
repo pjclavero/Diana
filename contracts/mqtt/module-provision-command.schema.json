@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diana.seccionnueve/contracts/mqtt/module-provision-command.schema.json",
+  "title": "Orden de aprovisionamiento (plano DEVICE_MANAGEMENT)",
+  "description": "targets/v1/module/{module_id}/provision · QoS 1 · retain=FALSE OBLIGATORIO. Ampliación v1.2, ADR-0008. La autoridad de este mensaje la da la FIRMA, no el tópico ni el transporte: el módulo verifica ECDSA P-256 sobre una cadena canónica con prefijo de longitud y rechaza cualquier orden retenida ANTES de verificar la firma, porque un retenido es un replay servido por el broker. Los campos y sus nombres son exactamente los que parsea diana_prov_parse() en el firmware; cualquier divergencia rompe la canónica y, por tanto, la firma.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "description": "El firmware exige literalmente 1 (has_schema_version_1)."
+    },
+    "command_plane": {
+      "const": "DEVICE_MANAGEMENT",
+      "description": "Discrimina el plano. El interceptor del firmware atiende este plano ANTES que el canal de juego, y si no es exactamente esta cadena la orden no es conforme."
+    },
+    "request_id": {
+      "$ref": "../schemas/common.schema.json#/$defs/uuid",
+      "description": "Correlación con el reported state. Obligatorio: el firmware rechaza la orden sin él (traza request-id-missing)."
+    },
+    "device_id": { "$ref": "../schemas/common.schema.json#/$defs/identifier" },
+    "system_id": { "$ref": "../schemas/common.schema.json#/$defs/identifier" },
+    "action": {
+      "enum": ["PROVISION", "PREPARE", "COMMIT"],
+      "description": "PROVISION establece la autoridad inicial; PREPARE abre una rotación de epoch; COMMIT la consuma."
+    },
+    "mode": {
+      "enum": ["NORMAL", "EMERGENCY"],
+      "description": "Obligatorio en PREPARE y COMMIT; PROHIBIDO en PROVISION. Un campo presente donde el esquema lo prohíbe también es no conforme: si se admitiera, la cadena canónica firmaría un registro que el emisor no puso."
+    },
+    "provisioning_sequence": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 18446744073709551615,
+      "description": "Barrera antirreplay del plano. El módulo PERSISTE la última aceptada y rechaza toda secuencia menor o igual. Es estrictamente monotónica: sin persistencia, un reinicio reabriría la ventana."
+    },
+    "issued_at_ms": { "type": "integer", "minimum": 0 },
+    "rotation_id": {
+      "$ref": "../schemas/common.schema.json#/$defs/uuid",
+      "description": "Obligatorio en PREPARE y COMMIT; prohibido en PROVISION."
+    },
+    "current_epoch": { "$ref": "../schemas/common.schema.json#/$defs/uuid" },
+    "next_epoch": { "$ref": "../schemas/common.schema.json#/$defs/uuid" },
+    "epoch": {
+      "$ref": "../schemas/common.schema.json#/$defs/uuid",
+      "description": "Sólo PROVISION."
+    },
+    "provision_id": {
+      "$ref": "../schemas/common.schema.json#/$defs/uuid",
+      "description": "Sólo PROVISION."
+    },
+    "provisioning_key_fingerprint": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 en hex de la clave de aprovisionamiento de FÁBRICA que el emisor debe presentar. El módulo la compara contra la suya; una raíz ajena se rechaza con diagnóstico propio, distinto de firma corrupta."
+    },
+    "signature_alg": {
+      "const": "ECDSA-P256-SHA256-P1363-B64URL",
+      "description": "NO se negocia. Es una COMPARACIÓN CONSTANTE, nunca un selector de verificador: el firmware verifica siempre con diana_p256_verify_message, fijo en el código."
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "description": "Firma de la clave OPERATIVA sobre la cadena canónica de la orden, P1363 (r||s, 64 bytes) en base64url sin relleno."
+    },
+    "delegation": {
+      "type": "object",
+      "description": "Credencial que la raíz de fábrica emite para una clave operativa. Obligatoria en PROVISION (el bootstrap la exige). Tiene canónica y dominio de firma PROPIOS, separados de los de la orden.",
+      "properties": {
+        "delegation_version": { "const": 1 },
+        "delegation_id": { "$ref": "../schemas/common.schema.json#/$defs/uuid" },
+        "root_key_id": { "$ref": "../schemas/common.schema.json#/$defs/identifier" },
+        "operational_key_id": { "$ref": "../schemas/common.schema.json#/$defs/identifier" },
+        "operational_public_key": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "description": "SPKI DER en base64url sin relleno."
+        },
+        "scope": {
+          "const": "DIANA_PROVISIONING",
+          "description": "Una credencial de otro ámbito no autoriza aquí."
+        },
+        "delegation_sequence": { "type": "integer", "minimum": 0 },
+        "system_id": {
+          "$ref": "../schemas/common.schema.json#/$defs/identifier",
+          "description": "Comprobación INDEPENDIENTE de la del direccionamiento de la orden: comparten motivo (system_mismatch) pero son ramas distintas. Una credencial legítima de otro despliegue no autoriza aquí."
+        },
+        "root_signature": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "description": "Firma de la RAÍZ sobre la canónica de la credencial."
+        }
+      },
+      "required": [
+        "delegation_version", "delegation_id", "root_key_id",
+        "operational_key_id", "operational_public_key", "scope",
+        "delegation_sequence", "system_id", "root_signature"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version", "command_plane", "request_id", "device_id", "system_id",
+    "action", "provisioning_sequence", "issued_at_ms",
+    "provisioning_key_fingerprint", "signature_alg", "signature"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "action": { "const": "PROVISION" } } },
+      "then": {
+        "required": ["epoch", "provision_id", "delegation"],
+        "not": {
+          "anyOf": [
+            { "required": ["rotation_id"] },
+            { "required": ["current_epoch"] },
+            { "required": ["next_epoch"] },
+            { "required": ["mode"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": { "properties": { "action": { "const": "PREPARE" } } },
+      "then": {
+        "required": ["rotation_id", "current_epoch", "next_epoch", "mode"],
+        "not": {
+          "anyOf": [
+            { "required": ["epoch"] },
+            { "required": ["provision_id"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": { "properties": { "action": { "const": "COMMIT" } } },
+      "then": {
+        "required": ["rotation_id", "mode"],
+        "not": {
+          "anyOf": [
+            { "required": ["epoch"] },
+            { "required": ["current_epoch"] },
+            { "required": ["next_epoch"] },
+            { "required": ["provision_id"] }
+          ]
+        }
+      }
+    }
+  ]
+}

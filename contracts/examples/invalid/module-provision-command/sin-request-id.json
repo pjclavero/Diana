@@ -1,0 +1,27 @@
+{
+  "_schema": "module-provision-command.schema.json",
+  "schema_version": 1,
+  "command_plane": "DEVICE_MANAGEMENT",
+  "device_id": "module-07",
+  "system_id": "system-a",
+  "provisioning_key_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "signature_alg": "ECDSA-P256-SHA256-P1363-B64URL",
+  "signature": "MEUCIQDexampleexampleexampleexampleexampleexampleexampleexampleAA",
+  "issued_at_ms": 1788000000000,
+  "action": "PROVISION",
+  "provisioning_sequence": 10,
+  "epoch": "22222222-2222-4222-8222-222222222222",
+  "provision_id": "33333333-3333-4333-8333-333333333333",
+  "delegation": {
+    "delegation_version": 1,
+    "delegation_id": "11111111-1111-4111-8111-111111111111",
+    "root_key_id": "root-key-2026",
+    "operational_key_id": "op-key-1",
+    "operational_public_key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEexample",
+    "scope": "DIANA_PROVISIONING",
+    "delegation_sequence": 1,
+    "system_id": "system-a",
+    "root_signature": "cm9vdC1zaWduYXR1cmUtZXhhbXBsZQ"
+  },
+  "_reason": "Sin request_id: el firmware rechaza la orden (traza request-id-missing) y sin el no hay correlacion con el reported state."
+}
