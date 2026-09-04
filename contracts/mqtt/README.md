@@ -1,7 +1,45 @@
 # Contratos MQTT · Diana v1
 
-**Estado:** CONGELADO para la Ola 1 (`v1`), con la ampliación **v1.1** descrita en el §0.
-**Cambios:** cualquier modificación incompatible exige un `v2` y un ADR. Los cambios compatibles (añadir campos opcionales, o un tópico nuevo que no reescribe ninguno existente) suben `schema_version` sólo si alteran la semántica de un mensaje ya emitido; una etiqueta de ampliación como "v1.1" es documental, no un valor que viaje en el payload.
+**Estado:** `v1` con las ampliaciones **v1.1** (§0) y **v1.2** (§0-bis). La etiqueta de ampliación es DOCUMENTAL: no viaja en el payload.
+
+**REGLA DE CAMBIO (única).** La misma que enuncia `server/backend/src/contracts/topics.ts`. Hasta ADR-0008 este documento y aquel fichero decían cosas distintas — «aditivo es compatible» aquí, «cualquier cambio exige v2» allí —, de modo que la regla canónica dependía de cuál leyeras. Ya no.
+
+| Naturaleza del cambio | Qué exige |
+|---|---|
+| **ADITIVO Y COMPATIBLE**: tópico nuevo que no reescribe ninguno existente; campos opcionales nuevos | Permanece bajo `targets/v1`. Revisión contractual + subir la versión **documental** + **ADR si introduce semántica o un plano nuevos**. `schema_version` sólo sube si cambia la semántica de un mensaje YA emitido. |
+| **ROMPE O REINTERPRETA**: renombrar un tópico · cambiar un comodín · cambiar la dirección publicador/suscriptor · cambiar `retain` · payload incompatible · cambiar el significado de un `TopicKind` · cambiar seguridad o autoridad | **`v2` y ADR obligatorio.** |
+
+> `targets/v1` **no** significa «inmutable para siempre». Significa que cualquier extensión debe seguir siendo **compatible con todos los consumidores v1 existentes**. En cuanto deje de serlo, toca `v2`.
+
+**Nota de gobierno.** La ampliación v1.1 (`maintenance/command`) se hizo **sin ADR**. Sirve como evidencia de que un `TopicKind` aditivo no rompe nada, **no** como autorización para seguir cambiando contratos sin decisión formal.
+
+---
+
+## 0-bis. Ampliación v1.2 — plano DEVICE_MANAGEMENT (provisioning firmado)
+
+**ADR:** `docs/adr/0008-contrato-mqtt-de-provisioning.md`
+**Cierra:** `CONTRACT_GAP-PROVISION-COMMAND-TOPIC`, `CONTRACT_GAP-PROVISION-STATE-TOPIC`
+
+**Motivo.** El plano `DEVICE_MANAGEMENT` (D1b) está implementado, cableado y presente en el ELF, pero **no era alcanzable**: el firmware no se suscribía a ningún tópico de provisioning y no publicaba su estado de autoridad. El motor existía; faltaba el puente.
+
+| Tópico | Dirección | QoS | retain |
+|---|---|---|---|
+| `targets/v1/module/{module_id}/provision` | backend/coordinador → módulo | 1 | **false, obligatorio** |
+| `targets/v1/module/{module_id}/provision/state` | módulo → backend | 1 | true |
+
+**`retain=false` en el comando es una invariante de SEGURIDAD, no una preferencia.** Un comando ejecutable retenido es un replay que el broker entrega a cualquiera que se suscriba, incluido un módulo que arranca meses después. El firmware lo rechaza **antes** de verificar la firma; el contrato lo prohíbe; el publicador no debe emitirlo; y hay una prueba con una orden **criptográficamente válida en todo salvo `retained=true`** que debe producir cero efectos. Si el vector fuese inválido por otro motivo, pasaría por la razón equivocada y la barrera quedaría sin medir.
+
+**`provision/state` es *reported state* y sólo eso.** Nunca constituye autoridad, orden, `desired state` ejecutable ni fuente para modificar configuración por sí mismo, y **ninguna decisión del módulo puede depender de lo que se publique ahí**. No lleva `root_key`, ni claves privadas, ni la contraseña MQTT, ni material derivado: `additionalProperties: false` es la mitad de la barrera y una prueba es la otra.
+
+**ACL.** Autoridad por dominio, igual que la separación `command` / `maintenance/command` de v1.1:
+
+| Identidad | `…/{id}/provision` | `…/{id}/provision/state` |
+|---|---|---|
+| backend / coordinador | publica | suscribe |
+| módulo `{id}` | suscribe **sólo el suyo** | publica **sólo el suyo** |
+| otro módulo | denegado | denegado |
+
+Invariante: **ningún módulo puede publicar en el tópico de provisioning de otro ni suscribirse a él.** Se apoya en `use_username_as_clientid` y en que el `username` del módulo es su `module_id` (invariante F-02, vigente en producción).
 
 Fuente normativa: `dosier_tecnico_matriz_dianas_modulares.md`, secciones 12, 14, 15, 17 y 23.3.
 

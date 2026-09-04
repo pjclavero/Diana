@@ -1,6 +1,28 @@
 /**
  * Árbol de tópicos MQTT v1 (contrato §1 y §2, dosier 15.1).
- * CONGELADO: cualquier cambio exige v2 y ADR.
+ *
+ * REGLA DE CAMBIO — la MISMA que enuncia `contracts/mqtt/README.md`. Antes este
+ * bloque decía «cualquier cambio exige v2 y ADR» y el README decía otra cosa;
+ * dos reglas canónicas según el fichero que se leyera. La resuelve ADR-0008.
+ *
+ *   ADITIVO Y COMPATIBLE — puede permanecer bajo `targets/v1`:
+ *     · un tópico nuevo que no reescribe ninguno existente
+ *     · campos opcionales nuevos en un mensaje
+ *     Requiere revisión contractual, subir la versión DOCUMENTAL del contrato y
+ *     un ADR cuando introduce semántica o un plano nuevos.
+ *
+ *   ROMPE O REINTERPRETA ALGO EXISTENTE — exige `v2` y ADR obligatorio:
+ *     renombrar un tópico · cambiar un comodín · cambiar la dirección
+ *     publicador/suscriptor · cambiar `retain` · payload incompatible ·
+ *     cambiar el significado de un TopicKind · cambiar seguridad o autoridad.
+ *
+ * `targets/v1` NO significa inmutable para siempre: significa que toda
+ * extensión debe seguir siendo compatible con los consumidores v1 existentes.
+ * En cuanto deje de serlo, toca v2.
+ *
+ * Versión documental vigente: **v1.2** (v1.1 = canal de mantenimiento del
+ * backend; v1.2 = plano DEVICE_MANAGEMENT, ADR-0008). La etiqueta es
+ * documental: NO viaja en el payload.
  */
 
 export const TOPIC_ROOT = 'targets/v1';
@@ -21,7 +43,10 @@ export type TopicKind =
   | 'module-maintenance-command'
   | 'module-hit'
   | 'module-diagnostic'
-  | 'module-ota';
+  | 'module-ota'
+  /* Ampliación v1.2 · plano DEVICE_MANAGEMENT firmado (ADR-0008). */
+  | 'module-provision-command'
+  | 'module-provision-state';
 
 /** Esquema JSON que gobierna cada tipo de tópico. */
 export const TOPIC_SCHEMA: Record<TopicKind, string> = {
@@ -39,6 +64,8 @@ export const TOPIC_SCHEMA: Record<TopicKind, string> = {
   'module-hit': 'hit-event.schema.json',
   'module-diagnostic': 'module-diagnostic.schema.json',
   'module-ota': 'ota-command.schema.json',
+  'module-provision-command': 'module-provision-command.schema.json',
+  'module-provision-state': 'module-provision-state.schema.json',
 };
 
 /** Tópicos a los que se suscribe el backend, con su QoS del contrato §2. */
@@ -51,6 +78,10 @@ export const BACKEND_SUBSCRIPTIONS: Array<{ filter: string; qos: 0 | 1 | 2 }> = 
   { filter: `${TOPIC_ROOT}/module/+/diagnostic`, qos: 1 },
   { filter: `${TOPIC_ROOT}/system/+/game/state`, qos: 1 },
   { filter: `${TOPIC_ROOT}/system/+/game/event`, qos: 1 },
+  /* v1.2: el backend OBSERVA el estado de autoridad. No se suscribe al comando
+   * de provisioning: ese canal es suyo para publicar, y suscribirse a lo que
+   * uno mismo emite no aporta nada y ensancha la superficie. */
+  { filter: `${TOPIC_ROOT}/module/+/provision/state`, qos: 1 },
 ];
 
 export interface ParsedTopic {
@@ -70,6 +101,14 @@ const RETAINED: TopicKind[] = [
   'module-status',
   'module-config-desired',
   'module-config-reported',
+  /* El ESTADO de autoridad se retiene: es la última fotografía observacional y
+   * quien se suscriba debe poder leerla sin esperar al siguiente cambio.
+   *
+   * El COMANDO de provisioning NO está aquí, y no es un olvido: un comando
+   * ejecutable retenido es un replay que el broker sirve a cualquiera que se
+   * suscriba. El firmware ya lo rechaza ANTES de verificar la firma; el
+   * contrato dice lo mismo para que la defensa esté en los dos lados. */
+  'module-provision-state',
 ];
 
 const QOS0: TopicKind[] = ['module-telemetry'];
@@ -103,6 +142,8 @@ export function parseTopic(topic: string): ParsedTopic | null {
     else if (tail === 'hit') kind = 'module-hit';
     else if (tail === 'diagnostic') kind = 'module-diagnostic';
     else if (tail === 'ota') kind = 'module-ota';
+    else if (tail === 'provision') kind = 'module-provision-command';
+    else if (tail === 'provision/state') kind = 'module-provision-state';
   }
 
   if (!kind) return null;
@@ -137,4 +178,17 @@ export const topics = {
   moduleHit: (moduleId: string) => `${TOPIC_ROOT}/module/${moduleId}/hit`,
   moduleDiagnostic: (moduleId: string) => `${TOPIC_ROOT}/module/${moduleId}/diagnostic`,
   moduleOta: (moduleId: string) => `${TOPIC_ROOT}/module/${moduleId}/ota`,
+  /**
+   * Ampliación v1.2 · plano DEVICE_MANAGEMENT firmado (ADR-0008).
+   *
+   * La autoridad de una orden aquí la da la FIRMA, no el tópico ni el
+   * transporte: el módulo verifica ECDSA P-256 sobre una canónica con prefijo
+   * de longitud y comprueba raíz, delegación, direccionamiento, epoch y
+   * secuencia antes de aplicar nada. Publicar aquí NO es mandar; es proponer.
+   *
+   * Debe publicarse SIEMPRE con `retain=false`.
+   */
+  moduleProvisionCommand: (moduleId: string) => `${TOPIC_ROOT}/module/${moduleId}/provision`,
+  /** Reported state, observacional. NUNCA autoridad ni desired state ejecutable. */
+  moduleProvisionState: (moduleId: string) => `${TOPIC_ROOT}/module/${moduleId}/provision/state`,
 };
