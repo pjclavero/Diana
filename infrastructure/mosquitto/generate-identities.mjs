@@ -127,9 +127,17 @@ export function moduleTopics(root, moduleId) {
       `${base}/hit`,
       `${base}/diagnostic`,
       `${base}/config/reported`,
+      // v1.2 (ADR-0008) · plano de provisioning: el módulo publica SU estado
+      // reportado y NADA más. `provision/state` es un subtópico de `provision`,
+      // así que la regla de escritura tiene que ser el tópico completo: un
+      // `provision/#` dejaría al módulo escribirse su propia orden.
+      `${base}/provision/state`,
     ],
     read: [
       `${base}/command`,
+      // v1.2 (ADR-0008) · la orden de aprovisionamiento la emite el backend;
+      // el módulo SÓLO la lee, y sólo la suya (module_id literal).
+      `${base}/provision`,
       `${base}/maintenance/command`,
       `${base}/config/desired`,
       `${base}/ota`,
@@ -146,6 +154,11 @@ export function backendTopics(root) {
       `${root}/module/+/config/desired`,
       `${root}/module/+/ota`,
       `${root}/module/+/maintenance/command`,
+      // v1.2 (ADR-0008) · el backend es el ÚNICO emisor de la orden de
+      // aprovisionamiento. `+` casa un solo nivel, así que esta regla NO
+      // alcanza `.../provision/state`: el estado reportado lo escribe el
+      // módulo y el backend sólo lo lee (su `topic read #` ya lo cubre).
+      `${root}/module/+/provision`,
     ],
   };
 }

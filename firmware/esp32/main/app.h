@@ -15,6 +15,7 @@
 #include "diana/ota.h"
 #include "diana/platform_esp.h"
 #include "diana/provisioning.h"
+#include "diana/topic_route.h"
 #include "diana/queue.h"
 #include "diana/sensors.h"
 #include "diana/target_fsm.h"
@@ -59,9 +60,11 @@ typedef struct {
     char topic_telemetry[DIANA_TOPIC_MAXLEN];
     char topic_diagnostic[DIANA_TOPIC_MAXLEN];
     char topic_config_reported[DIANA_TOPIC_MAXLEN];
-    /* D1b · plano DEVICE_MANAGEMENT firmado. Camino de ORDENES unicamente:
-     * el estado de autoridad no se publica porque el contrato v1 no tiene
-     * topico para ello (CONTRACT_GAP-PROVISION-STATE-TOPIC). */
+    /* D1b · plano DEVICE_MANAGEMENT firmado. Los DOS caminos existen desde
+     * MP0-F.0 (ADR-0008, contrato v1.2): la ORDEN llega por
+     * targets/v1/module/{id}/provision (suscrito en mqtt_client.c) y el ESTADO
+     * de autoridad se publica retenido en .../provision/state. */
+    char topic_provision_state[DIANA_TOPIC_MAXLEN];
     diana_prov_ctx prov;
 
 } diana_app;
@@ -92,6 +95,16 @@ void diana_prov_app_init(diana_app *a);
 /* D1b: intercepta una orden de DEVICE_MANAGEMENT. Devuelve true si el mensaje
  * era suyo y ya ha sido tratado, para que no siga por el canal de juego. */
 bool diana_prov_app_handle(diana_app *a, const diana_platform_rx *rx);
+
+/* MP0-F.0 · ADR-0008. Publica module-provision-state RETENIDO. `cmd` puede ser
+ * NULL cuando no hay orden que correlar (declaracion de arranque). NUNCA lleva
+ * material secreto: ver NO_SECRET_IN_STATE. */
+void diana_publish_provision_state(diana_app *a, const diana_prov_command *cmd,
+                                   const diana_prov_outcome *out);
+
+/* Declaracion NO solicitada del estado de autoridad al (re)conectar. Solo emite
+ * si hay algo que declarar; en READY/PREPARED no publica nada. */
+void diana_prov_app_announce(diana_app *a);
 
 void diana_publish_diagnostic(diana_app *a, diana_diagnostic_kind kind,
                               diana_severity sev, const char *message);

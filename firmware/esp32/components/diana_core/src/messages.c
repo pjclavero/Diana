@@ -10,8 +10,9 @@
 static const char *const SUFFIX[DIANA_TOPIC_COUNT] = {
     "presence", "status", "telemetry", "config/reported", "config/desired",
     "command", "hit", "diagnostic", "ota",
+    "provision", "provision/state",
 };
-static const int QOS[DIANA_TOPIC_COUNT] = {1, 1, 0, 1, 1, 1, 1, 1, 1};
+static const int QOS[DIANA_TOPIC_COUNT] = {1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1};
 static const bool RETAIN[DIANA_TOPIC_COUNT] = {
     true,  /* presence  */
     true,  /* status    */
@@ -22,6 +23,15 @@ static const bool RETAIN[DIANA_TOPIC_COUNT] = {
     false, /* hit: NUNCA retenido, reproduciria impactos al reconectar */
     false, /* diagnostic */
     false, /* ota */
+    /* La ORDEN de provisioning NUNCA se retiene: un comando ejecutable
+     * retenido es un replay que el broker sirve a quien se suscriba. El
+     * firmware ya lo rechaza antes de verificar la firma; aqui la regla
+     * ademas impide que el propio modulo lo publique retenido. */
+    false, /* provision (comando) */
+    /* El ESTADO de autoridad SI se retiene: es la ultima fotografia
+     * observacional y quien se suscriba debe poder leerla sin esperar al
+     * siguiente cambio (module-provision-state.schema.json). */
+    true,  /* provision/state */
 };
 
 size_t diana_topic_build(char *buf, size_t cap, diana_topic t,

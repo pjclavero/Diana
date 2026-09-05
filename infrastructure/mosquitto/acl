@@ -34,6 +34,7 @@ topic write targets/v1/system/#
 topic write targets/v1/module/+/config/desired
 topic write targets/v1/module/+/ota
 topic write targets/v1/module/+/maintenance/command
+topic write targets/v1/module/+/provision
 
 # --- Módulos: una regla explícita por identidad autenticada -----------------
 # module-01 → module_id module-01
@@ -44,7 +45,9 @@ topic write targets/v1/module/module-01/telemetry
 topic write targets/v1/module/module-01/hit
 topic write targets/v1/module/module-01/diagnostic
 topic write targets/v1/module/module-01/config/reported
+topic write targets/v1/module/module-01/provision/state
 topic read targets/v1/module/module-01/command
+topic read targets/v1/module/module-01/provision
 topic read targets/v1/module/module-01/maintenance/command
 topic read targets/v1/module/module-01/config/desired
 topic read targets/v1/module/module-01/ota
@@ -58,7 +61,9 @@ topic write targets/v1/module/module-02/telemetry
 topic write targets/v1/module/module-02/hit
 topic write targets/v1/module/module-02/diagnostic
 topic write targets/v1/module/module-02/config/reported
+topic write targets/v1/module/module-02/provision/state
 topic read targets/v1/module/module-02/command
+topic read targets/v1/module/module-02/provision
 topic read targets/v1/module/module-02/maintenance/command
 topic read targets/v1/module/module-02/config/desired
 topic read targets/v1/module/module-02/ota
@@ -72,7 +77,9 @@ topic write targets/v1/module/module-03/telemetry
 topic write targets/v1/module/module-03/hit
 topic write targets/v1/module/module-03/diagnostic
 topic write targets/v1/module/module-03/config/reported
+topic write targets/v1/module/module-03/provision/state
 topic read targets/v1/module/module-03/command
+topic read targets/v1/module/module-03/provision
 topic read targets/v1/module/module-03/maintenance/command
 topic read targets/v1/module/module-03/config/desired
 topic read targets/v1/module/module-03/ota
@@ -86,7 +93,9 @@ topic write targets/v1/module/module-04/telemetry
 topic write targets/v1/module/module-04/hit
 topic write targets/v1/module/module-04/diagnostic
 topic write targets/v1/module/module-04/config/reported
+topic write targets/v1/module/module-04/provision/state
 topic read targets/v1/module/module-04/command
+topic read targets/v1/module/module-04/provision
 topic read targets/v1/module/module-04/maintenance/command
 topic read targets/v1/module/module-04/config/desired
 topic read targets/v1/module/module-04/ota
@@ -100,7 +109,9 @@ topic write targets/v1/module/module-05/telemetry
 topic write targets/v1/module/module-05/hit
 topic write targets/v1/module/module-05/diagnostic
 topic write targets/v1/module/module-05/config/reported
+topic write targets/v1/module/module-05/provision/state
 topic read targets/v1/module/module-05/command
+topic read targets/v1/module/module-05/provision
 topic read targets/v1/module/module-05/maintenance/command
 topic read targets/v1/module/module-05/config/desired
 topic read targets/v1/module/module-05/ota
@@ -114,7 +125,9 @@ topic write targets/v1/module/module-06/telemetry
 topic write targets/v1/module/module-06/hit
 topic write targets/v1/module/module-06/diagnostic
 topic write targets/v1/module/module-06/config/reported
+topic write targets/v1/module/module-06/provision/state
 topic read targets/v1/module/module-06/command
+topic read targets/v1/module/module-06/provision
 topic read targets/v1/module/module-06/maintenance/command
 topic read targets/v1/module/module-06/config/desired
 topic read targets/v1/module/module-06/ota
@@ -128,7 +141,9 @@ topic write targets/v1/module/module-07/telemetry
 topic write targets/v1/module/module-07/hit
 topic write targets/v1/module/module-07/diagnostic
 topic write targets/v1/module/module-07/config/reported
+topic write targets/v1/module/module-07/provision/state
 topic read targets/v1/module/module-07/command
+topic read targets/v1/module/module-07/provision
 topic read targets/v1/module/module-07/maintenance/command
 topic read targets/v1/module/module-07/config/desired
 topic read targets/v1/module/module-07/ota
@@ -142,7 +157,9 @@ topic write targets/v1/module/module-08/telemetry
 topic write targets/v1/module/module-08/hit
 topic write targets/v1/module/module-08/diagnostic
 topic write targets/v1/module/module-08/config/reported
+topic write targets/v1/module/module-08/provision/state
 topic read targets/v1/module/module-08/command
+topic read targets/v1/module/module-08/provision
 topic read targets/v1/module/module-08/maintenance/command
 topic read targets/v1/module/module-08/config/desired
 topic read targets/v1/module/module-08/ota
@@ -156,7 +173,9 @@ topic write targets/v1/module/module-09/telemetry
 topic write targets/v1/module/module-09/hit
 topic write targets/v1/module/module-09/diagnostic
 topic write targets/v1/module/module-09/config/reported
+topic write targets/v1/module/module-09/provision/state
 topic read targets/v1/module/module-09/command
+topic read targets/v1/module/module-09/provision
 topic read targets/v1/module/module-09/maintenance/command
 topic read targets/v1/module/module-09/config/desired
 topic read targets/v1/module/module-09/ota

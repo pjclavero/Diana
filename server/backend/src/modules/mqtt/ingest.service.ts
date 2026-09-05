@@ -14,6 +14,7 @@ import {
   HIT_ATTRIBUTOR,
   HitAttributorPort,
 } from '../hits/ports';
+import { PROVISION_STATE_SINK, ProvisionStateSinkPort } from '../provisioning/provisioning.ports';
 
 export type IngestStatus = 'accepted' | 'duplicate' | 'rejected' | 'ignored';
 
@@ -91,6 +92,11 @@ export class IngestService {
     @Optional() @Inject(HIT_ATTRIBUTOR) private readonly attributor?: HitAttributorPort,
     @Optional() @Inject(EVENT_PUBLISHER) private readonly publisher?: EventPublisherPort,
     @Optional() @Inject(INGEST_OPTIONS) options?: Partial<IngestOptions>,
+    /* v1.2 · plano DEVICE_MANAGEMENT. Opcional, y AL FINAL de la lista para no
+     * desplazar los parámetros posicionales de las pruebas que construyen este
+     * servicio a mano. El sumidero lo aporta ProvisioningModule; sin él la
+     * ingesta sigue validando y contando el mensaje, sólo que no lo persiste. */
+    @Optional() @Inject(PROVISION_STATE_SINK) private readonly provisionState?: ProvisionStateSinkPort,
   ) {
     this.options = { ...DEFAULT_OPTIONS, ...(options ?? {}) };
   }
@@ -249,6 +255,22 @@ export class IngestService {
           this.logger.error(
             `Diagnóstico aceptado pero no persistido: módulo=${d.module_id}, ` +
               `event_id=${d.event_id} · ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
+    }
+
+    // v1.2 · estado de autoridad REPORTADO (ADR-0008). Se persiste como
+    // observación y nada más: no dispara acción ninguna. La comprobación de
+    // que el identificador del payload casa con el del tópico la hace el
+    // sumidero, porque la de arriba mira `module_id` y este mensaje —el único
+    // del árbol `module/` que lo hace— usa `device_id`.
+    if (parsed.kind === 'module-provision-state' && this.provisionState) {
+      await this.provisionState
+        .record(parsed.id, payload, receivedAt)
+        .catch((error: unknown) => {
+          this.logger.error(
+            `provision/state aceptado pero no persistido (${parsed.id}): ` +
+              `${error instanceof Error ? error.message : String(error)}`,
           );
         });
     }

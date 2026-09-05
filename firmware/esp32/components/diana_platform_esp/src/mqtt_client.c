@@ -159,8 +159,16 @@ int diana_platform_mqtt_subscribe(struct diana_platform *p, const char *module_i
     if (!p || !p->mqtt) return -1;
 
     char topic[DIANA_TOPIC_MAXLEN];
+    /* v1.2 · ADR-0008: `provision` cierra CONTRACT_GAP-PROVISION-COMMAND-TOPIC.
+     * Hasta aqui la cadena de D1b estaba cableada y presente en el ELF pero NO
+     * era alcanzable por transporte: nadie se suscribia al topico. QoS 1 como
+     * el resto, y la ORDEN se rechaza si llega retenida -- eso lo impone
+     * diana_prov_message(), no la suscripcion.
+     *
+     * `provision/state` NO se suscribe: lo publica el propio modulo, y
+     * suscribirse a lo que uno emite solo ensancha la superficie. */
     static const char *const suffixes[] = {
-        "command", "config/desired", "ota",
+        "command", "config/desired", "ota", "provision",
     };
     for (size_t i = 0; i < sizeof(suffixes) / sizeof(suffixes[0]); ++i) {
         snprintf(topic, sizeof(topic), "targets/v1/module/%s/%s", module_id,

@@ -201,6 +201,24 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
     const parsed = parseTopic(topic);
     if (!parsed) throw new Error(`Tópico fuera del contrato v1: ${topic}`);
 
+    // La retencion la MANDA EL CONTRATO, no quien llama. Antes `retain` venia
+    // del argumento y solo el modulo de provisioning se cuidaba de pasar
+    // siempre false: la propiedad "una orden ejecutable jamas se retiene"
+    // dependia de una convencion de llamada, no de la construccion. Un comando
+    // retenido es un replay que el broker sirve a cualquiera que se suscriba.
+    if (retain !== parsed.retain) {
+      if (parsed.retain) {
+        // El llamante pide NO retener algo que el contrato retiene: se respeta
+        // (publicar sin retener nunca crea un replay), pero se deja constancia.
+        this.logger.debug(`retain=false explicito en ${topic}, que el contrato retiene`);
+      } else {
+        throw new Error(
+          `Intento de publicar con retain=true en ${topic}, que el contrato v1 declara NO retenido. ` +
+          'Un mensaje ejecutable retenido es un replay servido por el broker.',
+        );
+      }
+    }
+
     const outcome = this.validator.validate(parsed.schema, payload);
     if (!outcome.ok) {
       throw new Error(

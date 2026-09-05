@@ -19,6 +19,11 @@ idf_component_register(
          # Identidad y transporte MQTT. Vive en el nucleo (y no en main/) para que
          # F-02 y P0-2 sean propiedades EJECUTABLES por la suite de host.
          "src/mqtt_endpoint.c"
+         # Enrutado EXACTO de topicos entrantes (MP0-F.0). Mismo motivo que
+         # mqtt_endpoint.c: en main/ la regla seria infalsable porque main/ no
+         # se compila en la suite de host. Si falta AQUI, el despachador del
+         # firmware real no enlaza: la lista es explicita, no un glob.
+         "src/topic_route.c"
          "src/ota.c"
          # --- D1b · plano DEVICE_MANAGEMENT firmado -------------------------
          # Estos seis estaban en el arbol pero NO aqui: se compilaban solo con

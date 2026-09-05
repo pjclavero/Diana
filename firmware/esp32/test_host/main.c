@@ -92,6 +92,7 @@ int main(void)
         {"ota",          run_ota},
         {"contract",     run_contract},
         {"mqtt_endpoint",run_mqtt_endpoint},
+        {"prov_bridge",  run_prov_bridge},
     };
     const size_t n = sizeof(suites) / sizeof(suites[0]);
 

@@ -36,6 +36,11 @@ typedef enum {
     DIANA_TOPIC_HIT,
     DIANA_TOPIC_DIAGNOSTIC,
     DIANA_TOPIC_OTA,
+    /* Ampliacion v1.2 · plano DEVICE_MANAGEMENT (ADR-0008). Se anaden AL FINAL:
+     * el valor numerico de los anteriores no cambia y las tablas de QoS/retain
+     * siguen alineadas con el enumerado. */
+    DIANA_TOPIC_PROVISION_COMMAND,
+    DIANA_TOPIC_PROVISION_STATE,
     DIANA_TOPIC_COUNT
 } diana_topic;
 

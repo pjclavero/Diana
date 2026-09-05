@@ -16,4 +16,11 @@ module.exports = {
   coveragePathIgnorePatterns: ['/node_modules/', '/dist/', 'main.ts'],
   testEnvironment: 'node',
   testTimeout: 30000,
+  // Tope de paralelismo. Sin el, `broker.integration.spec.ts` daba rojo en 2 de
+  // cada 4 ejecuciones: su beforeAll arranca un contenedor con execFileSync,
+  // que BLOQUEA el bucle de eventos, mientras 7 workers saturan las 8 CPU y el
+  // hook se pasa de los 120 s. El producto estaba bien; lo que fallaba era el
+  // utillaje de medida, y una puerta que da rojo la mitad de las veces por
+  // contencion envenena cualquier gate que se apoye en ella.
+  maxWorkers: 2,
 };

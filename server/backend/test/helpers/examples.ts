@@ -18,7 +18,14 @@ const META_KEYS = ['_schema', '_reason'];
 
 /** Tópico canónico de cada esquema, según la tabla del contrato §2. */
 function topicFor(schema: string, payload: Record<string, unknown>): string {
-  const rawModule = typeof payload.module_id === 'string' ? payload.module_id : 'module-01';
+  // El plano DEVICE_MANAGEMENT (v1.2) identifica al modulo con `device_id`, no
+  // con `module_id`. Leer solo `module_id` dejaba estos ejemplos sin tópico y
+  // hacia estallar el helper: 5 suites y 27 tests en rojo desde que se anadieron
+  // los esquemas de provisioning sin actualizar este mapeo.
+  const rawId = typeof payload.module_id === 'string' ? payload.module_id
+    : typeof payload.device_id === 'string' ? payload.device_id
+    : 'module-01';
+  const rawModule = rawId;
   const rawSystem = typeof payload.system_id === 'string' ? payload.system_id : 'system-a';
   // Si el identificador del payload es ilegal para MQTT, el tópico usa un
   // marcador legal: el rechazo debe venir del esquema, no del parseo del tópico.
@@ -45,6 +52,11 @@ function topicFor(schema: string, payload: Record<string, unknown>): string {
       return topics.moduleDiagnostic(moduleId);
     case 'ota-command.schema.json':
       return topics.moduleOta(moduleId);
+    // Ampliacion v1.2 · plano DEVICE_MANAGEMENT (ADR-0008).
+    case 'module-provision-command.schema.json':
+      return topics.moduleProvisionCommand(moduleId);
+    case 'module-provision-state.schema.json':
+      return topics.moduleProvisionState(moduleId);
     case 'system-status.schema.json':
       return topics.systemStatus(systemId);
     case 'system-command.schema.json':

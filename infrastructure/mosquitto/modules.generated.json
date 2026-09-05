@@ -19,10 +19,12 @@
           "targets/v1/module/module-01/telemetry",
           "targets/v1/module/module-01/hit",
           "targets/v1/module/module-01/diagnostic",
-          "targets/v1/module/module-01/config/reported"
+          "targets/v1/module/module-01/config/reported",
+          "targets/v1/module/module-01/provision/state"
         ],
         "read": [
           "targets/v1/module/module-01/command",
+          "targets/v1/module/module-01/provision",
           "targets/v1/module/module-01/maintenance/command",
           "targets/v1/module/module-01/config/desired",
           "targets/v1/module/module-01/ota",
@@ -42,10 +44,12 @@
           "targets/v1/module/module-02/telemetry",
           "targets/v1/module/module-02/hit",
           "targets/v1/module/module-02/diagnostic",
-          "targets/v1/module/module-02/config/reported"
+          "targets/v1/module/module-02/config/reported",
+          "targets/v1/module/module-02/provision/state"
         ],
         "read": [
           "targets/v1/module/module-02/command",
+          "targets/v1/module/module-02/provision",
           "targets/v1/module/module-02/maintenance/command",
           "targets/v1/module/module-02/config/desired",
           "targets/v1/module/module-02/ota",
@@ -65,10 +69,12 @@
           "targets/v1/module/module-03/telemetry",
           "targets/v1/module/module-03/hit",
           "targets/v1/module/module-03/diagnostic",
-          "targets/v1/module/module-03/config/reported"
+          "targets/v1/module/module-03/config/reported",
+          "targets/v1/module/module-03/provision/state"
         ],
         "read": [
           "targets/v1/module/module-03/command",
+          "targets/v1/module/module-03/provision",
           "targets/v1/module/module-03/maintenance/command",
           "targets/v1/module/module-03/config/desired",
           "targets/v1/module/module-03/ota",
@@ -88,10 +94,12 @@
           "targets/v1/module/module-04/telemetry",
           "targets/v1/module/module-04/hit",
           "targets/v1/module/module-04/diagnostic",
-          "targets/v1/module/module-04/config/reported"
+          "targets/v1/module/module-04/config/reported",
+          "targets/v1/module/module-04/provision/state"
         ],
         "read": [
           "targets/v1/module/module-04/command",
+          "targets/v1/module/module-04/provision",
           "targets/v1/module/module-04/maintenance/command",
           "targets/v1/module/module-04/config/desired",
           "targets/v1/module/module-04/ota",
@@ -111,10 +119,12 @@
           "targets/v1/module/module-05/telemetry",
           "targets/v1/module/module-05/hit",
           "targets/v1/module/module-05/diagnostic",
-          "targets/v1/module/module-05/config/reported"
+          "targets/v1/module/module-05/config/reported",
+          "targets/v1/module/module-05/provision/state"
         ],
         "read": [
           "targets/v1/module/module-05/command",
+          "targets/v1/module/module-05/provision",
           "targets/v1/module/module-05/maintenance/command",
           "targets/v1/module/module-05/config/desired",
           "targets/v1/module/module-05/ota",
@@ -134,10 +144,12 @@
           "targets/v1/module/module-06/telemetry",
           "targets/v1/module/module-06/hit",
           "targets/v1/module/module-06/diagnostic",
-          "targets/v1/module/module-06/config/reported"
+          "targets/v1/module/module-06/config/reported",
+          "targets/v1/module/module-06/provision/state"
         ],
         "read": [
           "targets/v1/module/module-06/command",
+          "targets/v1/module/module-06/provision",
           "targets/v1/module/module-06/maintenance/command",
           "targets/v1/module/module-06/config/desired",
           "targets/v1/module/module-06/ota",
@@ -157,10 +169,12 @@
           "targets/v1/module/module-07/telemetry",
           "targets/v1/module/module-07/hit",
           "targets/v1/module/module-07/diagnostic",
-          "targets/v1/module/module-07/config/reported"
+          "targets/v1/module/module-07/config/reported",
+          "targets/v1/module/module-07/provision/state"
         ],
         "read": [
           "targets/v1/module/module-07/command",
+          "targets/v1/module/module-07/provision",
           "targets/v1/module/module-07/maintenance/command",
           "targets/v1/module/module-07/config/desired",
           "targets/v1/module/module-07/ota",
@@ -180,10 +194,12 @@
           "targets/v1/module/module-08/telemetry",
           "targets/v1/module/module-08/hit",
           "targets/v1/module/module-08/diagnostic",
-          "targets/v1/module/module-08/config/reported"
+          "targets/v1/module/module-08/config/reported",
+          "targets/v1/module/module-08/provision/state"
         ],
         "read": [
           "targets/v1/module/module-08/command",
+          "targets/v1/module/module-08/provision",
           "targets/v1/module/module-08/maintenance/command",
           "targets/v1/module/module-08/config/desired",
           "targets/v1/module/module-08/ota",
@@ -203,10 +219,12 @@
           "targets/v1/module/module-09/telemetry",
           "targets/v1/module/module-09/hit",
           "targets/v1/module/module-09/diagnostic",
-          "targets/v1/module/module-09/config/reported"
+          "targets/v1/module/module-09/config/reported",
+          "targets/v1/module/module-09/provision/state"
         ],
         "read": [
           "targets/v1/module/module-09/command",
+          "targets/v1/module/module-09/provision",
           "targets/v1/module/module-09/maintenance/command",
           "targets/v1/module/module-09/config/desired",
           "targets/v1/module/module-09/ota",
