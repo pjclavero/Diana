@@ -86,10 +86,27 @@ case "$GATE_MODE" in
       # la tubería -> gzip del vacío -> .sql.gz «válido» de ~20 bytes.
       exit 0 ;;
   truncado_rc0)
-      # Sale contenido creíble pero sin el marcador de cierre.
+      # Sale contenido creible pero SIN el marcador de cierre.
+      #
+      # CUIDADO CON EL NUMERO DE SENTENCIAS. Este fixture emitia solo 3
+      # (SET, CREATE TABLE, COPY): las 400 lineas de datos de COPY no son
+      # sentencias. Asi que moria en el contador BACKUP_MIN_STATEMENTS y NO en
+      # la comprobacion de marcador, que es lo que dice medir. Una supervision
+      # independiente lo demostro: al eliminar las dos comprobaciones de
+      # marcadores, el gate seguia en verde -- y un dump truncado REALISTA (201
+      # sentencias) se publicaba con rc=0 y last-status OK.
+      #
+      # Ahora emite MUY POR ENCIMA del minimo de sentencias, de modo que lo
+      # unico que puede atraparlo es la ausencia del marcador de fin.
       printf -- '--\n-- PostgreSQL database dump\n--\n'
       printf 'SET statement_timeout = 0;\n'
-      printf 'CREATE TABLE public.games (id uuid NOT NULL, name text NOT NULL);\n'
+      printf 'SET lock_timeout = 0;\n'
+      printf 'SET client_encoding = %s;\n' "'UTF8'"
+      i=1; while [ $i -le 60 ]; do
+        printf 'CREATE TABLE public.tabla_%02d (id uuid NOT NULL, name text NOT NULL);\n' "$i"
+        printf 'CREATE INDEX idx_%02d ON public.tabla_%02d (name);\n' "$i" "$i"
+        printf 'INSERT INTO public.tabla_%02d VALUES (gen_random_uuid(), %s);\n' "$i" "'fila'"
+        i=$((i+1)); done
       printf 'COPY public.games (id, name) FROM stdin;\n'
       i=1; while [ $i -le 400 ]; do
         printf '00000000-0000-4000-8000-%012d\tfila %d\n' "$i" "$i"; i=$((i+1)); done

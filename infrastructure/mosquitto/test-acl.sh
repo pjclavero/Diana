@@ -306,12 +306,23 @@ echo "=== 12. F-02: $MOD_A con credenciales propias pero client_id=$MOD_B NO pue
 timeout "$WAIT_SECS" mosquitto_pub -h "$HOST" -p "$PORT" "${TRANSPORT[@]}" -u "$MOD_A" -P "$M1_PW" -i "$MOD_B" \
     -t "targets/v1/module/$MOD_B/hit" -m "{\"suplantado_por\":\"$MOD_A\"}" -q 1 -r 2>/dev/null
 F02_READ="$(read_retained backend "$BACKEND_PW" "targets/v1/module/$MOD_B/hit")"
-if [ -n "$F02_READ" ]; then
+# El veredicto compara contra el MARCADOR de suplantacion, no contra "no vacio".
+#
+# Antes bastaba que hubiera algo retenido para declarar F-02 ABIERTO, y como
+# $MOD_B puede publicar su propio hit retenido -- cosa perfectamente legitima --
+# la prueba daba un FALSO ROJO permanente con la configuracion integra. Una
+# supervision independiente lo reprodujo. Un veredicto de seguridad que no mira
+# QUIEN escribio no esta midiendo la suplantacion, solo la presencia.
+if printf '%s' "$F02_READ" | grep -q "suplantado_por"; then
     log_fail "$MOD_A con client_id=$MOD_B pudo escribir en module/$MOD_B/hit (F-02 SIGUE ABIERTO): $F02_READ"
 else
     log_pass "$MOD_A con client_id=$MOD_B no pudo escribir en module/$MOD_B/hit (F-02 cerrado)"
 fi
-clear_retained backend "$BACKEND_PW" "targets/v1/module/$MOD_B/hit"
+# La limpieza la hace $MOD_B con SUS credenciales: `backend` NO tiene permiso de
+# escritura sobre module/+/hit (su ACL solo cubre system/#, config/desired, ota
+# y maintenance/command), asi que limpiar con backend era un no-op silencioso
+# que dejaba el retenido para la siguiente ejecucion.
+clear_retained "$MOD_B" "$M2_PW" "targets/v1/module/$MOD_B/hit"
 
 echo ""
 echo "=== Resumen: ${PASS} correctos, ${FAIL} fallos ==="
