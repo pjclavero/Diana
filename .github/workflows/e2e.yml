@@ -3,10 +3,15 @@ name: E2E
 # End-to-end. Dos frentes:
 #   1) frontend-mock: el panel contra su adaptador MOCK con Playwright (sin
 #      backend). Es rápido y no necesita el stack.
-#   2) stack-e2e: el stack COMPLETO con Docker Compose + el simulador de
-#      módulos, para los 16 escenarios del encargo (§19). Estos escenarios
-#      viven en tests/e2e y hoy son ANDAMIAJE: ver tests/e2e/README.md, que
-#      dice exactamente cuáles están implementados y cuáles son placeholder.
+#   2) stack-e2e-scaffold: el stack COMPLETO con Docker Compose + el simulador
+#      de módulos. Los 16 escenarios del encargo (§19) viven en tests/e2e y hoy
+#      son ANDAMIAJE: los 16 son `test.fixme`, medidos con
+#      scripts/ci/e2e-scaffold-audit.sh. Se ejecutan CERO aserciones.
+#      El job se llamaba "Stack completo (Compose) + 16 escenarios" y su paso
+#      "Ejecutar los 16 escenarios": levantaba Postgres, Mosquitto, backend,
+#      worker y simulador, no comprobaba nada y salía verde. Ese nombre
+#      prometía una cobertura inexistente; ahora dice lo que hay. Implementar
+#      los escenarios de verdad es la Ola 3 (Postgres y Mosquitto reales).
 #
 # Se lanza a mano o de madrugada, no en cada push: el stack completo es lento.
 
@@ -58,15 +63,21 @@ jobs:
           if-no-files-found: ignore
 
   # ---------------------------------------------------------------------------
-  # Stack completo con Compose + simulador. Cubre (cuando estén implementados)
-  # los 16 escenarios de tests/e2e. Levanta postgres, mosquitto, backend,
-  # worker, migrate y el simulador de módulos, y ejecuta la suite de tests/e2e.
+  # Stack completo con Compose + simulador. Levanta postgres, mosquitto,
+  # backend, worker, migrate y el simulador, y ejecuta la suite de tests/e2e.
+  # ANDAMIAJE: la suite no contiene hoy ninguna aserción (16/16 `test.fixme`).
+  # Lo que este job demuestra de verdad es que el STACK LEVANTA; no demuestra
+  # ninguna cobertura funcional E2E. El paso de auditoría de abajo lo mide y
+  # falla si el nombre del job deja de corresponder con los hechos.
   # ---------------------------------------------------------------------------
-  stack-e2e:
-    name: Stack completo (Compose) + 16 escenarios
+  stack-e2e-scaffold:
+    name: "Stack completo (Compose) · E2E ANDAMIAJE — 0 escenarios ejecutados, 16 test.fixme"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: "Auditar el andamiaje E2E (falla si el nombre del job ya no es cierto)"
+        run: bash scripts/ci/e2e-scaffold-audit.sh
 
       - name: Preparar .env
         run: |
@@ -74,11 +85,21 @@ jobs:
           # Semillas deterministas para el runner; NO son secretos de producción.
           sed -i 's/CAMBIAR/ci-not-a-secret/g' .env
 
-      - name: Generar credenciales de Mosquitto que el stack espera
+      # FALSO VERDE CORREGIDO: este paso llevaba `|| true` y sólo pedía 2 de las
+      # 11 identidades declaradas. `generate-users.sh` necesita `mosquitto_passwd`,
+      # que el runner NO trae; sin él sale con rc=2 y remite a `docker compose
+      # exec mosquitto`, imposible aquí porque el stack aún no está construido.
+      # Es decir: el paso fallaba SIEMPRE, el `|| true` se lo tragaba y el stack
+      # arrancaba sin credenciales. Ahora se instala la herramienta, se generan
+      # las 11 identidades de la fuente única con `--all` y el rc no se oculta.
+      - name: Instalar mosquitto_passwd (lo necesita generate-users.sh)
         run: |
-          for u in backend healthcheck; do
-            ./infrastructure/mosquitto/generate-users.sh "$u" || true
-          done
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq mosquitto-clients
+          command -v mosquitto_passwd
+
+      - name: Generar las credenciales de Mosquitto de la fuente única
+        run: ./infrastructure/mosquitto/generate-users.sh --all
 
       - name: Construir imágenes
         run: docker compose build
@@ -105,13 +126,17 @@ jobs:
           cache: npm
           cache-dependency-path: tests/e2e/package-lock.json
 
+      # FALSO VERDE CORREGIDO: era `npm ci || npm install`. tests/e2e SÍ tiene
+      # package-lock.json, así que el fallback sólo servía para que un lock
+      # desincronizado pasara inadvertido: `npm ci` fallaba, `npm install`
+      # reescribía el lock y el job seguía verde. Sin fallback, la deriva sale.
       - name: Instalar suite E2E de escenarios
         working-directory: tests/e2e
         run: |
-          npm ci || npm install
+          npm ci
           npx playwright install --with-deps chromium
 
-      - name: Ejecutar los 16 escenarios (los placeholder se marcan como fixme)
+      - name: "Ejecutar la suite E2E (hoy 0 aserciones: los 16 son test.fixme)"
         working-directory: tests/e2e
         env:
           DIANA_BASE_URL: http://localhost:8080

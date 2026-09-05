@@ -143,5 +143,8 @@ firmware-host-test: ## Compila y ejecuta los tests en host del firmware (gcc, si
 check-ports: ## Verifica que sólo el proxy/broker publican puertos (PostgreSQL interno)
 	bash tests/security/check-port-exposure.sh
 
+# `npm ci` a secas, sin `|| npm install`: tests/load tiene package-lock.json y
+# el fallback sólo servía para que un lock desincronizado pasara desapercibido
+# (npm ci falla, npm install reescribe el lock y todo sigue "verde").
 load-test: ## Lanza el generador de carga MQTT (9 módulos/81 dianas) contra un stack ya levantado
-	cd tests/load && (npm ci || npm install) && npm start
+	cd tests/load && npm ci && npm start
