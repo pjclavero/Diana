@@ -85,6 +85,29 @@ const HEX64 = /^[0-9a-f]{64}$/;
  * ausencia es un test estructural sobre los metadatos de inyección de Nest, no
  * una promesa en un comentario.
  */
+/**
+ * uint64 -> number SIN redondeo silencioso.
+ *
+ * `Number(bigint)` por encima de 2^53 redondea sin avisar, que es justo el modo
+ * de fallo que rompe una firma sin dar la cara: la canonica firma el decimal
+ * exacto del bigint y el cable llevaria otro valor, asi que el modulo
+ * rechazaria la orden por firma invalida sin que nadie entendiera por que.
+ * Demostrado: 9007199254740993 viajaba como 9007199254740992.
+ *
+ * El esquema admite hasta 2^64-1, asi que el limite es de la serializacion
+ * JSON de JavaScript, no del contrato. Se falla RUIDOSAMENTE en vez de emitir
+ * algo distinto de lo firmado.
+ */
+function exactUint64(value: bigint, field: string): number {
+  if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error(
+      `${field}=${value} supera 2^53-1 y JSON lo redondearia: la orden emitida ` +
+      'dejaria de coincidir con la cadena canonica firmada. Fallo cerrado.',
+    );
+  }
+  return Number(value);
+}
+
 @Injectable()
 export class ProvisioningCommandService {
   private readonly logger = new Logger(ProvisioningCommandService.name);
@@ -156,8 +179,8 @@ export class ProvisioningCommandService {
       device_id: input.deviceId,
       system_id: input.systemId,
       action: input.action,
-      provisioning_sequence: Number(sequence),
-      issued_at_ms: Number(issuedAtMs),
+      provisioning_sequence: exactUint64(sequence, 'provisioning_sequence'),
+      issued_at_ms: exactUint64(issuedAtMs, 'issued_at_ms'),
       provisioning_key_fingerprint: input.provisioningKeyFingerprint,
       signature_alg: SIGNATURE_ALG,
       signature,
@@ -259,13 +282,13 @@ export class ProvisioningCommandService {
 
   private delegationPayload(delegation: DelegationCredential): Record<string, unknown> {
     return {
-      delegation_version: Number(delegation.delegationVersion),
+      delegation_version: exactUint64(delegation.delegationVersion, 'delegation_version'),
       delegation_id: delegation.delegationId,
       root_key_id: delegation.rootKeyId,
       operational_key_id: delegation.operationalKeyId,
       operational_public_key: delegation.operationalPublicKey,
       scope: delegation.scope,
-      delegation_sequence: Number(delegation.delegationSequence),
+      delegation_sequence: exactUint64(delegation.delegationSequence, 'delegation_sequence'),
       system_id: delegation.systemId,
       root_signature: delegation.rootSignature,
     };

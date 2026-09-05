@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createPrivateKey, createPublicKey, createSign, KeyObject } from 'node:crypto';
-import { readFileSync, statSync } from 'node:fs';
+import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 
@@ -96,7 +96,24 @@ export class ProvisioningSigner {
   readonly publicKeySpki: string;
 
   constructor(options: SignerOptions) {
-    const keyFile = path.resolve(options.keyFile);
+    // realpathSync, no path.resolve: `resolve` NO sigue enlaces simbolicos, asi
+    // que un symlink en /tmp apuntando a un PEM DENTRO del arbol de trabajo
+    // burlaba la guarda -- la pertenencia al repo se comprobaba sobre el enlace
+    // y el modo sobre el destino. La propiedad esta enunciada como absoluta
+    // ("rechaza cualquier ruta que caiga dentro del arbol"), asi que se
+    // comprueba sobre la ruta REAL.
+    // Si la ruta existe se resuelven los enlaces; si no existe, se conserva la
+    // ruta resuelta para que la comprobacion de pertenencia al repositorio siga
+    // dando SU mensaje. Envolver esto en realpathSync a secas hacia que una
+    // ruta inexistente dentro del arbol muriera con un ENOENT en vez de con el
+    // rechazo que la propiedad promete -- rojo por el motivo equivocado.
+    const requested = path.resolve(options.keyFile);
+    let keyFile = requested;
+    try {
+      keyFile = realpathSync(requested);
+    } catch {
+      /* no existe: se comprueba la ruta pedida y el fallo saldra mas abajo */
+    }
     const nodeEnv = options.nodeEnv ?? process.env.NODE_ENV ?? 'development';
 
     const root = repoRoot();

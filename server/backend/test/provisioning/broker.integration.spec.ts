@@ -16,6 +16,25 @@ import {
 } from '../../src/modules/provisioning/provisioning-command.service';
 import { ProvisioningSigner } from '../../src/modules/provisioning/provisioning-signer';
 import { ProvisioningStateService } from '../../src/modules/provisioning/provisioning-state.service';
+
+function pickFreePort(): number {
+  const { execFileSync } = require('node:child_process') as typeof import('node:child_process');
+  for (let intento = 0; intento < 20; intento += 1) {
+    const candidato = 21000 + Math.floor(Math.random() * 900);
+    try {
+      // `ss` devuelve la cabecera aunque no haya coincidencias: se cuenta si
+      // aparece el puerto, no si el comando tuvo exito.
+      const salida = execFileSync('sh', ['-c', `ss -ltn 2>/dev/null | grep -c ':${candidato} ' || true`], {
+        encoding: 'utf8',
+      }).trim();
+      if (salida === '0') return candidato;
+    } catch {
+      return candidato; // sin `ss` disponible: se acepta el candidato
+    }
+  }
+  throw new Error('no se encontro un puerto libre para el broker de prueba tras 20 intentos');
+}
+
 import {
   EmittedOrderRecord,
   ObservedProvisionState,
@@ -66,7 +85,11 @@ function startBroker(): Broker {
   // Desde fuera eso se ve como un ECONNREFUSED, que es un síntoma que no
   // apunta a su causa.
   chmodSync(dir, 0o755);
-  const port = 21000 + Math.floor(Math.random() * 900);
+  // Puerto efimero con REINTENTO: elegirlo al azar sin comprobar que esta libre
+  // era un segundo modo de fallo del mismo hook -- una colision dejaba el
+  // arranque colgado hasta agotar el timeout, con un mensaje que no apuntaba a
+  // la causa.
+  const port = pickFreePort();
   const container = `diana-prov-test-${port}`;
 
   // Dos usuarios: uno con escritura y otro SIN ella sobre el canal de órdenes.
