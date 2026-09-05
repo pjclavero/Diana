@@ -14,6 +14,7 @@
 #define DIANA_PLATFORM_ESP_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "diana/hal.h"
@@ -35,13 +36,22 @@ int diana_platform_init(diana_platform **out, diana_hal *hal);
 
 /**
  * Registra el Last Will ANTES de conectar y conecta al broker.
- * @param client_id  DEBE ser igual al module_id, sin prefijo: la ACL de
- *                   Mosquitto usa el patron %c para acotar cada modulo a su
- *                   propio subarbol (contrato §8).
- * @param user       usuario MQTT, 'module-{module_id}' (contrato §8).
+ * @param client_id  DEBE ser igual al module_id, sin prefijo (contrato §8).
+ * @param uri        "mqtts://host:puerto" en produccion. Construyela con
+ *                   diana_mqtt_uri(): el esquema no se decide aqui.
+ * @param user       usuario MQTT. Es EXACTAMENTE el module_id, sin prefijo
+ *                   (contrato §8; F-02 cerrado). Construyelo con
+ *                   diana_mqtt_username(), que es la version comprobada contra
+ *                   identities.json y contra el acl del broker.
+ * @param ca_pem     CA que firma al broker, en PEM terminado en NUL.
+ * @param ca_len     longitud del buffer de CA, NUL incluido.
+ *
+ * FALLO CERRADO: con una URI mqtts:// y una CA ausente o invalida devuelve -4 y
+ * NO conecta. No degrada a texto en claro bajo ninguna circunstancia.
  */
 int diana_platform_mqtt_start(diana_platform *p, const char *client_id,
                               const char *uri, const char *user, const char *pass,
+                              const char *ca_pem, size_t ca_len,
                               const char *lwt_topic, const char *lwt_payload);
 
 /** Suscribe a los topicos de entrada del modulo (command, config, ota, game). */

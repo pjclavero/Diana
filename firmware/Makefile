@@ -81,6 +81,10 @@ contracts:
 # cubre ninguna prueba de comportamiento, y se rompe sin que nada falle.
 	@$(PYTHON) $(FW)/tools/check_d1b_unique_path.py
 
+# P0-2 + F-02. app_main.c y mqtt_client.c NO se compilan en host: la unica
+# cobertura posible sobre ellos es estructural.
+	@$(PYTHON) $(FW)/tools/check_mqtt_tls.py
+
 # ADR-0007. Valida los payloads que llevan `detection_method` contra el contrato
 # de ESTE arbol. Sin descarga ni referencia git: funciona en un clon limpio.
 # La guarda de abajo no es cosmetica: si alguien retira el contrato ADR-0007 de

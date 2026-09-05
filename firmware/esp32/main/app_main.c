@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "diana/mqtt_endpoint.h"
 #include "esp_log.h"
 #include "esp_task_wdt.h"
 #include "esp_timer.h"
@@ -19,6 +20,21 @@
 #include "freertos/task.h"
 
 static const char *TAG = "diana";
+
+/* CA del broker, empotrada por EMBED_TXTFILES (main/CMakeLists.txt). El
+ * enlazador anade el NUL final en la variante _txt, que es lo que esp-mqtt
+ * espera en broker.verification.certificate.
+ *
+ * Se accede SOLO por estas dos funciones: no hay ninguna otra fuente de CA, y
+ * por tanto no hay ningun camino que sustituya una CA ausente por otra cosa. */
+extern const char broker_ca_pem_start[] asm("_binary_broker_ca_pem_start");
+extern const char broker_ca_pem_end[]   asm("_binary_broker_ca_pem_end");
+
+static const char *broker_ca_pem(void) { return broker_ca_pem_start; }
+static size_t broker_ca_len(void)
+{
+    return (size_t)(broker_ca_pem_end - broker_ca_pem_start);
+}
 
 #define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
 #define BYTE_TO_BINARY(byte) \
@@ -256,15 +272,72 @@ void app_main(void)
             char lwt[256];
             diana_presence_lwt_json(a->id.module_id, lwt, sizeof(lwt));
 
-            char uri[128], user[80];
-            snprintf(uri, sizeof(uri), "mqtt://%s:1883", CONFIG_DIANA_BROKER_HOST);
-            /* Usuario 'module-{id}', client_id '{id}' a secas: son cosas distintas y el
-             * contrato §8 fija ambas. La ACL depende de la segunda. */
-            snprintf(user, sizeof(user), "module-%.*s",
-                     DIANA_ID_MAXLEN - 1, a->id.module_id);
-            diana_platform_mqtt_start(a->pf, a->id.module_id, uri, user,
-                                      a->id.mqtt_pass, a->topic_presence, lwt);
-            diana_platform_mqtt_subscribe(a->pf, a->id.module_id);
+            /* ===============================================================
+             * IDENTIDAD (contrato mqtt/README §8, hallazgo F-02 CERRADO)
+             * ===============================================================
+             * El usuario MQTT es EXACTAMENTE el module_id, literal. El
+             * client_id tambien lo es, y ademas el broker lo reescribe con el
+             * usuario autenticado (use_username_as_clientid), de modo que la
+             * ACL no depende de un valor que elija el cliente.
+             *
+             * Aqui habia un `snprintf(user, ..., "module-%s", module_id)` con
+             * un comentario que afirmaba que el contrato fijaba ese prefijo.
+             * Era falso: los module_id reales YA son "module-01".."module-09"
+             * (infrastructure/mosquitto/identities.json), asi que aquello
+             * producia "module-module-01", un usuario que no existe ni en
+             * users.generated.txt ni en el acl. El modulo no habria podido
+             * autenticarse nunca. El prefijo se retiro al cerrar F-02 y NO se
+             * revierte: el sintoma no avisa.
+             *
+             * La construccion vive ahora en diana_core (diana_mqtt_username)
+             * porque este fichero no lo compila ninguna prueba. La coherencia
+             * con identities.json y con el acl la comprueba, ejecutandola,
+             * test_host/tests/test_mqtt_endpoint.c. */
+            char user[DIANA_MQTT_USER_MAXLEN];
+            int uid_rc = diana_mqtt_username(a->id.module_id, user, sizeof(user));
+
+            /* ===============================================================
+             * TRANSPORTE (P0-2) · TLS, puerto configurable, FALLO CERRADO
+             * ===============================================================
+             * El esquema lo decide SOLO el perfil de compilacion. No existe
+             * ninguna rama que lleve a mqtt:// por un error en ejecucion: si la
+             * CA falta o no es valida, el modulo se queda sin MQTT y lo dice.
+             * Sustituir esto por un reintento en claro reabre P0-2. */
+            diana_mqtt_transport transport = DIANA_MQTT_TRANSPORT_TLS;
+#if CONFIG_DIANA_MQTT_INSECURE_LAB
+            transport = DIANA_MQTT_TRANSPORT_INSECURE_LAB;
+            ESP_LOGW(TAG, "############################################################");
+            ESP_LOGW(TAG, "# PERFIL DE LABORATORIO: MQTT EN CLARO, SIN TLS Y SIN      #");
+            ESP_LOGW(TAG, "# VERIFICAR AL BROKER. Credenciales y trafico expuestos.   #");
+            ESP_LOGW(TAG, "# Desactiva DIANA_MQTT_INSECURE_LAB para operar de verdad. #");
+            ESP_LOGW(TAG, "############################################################");
+#endif
+            const char *ca_pem = broker_ca_pem();
+            size_t ca_len = broker_ca_len();
+
+            char uri[DIANA_MQTT_URI_MAXLEN];
+            int uri_rc = diana_mqtt_uri(CONFIG_DIANA_BROKER_HOST,
+                                        (uint16_t)CONFIG_DIANA_BROKER_PORT,
+                                        transport, uri, sizeof(uri));
+
+            if (uid_rc != DIANA_MQTT_OK) {
+                ESP_LOGE(TAG, "module_id no utilizable como usuario MQTT: sin conexion");
+            } else if (uri_rc != DIANA_MQTT_OK) {
+                ESP_LOGE(TAG, "host/puerto del broker invalidos: sin conexion");
+            } else if (!diana_mqtt_may_connect(transport, ca_pem, ca_len,
+                                               a->id.module_id)) {
+                /* Unica salida cuando falta la CA. Sin alternativa por diseno. */
+                ESP_LOGE(TAG, "CA del broker ausente o invalida: MQTT NO se arranca");
+                ESP_LOGE(TAG, "revisa main/certs/broker_ca.pem (P0-2)");
+                diana_module_fsm_apply(&a->fsm, DIANA_EV_ERROR_RAISED,
+                                       a->hal.now_us(a->hal.ctx));
+            } else {
+                ESP_LOGI(TAG, "broker %s, usuario '%s'", uri, user);
+                diana_platform_mqtt_start(a->pf, a->id.module_id, uri, user,
+                                          a->id.mqtt_pass, ca_pem, ca_len,
+                                          a->topic_presence, lwt);
+                diana_platform_mqtt_subscribe(a->pf, a->id.module_id);
+            }
         } else {
             ESP_LOGW(TAG, "MQTT deshabilitado hasta aprovisionar module_id");
         }
