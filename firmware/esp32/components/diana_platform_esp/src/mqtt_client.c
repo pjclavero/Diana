@@ -5,7 +5,10 @@
  */
 #include "platform_internal.h"
 
+#include <stdbool.h>
 #include <string.h>
+
+#include "diana/mqtt_endpoint.h"
 
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -72,8 +75,28 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t id,
 
 int diana_platform_mqtt_start(struct diana_platform *p, const char *client_id,
                               const char *uri, const char *user, const char *pass,
+                              const char *ca_pem, size_t ca_len,
                               const char *lwt_topic, const char *lwt_payload)
 {
+    if (!p || !uri || !user || !client_id) return -1;
+
+    /* ---------------------------------------------------------------------
+     * PUERTA DE TRANSPORTE (P0-2). Se evalua ANTES de crear nada: si la URI es
+     * mqtts:// hace falta una CA valida, y si no la hay se sale con error. No
+     * hay rama que reescriba la URI, ni reintento en claro, ni "probamos sin
+     * verificar". Esta es la ultima linea de defensa por si alguien llamase a
+     * esta funcion sin pasar antes por diana_mqtt_may_connect().
+     * --------------------------------------------------------------------- */
+    bool tls = (strncmp(uri, "mqtts://", 8) == 0);
+    if (tls && !diana_mqtt_ca_is_valid(ca_pem, ca_len)) {
+        ESP_LOGE(TAG, "mqtts:// sin CA valida: no se conecta (fallo cerrado)");
+        return -4;
+    }
+    if (!tls) {
+        /* Solo se llega aqui con el perfil de banco compilado a proposito. */
+        ESP_LOGW(TAG, "transporte SIN TLS hacia %s: perfil de laboratorio", uri);
+    }
+
     p->rx_queue = xQueueCreate(16, sizeof(diana_platform_rx));
     if (!p->rx_queue) return -1;
 
@@ -82,11 +105,29 @@ int diana_platform_mqtt_start(struct diana_platform *p, const char *client_id,
     cfg.credentials.username = user;
     cfg.credentials.authentication.password = pass;
 
-    /* client_id == module_id, sin prefijo (contrato §8). La ACL de Mosquitto
-     * usa el patron %c para acotar cada modulo a su propio subarbol: si el
-     * client_id no coincide exactamente con el module_id, el broker denegara
-     * todas las publicaciones del modulo. NO se deja el valor por defecto de
-     * esp-mqtt ('ESP32_xxxxxx'), que rompería la ACL. */
+    if (tls) {
+        /* CA explicita, empotrada en la imagen. Deliberadamente NO se usa el
+         * almacen global ni el bundle de certificados de Espressif: el modulo
+         * habla con UN broker conocido, y aceptar cualquier CA publica
+         * convertiria la verificacion en un tramite vacio.
+         *
+         * Tampoco se toca skip_cert_common_name_check: su valor por defecto
+         * (false) es el que deja ACTIVA la verificacion del nombre de host
+         * contra el CN/SAN del certificado del servidor. Escribirlo aunque
+         * fuese a false solo serviria para que el dia que alguien lo cambie a
+         * true el diff pareciese inocuo. Si el broker se configura por IP, esa
+         * IP tiene que estar en el SAN del certificado.
+         *
+         * certificate_len = 0 le dice a esp-mqtt que el PEM es una cadena
+         * terminada en NUL, que es como lo deja EMBED_TXTFILES. */
+        cfg.broker.verification.certificate = ca_pem;
+        cfg.broker.verification.certificate_len = 0;
+    }
+
+    /* client_id == module_id, sin prefijo (contrato §8). Ademas el broker lo
+     * REESCRIBE con el usuario autenticado (use_username_as_clientid), asi que
+     * la autorizacion no se apoya en un valor que elija el cliente. NO se deja
+     * el valor por defecto de esp-mqtt ('ESP32_xxxxxx'). */
     cfg.credentials.client_id = client_id;
     cfg.credentials.set_null_client_id = false;
 

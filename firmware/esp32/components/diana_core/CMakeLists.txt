@@ -16,6 +16,9 @@ idf_component_register(
          "src/led.c"
          "src/sha256.c"
          "src/messages.c"
+         # Identidad y transporte MQTT. Vive en el nucleo (y no en main/) para que
+         # F-02 y P0-2 sean propiedades EJECUTABLES por la suite de host.
+         "src/mqtt_endpoint.c"
          "src/ota.c"
          # --- D1b · plano DEVICE_MANAGEMENT firmado -------------------------
          # Estos seis estaban en el arbol pero NO aqui: se compilaban solo con

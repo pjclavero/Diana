@@ -4,9 +4,40 @@ config DIANA_BROKER_HOST
     string "Host del broker MQTT"
     default "192.168.1.209"
     help
-      Direccion del broker Mosquitto en la red local. El modulo se conecta con
-      usuario 'module-{module_id}' y client_id igual al 'module_id' (contrato
-      MQTT §8): la ACL del broker depende de esa igualdad.
+      Direccion del broker Mosquitto en la red local.
+
+      El usuario MQTT del modulo es EXACTAMENTE su module_id, sin prefijo
+      (contrato MQTT §8; el prefijo 'module-' se retiro al cerrar F-02). No se
+      configura aqui: sale de la identidad aprovisionada en NVS.
+
+      Este valor tiene que coincidir con el nombre por el que el certificado
+      del broker esta emitido: la verificacion de nombre de host esta ACTIVA y
+      una IP que no figure en el SAN del certificado hara fallar el handshake.
+
+config DIANA_BROKER_PORT
+    int "Puerto del broker MQTT"
+    default 8883
+    range 1 65535
+    help
+      8883 es el puerto TLS de produccion (P0-2). Configurable para bancos y
+      brokers de prueba. El puerto NO decide el cifrado: el esquema lo fija
+      DIANA_MQTT_INSECURE_LAB, y por defecto es mqtts://.
+
+config DIANA_MQTT_INSECURE_LAB
+    bool "LABORATORIO: MQTT en claro (mqtt://), SIN TLS"
+    default n
+    help
+      PELIGRO. Activa un perfil de banco que conecta en claro y sin verificar
+      al broker. Cualquiera en la red puede leer y suplantar el trafico del
+      modulo, incluidas las credenciales MQTT.
+
+      Existe unicamente para depurar contra un Mosquitto de pruebas sin TLS. NO
+      es un fallback: el firmware nunca cae a este modo por su cuenta. Si la CA
+      falta o es invalida con TLS activo, el modulo NO CONECTA -- no degrada a
+      claro. Hay que venir aqui y activarlo a mano.
+
+      Con esta opcion activa el arranque emite un aviso ruidoso por consola en
+      cada conexion. Debe estar DESACTIVADA en toda imagen de operacion.
 
 config DIANA_NTP_HOST
     string "Host NTP"
