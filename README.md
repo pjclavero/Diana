@@ -7,6 +7,11 @@ ligeros. El prototipo fisico actual agrupa **3x3 dianas** gobernadas por un
 una matriz logica de **9x9 (81 dianas)** coordinada por MQTT contra un servidor
 Docker.
 
+> **¿En qué punto está el proyecto? → [`docs/STATE.md`](docs/STATE.md).** Es la
+> **fuente canónica única de estado**: rama y SHA canónicos, bloqueos abiertos,
+> pendientes físicos y divergencias con producción. Si cualquier otro documento
+> del repositorio contradice a STATE, manda STATE.
+>
 > Requisitos, arquitectura y fases: [`dosier_tecnico_matriz_dianas_modulares.md`](dosier_tecnico_matriz_dianas_modulares.md).
 > Ese documento es la fuente normativa del producto. Para el montaje fisico real
 > de banco manda [`docs/hardware/current/README.md`](docs/hardware/current/README.md).

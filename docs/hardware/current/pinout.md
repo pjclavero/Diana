@@ -1,5 +1,21 @@
 # Pinout efectivo del prototipo V1
 
+> **CORRECCION 2026-09-05 — GPIO8 / RSTn.** Este documento decia
+> «Reservado; W5500 RST queda NC» y «el firmware actual usa reset software».
+> **Ya no es cierto.** En `mp0/integration@ae69357`, `net_w5500.c:119-135`
+> configura `DIANA_PIN_ETH_RST` como `GPIO_MODE_OUTPUT` y lo pulsa 1 -> 0 ->
+> espera -> 1, y fija `phy_cfg.reset_gpio_num = -1` **como parte del arreglo**,
+> para que el `reset_hw` de ESP-IDF no reasertie el pin con 100 us (por debajo
+> del minimo de 500 us del datasheet). `tools/check_w5500_reset.py` lo fija en
+> la suite. Causa raiz confirmada en banco el 2026-08-28 (10/10 arranques).
+>
+> Lo que **no** verifica este repositorio es que el cable fisico este soldado
+> hoy: eso es `NO VERIFICADO` aqui. Ojo tambien a que el comentario de
+> `boards/esp32s3_proto_do_w5500.h:40` sigue diciendo «RST/INT NC»: es un
+> residuo, contradice al `#define` que tiene tres lineas mas abajo.
+>
+> Fuente canonica de estado: [`docs/STATE.md`](../../STATE.md) §9.1.
+
 Fuente de codigo:
 
 ```text
@@ -24,7 +40,7 @@ firmware/esp32/boards/esp32s3_proto_do_w5500.h
 | 4 | `DIANA_PIN_LED_ROW0` | Fila D1-D3 |
 | 5 | `DIANA_PIN_LED_ROW1` | Fila D4-D6 |
 | 6 | `DIANA_PIN_LED_ROW2` | Fila D7-D9 |
-| 8 | `DIANA_PIN_ETH_RST` | Reservado; W5500 RST queda NC |
+| 8 | `DIANA_PIN_ETH_RST` | **W5500 RSTn, conducido** como salida (ver nota) |
 | 9 | `DIANA_PIN_ETH_INT` | Reservado; W5500 INT queda NC |
 | 10 | `DIANA_PIN_ETH_CS` | W5500 chip select |
 | 11 | `DIANA_PIN_ETH_MOSI` | SPI MOSI |

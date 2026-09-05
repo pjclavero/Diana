@@ -79,9 +79,16 @@ fabricada no hay estabilidad eléctrica que declarar. No se envía nada a fabric
   de color, OTA A/B con verificación previa y rollback.
 - Los mensajes que genera se validan contra los esquemas congelados en cada ejecución.
 
-**Laguna importante:** el firmware **nunca se ha compilado con ESP-IDF**. Está escrito y
-probado en host, pero jamás construido para su destino. El workflow `firmware-idf.yml`
+**Laguna importante:** ~~el firmware **nunca se ha compilado con ESP-IDF**. Está escrito y
+probado en host, pero jamás construido para su destino.~~ El workflow `firmware-idf.yml`
 existe para cerrar esa laguna.
+
+> **CADUCADO — 2026-09-05.** Ya se ha compilado.
+> `docs/firmware/evidencia-build-esp-idf.md` registra `BUILD = PASS` con
+> `espressif/idf:v5.5` y los SHA-256 de los cuatro artefactos, y **23 símbolos
+> de D1b sobreviven a `--gc-sections`** en el ELF. Lo que sigue pendiente es la
+> **puerta física**: flashear, OTA y rollback sobre hardware. Fuente canónica:
+> [`docs/STATE.md`](../STATE.md) §9.3.
 
 **Puerta pendiente:** compilación reproducible para ESP32-S3, y OTA y rollback probados
 sobre hardware.

@@ -148,14 +148,33 @@ que tarda en ejecutarse. Es un gate físico distinto y no bloquea el cierre del
 núcleo software.
 
 **Bloqueo abierto:** D1b necesita publicar en `provision/state`, un tópico que no
-existe en el enum del firmware (hoy son 9) ni tiene esquema en `contracts/mqtt/`
-(hoy son 13). Los `TopicKind` están congelados y ampliarlos exige ADR.
-Ver `CONTRACT_GAP-PROVISION-TOPIC`.
+existe en el enum del firmware (hoy son 9). Los `TopicKind` están congelados y
+ampliarlos exige ADR. Ver `CONTRACT_GAP-PROVISION-TOPIC`.
 
-## Pendiente de portar a esta línea
+> **ACTUALIZACIÓN 2026-09-05.** La mitad contractual de este bloqueo **ya está
+> cerrada**: la frase «ni tiene esquema en `contracts/mqtt/` (hoy son 13)» ha
+> caducado. En `ae69357` hay **15 esquemas**, entre ellos
+> `module-provision-command.schema.json` y `module-provision-state.schema.json`,
+> con **ADR-0008 ACEPTADO** (ampliación contractual v1.2) y
+> `server/backend/src/contracts/topics.ts` reconociendo ambos `TopicKind`.
+>
+> Lo que sigue abierto es sólo el lado firmware: el enum
+> `messages.h:30-39` mantiene 9 valores y `mqtt_client.c` no menciona
+> `provision`, así que `DEVICE_MANAGEMENT_COMMAND_TRANSPORT = NOT_REACHABLE`
+> sigue siendo cierto. Fuente canónica: [`docs/STATE.md`](../STATE.md) §2.
 
-`fix/w5500-reset-hardware@f52d013` **cierra `FW/HW_GAP-W5500-VERSIONR-00`** y aún
-no está aquí.
+## RSTn del W5500 — ~~pendiente de portar~~ **YA PORTADO** (2026-09-05)
+
+> **CADUCADO el encabezado anterior.** Este bloque se titulaba «Pendiente de
+> portar a esta línea» y decía que el arreglo «aún no está aquí». **Ya está.**
+> En `mp0/integration@ae69357`, `net_w5500.c:119-135` conduce y pulsa `RSTn`, y
+> `tools/check_w5500_reset.py` lo fija dentro de `make -C firmware test`
+> (`W5500 RSTn: conducido, pulsado con espera y sin reasercion del PHY  ok`).
+> Lo que **no** se ha portado es la parte documental de `f52d013`. El relato de
+> causa raíz que sigue se conserva porque explica el defecto, no porque siga
+> abierto.
+
+`fix/w5500-reset-hardware@f52d013` **cierra `FW/HW_GAP-W5500-VERSIONR-00`**.
 
 Causa raíz confirmada el 2026-08-28: **nadie conducía `RSTn`**. El firmware sólo
 configuraba CS, así que GPIO8 quedaba como entrada en alta impedancia y `RSTn`

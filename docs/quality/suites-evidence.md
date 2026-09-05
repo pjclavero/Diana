@@ -12,7 +12,7 @@ Entorno: `/home/ia02/Diana`, rama `develop`, sin demonio Docker, sin
 | Suite | Comando | Declarado | Ejecutado | Veredicto |
 |---|---|---|---|---|
 | Contratos | `python3 contracts/validate.py` | 43/0 | 43 comprobaciones, 0 fallos, exit 0 | COINCIDE |
-| Firmware (host) | `make -C firmware test` | 389/389 | TOTAL 389/389, 0 fallidas, `CONTRATO: conforme`, exit 0 | COINCIDE |
+| Firmware (host) | `make -C firmware test` | 389/389 | TOTAL 389/389, 0 fallidas, `CONTRATO: conforme`, exit 0 | COINCIDE **en su fecha** · CADUCADO: hoy `TOTAL: 853` en `mp0/integration@ae69357` (medido 2026-09-05) |
 | Simulador | `npm run test` (vitest) | 33/33 | 10 ficheros, 33 pasados, exit 0 | COINCIDE |
 | Backend unit | `npm run test:unit` | 157 + 5 saltados | 157 pasados (unit); suite completa 157 pasados + 5 saltados / 162, exit 0 | COINCIDE |
 | Frontend | build + typecheck + lint + unit | 30/30 | typecheck 0, build OK, lint 0, 30 pasados | COINCIDE (tras `npm ci`) |

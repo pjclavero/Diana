@@ -51,7 +51,9 @@ Versionado semántico.
   vista en directo nunca pudo funcionar. Corregido en código (panel a `socket.io-client`,
   gateway con salas reales por partida), **sin desplegar y sin probar con navegador real**; y
   el canal en directo **todavía no exige autenticación**.
-- El firmware **nunca se ha compilado con ESP-IDF**; no hay PCB, ni ERC/DRC ejecutados.
+- ~~El firmware **nunca se ha compilado con ESP-IDF**~~ (**caducado 2026-09-05**: hay
+  build `PASS` con `espressif/idf:v5.5` en `docs/firmware/evidencia-build-esp-idf.md`);
+  no hay PCB, ni ERC/DRC ejecutados.
 - Ingesta extremo a extremo sin verificar; restauración de copia y `reboot` sin ejecutar.
 
 ### Añadido (Ola 0)

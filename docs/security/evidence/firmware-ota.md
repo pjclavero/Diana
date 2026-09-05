@@ -53,6 +53,16 @@ int diana_pf_ota_activate(void *ctx)
 ```
 
 ## sdkconfig.defaults: firma activada, pero NUNCA compilado (aviso del propio fichero)
+
+> **CADUCADO PARCIALMENTE — 2026-09-05.** El «nunca compilado» de este título y
+> del aviso del fichero describía el entorno de entonces (sin toolchain). Hoy sí
+> hay build reproducible: `docs/firmware/evidencia-build-esp-idf.md`,
+> `BUILD = PASS` con `espressif/idf:v5.5`.
+>
+> **Lo que NO cambia y sigue siendo el hallazgo de seguridad:** que compile no
+> demuestra que la firma de OTA se haya ejercido, ni que exista hardware donde
+> validar rollback. Esa parte sigue **NO VERIFICADA**. Ver
+> [`docs/STATE.md`](../../STATE.md) §9.3.
 ```
 # Valores por defecto de ESP-IDF para Diana (ESP32-S3 + W5500).
 # Se aplican con `idf.py set-target esp32s3 && idf.py build`.

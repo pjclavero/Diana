@@ -5,13 +5,21 @@ tenido varias ramas que parecían decir «yo soy el firmware oficial», y una de
 ellas habría revertido cinco semanas de trabajo si alguien la hubiera fusionado
 sin mirar.
 
-Actualizado: **2026-08-25**.
+Actualizado: **2026-09-05**.
+
+> **La fuente canónica de ESTADO es [`docs/STATE.md`](docs/STATE.md).** Este
+> fichero sólo gobierna **ramas y fusiones**. Si algo aquí contradice a STATE,
+> manda STATE.
 
 ## LA LÍNEA A SEGUIR
 
 ```
-mp0/integration @ 9b5e161      <-- TRABAJA AQUÍ
+mp0/integration @ ae69357      <-- TRABAJA AQUÍ
 ```
+
+> **Corrección 2026-09-05.** Aquí ponía `9b5e161`, y más abajo `3711632`. Ambos
+> quedaron atrás. El SHA real se comprueba con
+> `git rev-parse origin/mp0/integration`, nunca leyéndolo de un documento.
 
 **Todo desarrollo nuevo se hace sobre `mp0/integration`.** Es la única rama que
 reúne las tres cosas a la vez:
@@ -41,7 +49,7 @@ trabajo de banco: **por fichero y con justificación**, nunca con `git merge`.
 
 | falta | dónde está | cuándo entra |
 |---|---|---|
-| Arreglo de `RSTn` del W5500 | `fix/w5500-reset-hardware@f52d013` | pendiente de portar |
+| ~~Arreglo de `RSTn` del W5500~~ | `fix/w5500-reset-hardware@f52d013` | **CADUCADO: el código ya está portado** (2026-09-05). `net_w5500.c:119-135` conduce y pulsa RSTn y `tools/check_w5500_reset.py` está verde en la suite. Falta sólo su parte documental |
 | TLS 8883 de P0-2 | `hotfix/p02-tls-6da16d4@ad2d166` | tras MP0-F |
 
 ---
@@ -50,7 +58,8 @@ trabajo de banco: **por fichero y con justificación**, nunca con `git merge`.
 
 | ref | commit | estatus |
 |---|---|---|
-| `mp0/integration` | `3711632` | **LÍNEA DE TRABAJO VIGENTE** |
+| `mp0/integration` | `ae69357` | **LÍNEA DE TRABAJO VIGENTE** (era `3711632`; verificado con `git branch -r -v` el 2026-09-05) |
+| `codex/proto-do-w5500` | `b883da0` | `PHYSICAL_FIRMWARE_BASE_PREVIOUS`, evidencia histórica |
 | `codex/hardware-prototipo-v1` | `3a1d180` | **FIRMWARE Y HARDWARE CANÓNICOS** (banco) |
 | `develop` | `21c09db` | tronco; absorbió el hardware por PR #1 |
 | `main` | `3414f1b` | intacto; destino de la convergencia futura |
@@ -98,7 +107,7 @@ aplica** para desarrollo nuevo.
 Hasta cerrar D1b, la línea de trabajo es:
 
 ```
-mp0/integration@3711632  +  rescate selectivo de los deltas comprobados del prototipo
+mp0/integration@ae69357  +  rescate selectivo de los deltas comprobados del prototipo
 ```
 
 Tras la convergencia, `main` será la fuente canónica también de
@@ -120,8 +129,9 @@ FIRMWARE_CANONICAL_COMMIT = 3a1d1802b68d3ba0c3ac7d394550b8ce99ad3682
 HARDWARE_CURRENT_BRANCH   = codex/hardware-prototipo-v1
 HARDWARE_CURRENT_COMMIT   = 3a1d1802b68d3ba0c3ac7d394550b8ce99ad3682
 INTEGRATION_BASE          = 3c51847f3f29ba9371e3956668289a32110b7ae2
-INTEGRATION_HEAD          = 37116323fbfa908cc4b3fba2956d6f4e8f72c443
+INTEGRATION_HEAD          = ae6935746cdaf5c57bf70b9a9264757c34efe4f1
 RECONCILIATION_BASE       = 37116323fbfa908cc4b3fba2956d6f4e8f72c443
+                            (histórico: la base sobre la que se reconcilió, no la cabeza)
 MP0_INTEGRATION_PREVIOUS  = 27652ed6cd7ea20989180e1da8165381cf166f6a
 ```
 
@@ -157,8 +167,21 @@ MP0_INTEGRATION_PREVIOUS  = 27652ed6cd7ea20989180e1da8165381cf166f6a
 `CONTRACT_GAP-TEST-COUNT`. Circula un «43/43» reportado desde el portátil que
 **no se ha podido reproducir aquí**. Medido en este servidor:
 
+**Cifra vigente (2026-09-05, `ae69357`, medida en este servidor):**
+
 ```
-make -C firmware test @ mp0/integration  →  748 comprobaciones · CONTRATO: conforme
+make -C firmware test  →  TOTAL: 853 comprobaciones, 853 correctas, 0 fallidas
+                          CONTRATO: conforme
+```
+
+Se lee de la línea `TOTAL:`. Contar líneas `ok` da otra cifra —incluyen ~48 que
+no pasan por el arnés `CHECK`— y **ésa no es la buena**.
+
+Las cifras de abajo son **medidas anteriores, correctas en su momento y hoy
+caducadas**. Se conservan fechadas, no se borran.
+
+```
+make -C firmware test @ mp0/integration  →  748 comprobaciones · CONTRATO: conforme   [CADUCADO, árbol anterior]
                                             (18 mensajes + 14 enumerados = 32 validaciones)
 make -C firmware test @ 3a1d180          →  468 comprobaciones · CONTRATO: 1 FALLOS
                                             (19 validaciones)
