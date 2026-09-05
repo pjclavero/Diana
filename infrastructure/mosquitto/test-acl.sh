@@ -60,6 +60,11 @@
 #   MQTT_BACKEND_PASSWORD=... MQTT_PASSWORD_A=... MQTT_PASSWORD_B=... \
 #       ./test-acl.sh <host> <puerto> [mod_a] [mod_b]
 #
+# Contra el listener TLS (8883), añade la CA por entorno:
+#   MQTT_CAFILE=infrastructure/mosquitto/certs/ca.crt \
+#   MQTT_BACKEND_PASSWORD=... MQTT_PASSWORD_A=... MQTT_PASSWORD_B=... \
+#       ./test-acl.sh localhost 8883
+#
 # GAP conocido y no cerrado aquí: mosquitto_pub/mosquitto_sub sólo aceptan la
 # contraseña con -P, es decir en su propio argv. Este script evita el secreto
 # en el argv DEL SCRIPT (y por tanto en el historial del operador), pero no
@@ -92,6 +97,20 @@
 #       true el broker reescribe el client_id declarado con el usuario
 #       autenticado antes de evaluar la ACL, así que la suplantación deja de
 #       ser posible).
+#
+# DEFECTO CORREGIDO EN EL PORTE D1 (2026-09-05) — falso verde generalizado.
+#   Quince tópicos estaban escritos entre COMILLAS SIMPLES con `$MOD_A`/`$MOD_B`
+#   dentro, así que la variable NO expandía y el script publicaba y leía en
+#   tópicos literales del tipo `targets/v1/module/$MOD_A/presence`. Ningún
+#   usuario tiene permiso sobre esos tópicos, de modo que TODAS las pruebas
+#   negativas (3, 4, 5, 6, 9) pasaban por el motivo equivocado, y las positivas
+#   (2, 11) fallaban por el mismo motivo. La prueba 12 —la de F-02, la más
+#   importante del fichero— era un FALSO VERDE: publicaba en
+#   `targets/v1/module/$MOD_B/hit`, que se deniega con o sin suplantación, así
+#   que jamás demostró que la suplantación estuviera cerrada.
+#   Medido ejecutando el script contra un broker real antes y después.
+#   Es exactamente lo que este fichero denuncia en el párrafo de MP0-A: un
+#   rechazo por otra causa contado como demostración de autorización.
 #
 # Método: cada comprobación de escritura publica con -r (retain) usando una
 # única conexión de corta vida (mosquitto_pub se conecta, publica y se
@@ -126,13 +145,45 @@ BACKEND_PW="${MQTT_BACKEND_PASSWORD:?falta MQTT_BACKEND_PASSWORD en el entorno}"
 M1_PW="${MQTT_PASSWORD_A:?falta MQTT_PASSWORD_A (contraseña de $MOD_A) en el entorno}"
 M2_PW="${MQTT_PASSWORD_B:?falta MQTT_PASSWORD_B (contraseña de $MOD_B) en el entorno}"
 
-HOST="${1:?Uso: test-acl.sh <host> <puerto> <backend_password> <m01_password> <m02_password>}"
-PORT="${2:?falta el puerto}"
-BACKEND_PW="${3:?falta la contraseña de backend}"
-M1_PW="${4:?falta la contraseña de $MOD_A}"
-M2_PW="${5:?falta la contraseña de $MOD_B}"
+# NOTA (defecto preexistente, corregido en el porte D1): aquí vivía una SEGUNDA
+# declaración de HOST/PORT que además releía $3/$4/$5 como contraseñas, con un
+# `usage` incompatible con el de arriba. Con la invocación documentada
+# —contraseñas por entorno, `./test-acl.sh <host> <puerto>`— ese bloque abortaba
+# el script en `${3:?falta la contraseña de backend}` antes de ejecutar una sola
+# comprobación, y además contradecía la regla de no pasar secretos en argv.
+# El bloque se ha ELIMINADO; manda el de arriba (entorno + posicionales 3 y 4
+# como identidades de módulo).
 
+# --- Transporte -----------------------------------------------------------
+# Porte P0-2 (paso 14). El broker escucha en 8883 con TLS y una CA propia, que
+# no está en el almacén del sistema: sin --cafile el cliente no puede validarlo
+# y la conexión falla. Se pasa por entorno para no cambiar la firma posicional:
+#
+#   MQTT_CAFILE=infrastructure/mosquitto/certs/ca.crt \
+#   MQTT_BACKEND_PASSWORD=... MQTT_PASSWORD_A=... MQTT_PASSWORD_B=... \
+#       ./test-acl.sh localhost 8883
+#
+# Sin MQTT_CAFILE el script sigue hablando en claro, que es lo que hace falta
+# para el 1883 de transición y para un broker de laboratorio. Eso NO es una
+# puerta de atrás: la política de TLS se aplica en el backend y el simulador,
+# que fallan cerrado; esto es un arnés de pruebas, y su trabajo es poder
+# apuntar a cualquiera de los dos listeners para comparar.
 WAIT_SECS=4
+MQTT_CAFILE="${MQTT_CAFILE:-}"
+TRANSPORT=()
+if [ -n "$MQTT_CAFILE" ]; then
+    [ -r "$MQTT_CAFILE" ] || {
+        echo "ERROR: MQTT_CAFILE='$MQTT_CAFILE' no existe o no se puede leer." >&2
+        exit 2
+    }
+    TRANSPORT=(--cafile "$MQTT_CAFILE")
+    echo "Transporte: TLS contra ${HOST}:${PORT}, validando la CA de ${MQTT_CAFILE}"
+else
+    echo "Transporte: EN CLARO contra ${HOST}:${PORT} (sin MQTT_CAFILE)."
+    echo "            Todo lo que viaje por aquí, credenciales incluidas, es legible"
+    echo "            por cualquiera con acceso a la red. Sólo para laboratorio."
+fi
+
 PASS=0
 FAIL=0
 
@@ -143,7 +194,7 @@ log_fail() { echo "  [FAIL] $1"; FAIL=$((FAIL + 1)); }
 # Publica retenido, síncrono: al volver, la conexión ya está cerrada.
 publish_retained() {
     local user="$1" pass="$2" topic="$3" payload="$4"
-    timeout "$WAIT_SECS" mosquitto_pub -h "$HOST" -p "$PORT" \
+    timeout "$WAIT_SECS" mosquitto_pub -h "$HOST" -p "$PORT" "${TRANSPORT[@]}" \
         -u "$user" -P "$pass" -t "$topic" -m "$payload" -q 1 -r 2>/dev/null
 }
 
@@ -152,14 +203,14 @@ publish_retained() {
 # existe). Se ejecuta SIEMPRE después de que el publicador ya se desconectó.
 read_retained() {
     local user="$1" pass="$2" topic="$3"
-    timeout "$WAIT_SECS" mosquitto_sub -h "$HOST" -p "$PORT" \
+    timeout "$WAIT_SECS" mosquitto_sub -h "$HOST" -p "$PORT" "${TRANSPORT[@]}" \
         -u "$user" -P "$pass" -t "$topic" -C 1 2>/dev/null
 }
 
 # clear_retained <user> <pass> <topic>  — limpia con un publicador autorizado
 clear_retained() {
     local user="$1" pass="$2" topic="$3"
-    timeout "$WAIT_SECS" mosquitto_pub -h "$HOST" -p "$PORT" \
+    timeout "$WAIT_SECS" mosquitto_pub -h "$HOST" -p "$PORT" "${TRANSPORT[@]}" \
         -u "$user" -P "$pass" -t "$topic" -n -q 1 -r 2>/dev/null
 }
 
@@ -182,15 +233,15 @@ echo "=== 0. Control positivo de autenticación (evita el falso verde del CONNEC
 if publish_retained "$MOD_A" "$M1_PW" "targets/v1/module/$MOD_A/presence" '{"paso":0}'; then
     log_pass "$MOD_A se autentica y publica lo suyo (las denegaciones posteriores son de ACL, no de credencial)"
 else
-    log_fail "$MOD_A NO pudo autenticarse/publicar: rc=$? — si es 135 el usuario no existe en el broker (./generate-users.sh --all). ABORTA: cualquier prueba negativa a partir de aquí sería un falso verde."
+    log_fail "$MOD_A NO pudo autenticarse/publicar: rc=$? — 135/5: el usuario no existe o la contraseña no vale (./generate-users.sh --all); 14 (Protocol error) contra el 8883: falta MQTT_CAFILE o la CA no corresponde; conexión rechazada: el puerto no escucha. ABORTA: cualquier prueba negativa a partir de aquí sería un falso verde, porque un fallo de TRANSPORTE o de AUTENTICACIÓN se anunciaría como si fuera una denegación de AUTORIZACIÓN."
     echo "RESULTADO: 0 PASS / 1 FAIL (precondición)"
     exit 1
 fi
 clear_retained backend "$BACKEND_PW" "targets/v1/module/$MOD_A/presence"
 
 echo "=== 1. Cliente anónimo no debe poder conectar ==="
-if timeout "$WAIT_SECS" mosquitto_pub -h "$HOST" -p "$PORT" \
-    -t 'targets/v1/module/$MOD_A/presence' -m '{}' 2>/dev/null; then
+if timeout "$WAIT_SECS" mosquitto_pub -h "$HOST" -p "$PORT" "${TRANSPORT[@]}" \
+    -t "targets/v1/module/$MOD_A/presence" -m '{}' 2>/dev/null; then
     log_fail "el cliente anónimo pudo publicar (allow_anonymous debería ser false)"
 else
     log_pass "el cliente anónimo no pudo conectar/publicar"
@@ -199,27 +250,27 @@ fi
 echo "=== 2. $MOD_A puede escribir su propio presence ==="
 check_write "$MOD_A pudo escribir su propio presence (esperado)" \
     "$MOD_A NO pudo escribir su propio presence (permiso roto)" \
-    "$MOD_A" "$M1_PW" 'targets/v1/module/$MOD_A/presence' 'test-acl-presence' 1 backend "$BACKEND_PW"
+    "$MOD_A" "$M1_PW" "targets/v1/module/$MOD_A/presence" 'test-acl-presence' 1 backend "$BACKEND_PW"
 
 echo "=== 3. $MOD_A NO puede escribir el presence de $MOD_B ==="
 check_write "$MOD_A no pudo escribir el presence de $MOD_B" \
     "$MOD_A pudo escribir el presence de $MOD_B (fuga de ACL)" \
-    "$MOD_A" "$M1_PW" 'targets/v1/module/$MOD_B/presence' 'suplantacion' 0 backend "$BACKEND_PW"
+    "$MOD_A" "$M1_PW" "targets/v1/module/$MOD_B/presence" 'suplantacion' 0 backend "$BACKEND_PW"
 
 echo "=== 4. $MOD_A NO puede escribir su propio config/desired ==="
 check_write "$MOD_A no pudo escribir su propio config/desired" \
     "$MOD_A pudo escribir su propio config/desired (el fallo original del contrato)" \
-    "$MOD_A" "$M1_PW" 'targets/v1/module/$MOD_A/config/desired' 'auto-config' 0 backend "$BACKEND_PW"
+    "$MOD_A" "$M1_PW" "targets/v1/module/$MOD_A/config/desired" 'auto-config' 0 backend "$BACKEND_PW"
 
 echo "=== 5. $MOD_A NO puede escribir su propio command ==="
 check_write "$MOD_A no pudo escribir su propio command" \
     "$MOD_A pudo escribir su propio command" \
-    "$MOD_A" "$M1_PW" 'targets/v1/module/$MOD_A/command' 'auto-command' 0 backend "$BACKEND_PW"
+    "$MOD_A" "$M1_PW" "targets/v1/module/$MOD_A/command" 'auto-command' 0 backend "$BACKEND_PW"
 
 echo "=== 6. $MOD_A NO puede escribir su propio ota ==="
 check_write "$MOD_A no pudo escribir su propio ota" \
     "$MOD_A pudo escribir su propio ota" \
-    "$MOD_A" "$M1_PW" 'targets/v1/module/$MOD_A/ota' 'auto-ota' 0 backend "$BACKEND_PW"
+    "$MOD_A" "$M1_PW" "targets/v1/module/$MOD_A/ota" 'auto-ota' 0 backend "$BACKEND_PW"
 
 echo "=== 7. backend puede escribir targets/v1/system/+/status ==="
 check_write "backend pudo escribir system/s1/status (esperado)" \
@@ -229,38 +280,38 @@ check_write "backend pudo escribir system/s1/status (esperado)" \
 echo "=== 8. backend puede escribir targets/v1/module/$MOD_A/maintenance/command ==="
 check_write "backend pudo escribir maintenance/command de $MOD_A (esperado, Trabajo 1)" \
     "backend NO pudo escribir maintenance/command de $MOD_A (canal de mantenimiento roto)" \
-    backend "$BACKEND_PW" 'targets/v1/module/$MOD_A/maintenance/command' 'reboot' 1 backend "$BACKEND_PW"
+    backend "$BACKEND_PW" "targets/v1/module/$MOD_A/maintenance/command" 'reboot' 1 backend "$BACKEND_PW"
 
 echo "=== 9. backend NO puede escribir targets/v1/module/$MOD_A/command (canal de juego) ==="
 check_write "backend no pudo escribir module/$MOD_A/command (separación de autoridad respetada)" \
     "backend pudo escribir module/$MOD_A/command (PUENTE PROHIBIDO: el backend no debe poder mandar órdenes de juego)" \
-    backend "$BACKEND_PW" 'targets/v1/module/$MOD_A/command' 'orden-de-juego-desde-backend' 0 backend "$BACKEND_PW"
+    backend "$BACKEND_PW" "targets/v1/module/$MOD_A/command" 'orden-de-juego-desde-backend' 0 backend "$BACKEND_PW"
 
 echo "=== 10. el coordinador ($MOD_B) SÍ puede escribir targets/v1/module/+/command ==="
 check_write "$MOD_B (coordinador) pudo escribir module/$MOD_A/command (esperado)" \
     "$MOD_B (coordinador) NO pudo escribir module/$MOD_A/command (rol de coordinador roto o no activado — ¿se ejecutó ./set-coordinator.sh $MOD_B?)" \
-    "$MOD_B" "$M2_PW" 'targets/v1/module/$MOD_A/command' 'orden-de-juego-desde-coordinador' 1 "$MOD_B" "$M2_PW"
+    "$MOD_B" "$M2_PW" "targets/v1/module/$MOD_A/command" 'orden-de-juego-desde-coordinador' 1 "$MOD_B" "$M2_PW"
 
 echo "=== 11. $MOD_A puede leer su propio maintenance/command ==="
-publish_retained backend "$BACKEND_PW" 'targets/v1/module/$MOD_A/maintenance/command' 'reboot-read-test'
-M1_READ="$(read_retained "$MOD_A" "$M1_PW" 'targets/v1/module/$MOD_A/maintenance/command')"
+publish_retained backend "$BACKEND_PW" "targets/v1/module/$MOD_A/maintenance/command" 'reboot-read-test'
+M1_READ="$(read_retained "$MOD_A" "$M1_PW" "targets/v1/module/$MOD_A/maintenance/command")"
 if [ -n "$M1_READ" ]; then
     log_pass "$MOD_A pudo leer su propio maintenance/command (esperado)"
 else
     log_fail "$MOD_A NO pudo leer su propio maintenance/command (permiso roto)"
 fi
-clear_retained backend "$BACKEND_PW" 'targets/v1/module/$MOD_A/maintenance/command'
+clear_retained backend "$BACKEND_PW" "targets/v1/module/$MOD_A/maintenance/command"
 
 echo "=== 12. F-02: $MOD_A con credenciales propias pero client_id=$MOD_B NO puede suplantar a $MOD_B ==="
-timeout "$WAIT_SECS" mosquitto_pub -h "$HOST" -p "$PORT" -u "$MOD_A" -P "$M1_PW" -i "$MOD_B" \
-    -t 'targets/v1/module/$MOD_B/hit' -m '{"suplantado_por":"$MOD_A"}' -q 1 -r 2>/dev/null
-F02_READ="$(read_retained backend "$BACKEND_PW" 'targets/v1/module/$MOD_B/hit')"
+timeout "$WAIT_SECS" mosquitto_pub -h "$HOST" -p "$PORT" "${TRANSPORT[@]}" -u "$MOD_A" -P "$M1_PW" -i "$MOD_B" \
+    -t "targets/v1/module/$MOD_B/hit" -m "{\"suplantado_por\":\"$MOD_A\"}" -q 1 -r 2>/dev/null
+F02_READ="$(read_retained backend "$BACKEND_PW" "targets/v1/module/$MOD_B/hit")"
 if [ -n "$F02_READ" ]; then
     log_fail "$MOD_A con client_id=$MOD_B pudo escribir en module/$MOD_B/hit (F-02 SIGUE ABIERTO): $F02_READ"
 else
     log_pass "$MOD_A con client_id=$MOD_B no pudo escribir en module/$MOD_B/hit (F-02 cerrado)"
 fi
-clear_retained backend "$BACKEND_PW" 'targets/v1/module/$MOD_B/hit'
+clear_retained backend "$BACKEND_PW" "targets/v1/module/$MOD_B/hit"
 
 echo ""
 echo "=== Resumen: ${PASS} correctos, ${FAIL} fallos ==="

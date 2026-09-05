@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import mqtt, { type MqttClient } from 'mqtt';
 import { topicMatches } from './topicMatch.js';
 import type {
@@ -33,9 +34,16 @@ export function dispatchByFilter(
 }
 
 export interface MqttJsTransportOptions {
-  url: string; // p.ej. mqtt://192.168.1.209:1883
+  url: string; // p.ej. mqtts://192.168.1.209:8883
   username?: string;
   password?: string;
+  /**
+   * CA con la que validar al broker. Obligatoria para una URL `mqtts://`
+   * contra el broker de Diana: su certificado lo firma una CA propia, que no
+   * está en el almacén del sistema. Sin ella la conexión no se degrada a
+   * insegura — falla, y por eso hay que pasarla (P0-2).
+   */
+  caFile?: string;
   /** Latencia simulada añadida a publish() en ms, para escenarios con retraso configurable. */
   simulatedLatencyMs?: number;
 }
@@ -74,6 +82,29 @@ export class MqttJsTransport implements Transport {
     this.opts = opts;
   }
 
+  /**
+   * Mismo criterio que el backend (`mqtt.service.ts`), a propósito: si la URL
+   * es TLS y no hay CA, esto LANZA en vez de conectar. `rejectUnauthorized`
+   * queda explícito aunque sea el valor por defecto —es la línea que alguien
+   * tocaría con prisa— y `servername` no se fija a mano, para que mqtt.js
+   * verifique el nombre contra el host de la URL.
+   *
+   * Una URL en claro sigue permitida sin ruido: este simulador se usa también
+   * contra brokers efímeros de laboratorio, que es un caso legítimo. Lo que no
+   * puede pasar es que `mqtts://` acabe conectando sin validar.
+   */
+  private tlsOptions(): Record<string, unknown> {
+    if (!/^(mqtts|wss|ssl|tls):\/\//.test(this.opts.url)) return {};
+    if (!this.opts.caFile) {
+      throw new Error(
+        `Conectar por TLS a ${this.opts.url} exige --cafile: el broker de Diana usa ` +
+          'una CA propia que no está en el almacén del sistema, así que sin ella no ' +
+          'se puede validar su identidad.',
+      );
+    }
+    return { ca: [readFileSync(this.opts.caFile)], rejectUnauthorized: true };
+  }
+
   connect(will?: WillMessage): Promise<void> {
     return new Promise((resolve, reject) => {
       const client = mqtt.connect(this.opts.url, {
@@ -82,6 +113,7 @@ export class MqttJsTransport implements Transport {
         password: this.opts.password,
         clean: true,
         reconnectPeriod: 2000,
+        ...this.tlsOptions(),
         will: will
           ? {
               topic: will.topic,

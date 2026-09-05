@@ -55,3 +55,14 @@ server/backend/data/exports/
 # Credenciales del broker: NUNCA al repositorio (la regla anterior estaba
 # anclada a la raiz y no cubria infrastructure/mosquitto/passwd).
 infrastructure/mosquitto/passwd
+
+# Material TLS de P0-2 (generado por infrastructure/mosquitto/generate-certs.sh).
+# Las claves ya las cubria `*.key`, pero el directorio entero debe quedar fuera:
+# son certificados de una CA propia POR DESPLIEGUE, no artefactos del repo.
+#
+# DESVIACION DELIBERADA respecto del hotfix: alli el patron es `certs/` a secas.
+# Aqui se ancla a esta ruta porque el arbol de integracion SI tiene ficheros
+# versionados bajo un directorio `certs/` (firmware/esp32/main/certs/), y un
+# patron sin anclar dejaria en silencio fuera de control cualquier fichero
+# nuevo de ese otro directorio. Comprobado con `ls-files`.
+infrastructure/mosquitto/certs/
