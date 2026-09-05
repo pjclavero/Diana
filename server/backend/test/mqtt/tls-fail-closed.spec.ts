@@ -44,10 +44,16 @@ function buildService(url: string, caFile: string | null) {
   } as never;
   const validator = { validate: jest.fn(() => ({ valid: true, errors: [] })) } as never;
   const ingest = { handleMessage: jest.fn().mockResolvedValue({}) } as never;
-  // MqttService toma TRES dependencias en esta base (6da16d4). Aquí se pasaba
-  // una cuarta (`prisma`) que no existe en su constructor: resto de una
-  // versión posterior, invisible para jest y roja para tsc.
-  return new MqttService(config, validator, ingest);
+  // CORREGIDO EN EL PORTE D1. El comentario que había aquí decía que
+  // MqttService toma TRES dependencias y que pasar una cuarta (`prisma`) era
+  // "resto de una versión posterior". Sobre `mp0/integration` es al revés: el
+  // constructor toma CUATRO —config, validator, ingest, prisma— porque
+  // `recordPublishDenied` escribe en base de datos, y esa cuarta dependencia es
+  // trabajo posterior al hotfix. Con tres argumentos jest pasaba igual (los
+  // tipos no existen en tiempo de ejecución) pero `tsc --noEmit` daba
+  // TS2554 "Expected 4 arguments, but got 3": un test verde que no compila.
+  const prisma = { publishDenial: { create: jest.fn().mockResolvedValue({}) } } as never;
+  return new MqttService(config, validator, ingest, prisma);
 }
 
 describe('MqttService · TLS que falla cerrado (P0-2)', () => {
