@@ -85,6 +85,13 @@ contracts:
 # cobertura posible sobre ellos es estructural.
 	@$(PYTHON) $(FW)/tools/check_mqtt_tls.py
 
+# MP0-F.0 · ADR-0008. El puente del plano DEVICE_MANAGEMENT vive en
+# main/app_commands.c, main/app_provision.c y mqtt_client.c, que NO se compilan
+# en host: que el enrutado sea exacto lo prueba la suite (test_prov_bridge.c),
+# pero que el codigo lo USE y que el firmware se suscriba solo se puede fijar
+# estructuralmente. Contador PROPIO, no sumado a los demas.
+	@$(PYTHON) $(FW)/tools/check_prov_bridge.py
+
 # ADR-0007. Valida los payloads que llevan `detection_method` contra el contrato
 # de ESTE arbol. Sin descarga ni referencia git: funciona en un clon limpio.
 # La guarda de abajo no es cosmetica: si alguien retira el contrato ADR-0007 de

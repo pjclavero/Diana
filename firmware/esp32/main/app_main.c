@@ -61,6 +61,10 @@ static void build_topics(diana_app *a)
                       DIANA_TOPIC_DIAGNOSTIC, m);
     diana_topic_build(a->topic_config_reported, sizeof(a->topic_config_reported),
                       DIANA_TOPIC_CONFIG_REPORTED, m);
+    /* v1.2 · ADR-0008. Cierra CONTRACT_GAP-PROVISION-STATE-TOPIC: el estado de
+     * autoridad ya tiene topico contractual y deja de quedarse sin emitir. */
+    diana_topic_build(a->topic_provision_state, sizeof(a->topic_provision_state),
+                      DIANA_TOPIC_PROVISION_STATE, m);
 }
 
 /** Autodiagnostico: comprueba lo que se puede comprobar sin disparar. */

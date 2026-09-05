@@ -235,12 +235,57 @@ static void handle_ota(diana_app *a, const cJSON *root, uint64_t recv_us)
     ESP_LOGW(TAG, "orden OTA aceptada; descarga pendiente de implementar");
 }
 
+/**
+ * DESPACHADOR UNICO de mensajes entrantes.
+ *
+ * El enrutado es EXACTO (diana_topic_route, tabla contractual espejo de
+ * topics.ts) y ya no por subcadena. Lo que habia antes eran tres `strstr`
+ * sueltos y colisionaban: "/maintenance/command" CONTIENE "/command", asi que
+ * el canal exclusivo del backend caia en el handler del canal de juego. Con un
+ * `switch` sobre el TopicKind cada topico va a EXACTAMENTE un destino, y uno
+ * que no este en la tabla no va a ninguno.
+ */
 void diana_handle_message(diana_app *a, const diana_platform_rx *rx)
 {
-    /* D1b: el plano DEVICE_MANAGEMENT se atiende ANTES que el canal de juego.
-     * Si el mensaje era suyo, no sigue: un modulo sin autoridad no debe poder
-     * colar una orden de provisioning por la ruta de comandos de partida. */
-    if (diana_prov_app_handle(a, rx)) return;
+    char topic_id[DIANA_ROUTE_ID_BUF];
+    diana_topic_route_kind kind = diana_topic_route(rx->topic, topic_id,
+                                                    sizeof(topic_id));
+
+    /* D1b: el plano DEVICE_MANAGEMENT se atiende ANTES de parsear nada como
+     * mensaje de juego. Si el mensaje era suyo, no sigue: un modulo sin
+     * autoridad no debe poder colar una orden de provisioning por la ruta de
+     * comandos de partida. El propio handler vuelve a comprobar la ruta, que
+     * es barato y deja la propiedad cerrada en los dos sitios. */
+    if (kind == DIANA_ROUTE_MODULE_PROVISION_COMMAND) {
+        if (diana_prov_app_handle(a, rx)) return;
+    }
+
+    if (kind == DIANA_ROUTE_UNKNOWN) {
+        /* Ni un handler "por si acaso": un topico fuera del contrato no se
+         * interpreta. Antes, cualquier topico que CONTUVIESE "/command"
+         * terminaba en el canal de juego. */
+        ESP_LOGW(TAG, "topico fuera del contrato v1, descartado");
+        return;
+    }
+
+    if (kind == DIANA_ROUTE_MODULE_MAINTENANCE_COMMAND) {
+        /* Canal EXCLUSIVO del backend (contrato v1.1). El modulo NO se suscribe
+         * a el; si llega algo aqui es una anomalia del broker o de la ACL, y lo
+         * que NO puede pasar es que lo trate el canal de juego. */
+        ESP_LOGW(TAG, "maintenance/command recibido pero no atendido por este "
+                      "firmware: NO se trata como comando de juego");
+        return;
+    }
+
+    if (kind == DIANA_ROUTE_GAME_STATE) {
+        /* Suscrito (mqtt_client.c) pero SIN handler todavia: el consumo del
+         * estado de partida no esta implementado. Antes esto era un descarte
+         * IMPLICITO --el mensaje se parseaba, no casaba ningun strstr y moria
+         * en silencio--; ahora es una rama declarada, que es lo que permite
+         * verlo en el log en vez de suponerlo. */
+        ESP_LOGD(TAG, "game/state recibido: sin handler en este firmware");
+        return;
+    }
 
     cJSON *root = cJSON_ParseWithLength(rx->payload, rx->payload_len);
     if (!root) {
@@ -249,13 +294,13 @@ void diana_handle_message(diana_app *a, const diana_platform_rx *rx)
         return;
     }
 
-    if (strstr(rx->topic, "/ota")) {
+    if (kind == DIANA_ROUTE_MODULE_OTA) {
         handle_ota(a, root, rx->recv_us);
         cJSON_Delete(root);
         return;
     }
 
-    if (strstr(rx->topic, "/config/desired")) {
+    if (kind == DIANA_ROUTE_MODULE_CONFIG_DESIRED) {
         /* La config no lleva sobre de comando: se protege con config_version
          * monotonica, como manda el contrato. */
         const cJSON *cv = cJSON_GetObjectItemCaseSensitive(root, "config_version");
@@ -269,7 +314,7 @@ void diana_handle_message(diana_app *a, const diana_platform_rx *rx)
         return;
     }
 
-    if (strstr(rx->topic, "/command")) {
+    if (kind == DIANA_ROUTE_MODULE_COMMAND) {
         diana_command cmd;
         if (!parse_envelope(root, &cmd)) {
             diana_publish_diagnostic(a, DIANA_DIAG_SCHEMA_REJECTED,

@@ -2,33 +2,37 @@
  * @file app_provision.c
  * @brief Camino de RUNTIME del plano DEVICE_MANAGEMENT (D1b).
  *
- *   [ningun topico suscrito]  X  diana_platform_rx (con retained)
- *        -> diana_prov_app_handle() -> diana_prov_message()
- *        -> diana_prov_handle() -> NVS
+ *   targets/v1/module/{id}/provision  (QoS 1, retain=false)
+ *        -> diana_platform_rx (con retained)
+ *        -> diana_handle_message() -> diana_prov_app_handle()
+ *        -> diana_prov_message() -> diana_prov_handle() -> NVS
+ *        -> diana_prov_state_json()
+ *        -> targets/v1/module/{id}/provision/state (QoS 1, retain=TRUE)
  *
- *   OJO A LA PRIMERA FLECHA, QUE NO EXISTE. El firmware NO se suscribe a
- *   ningun topico de provisioning: mqtt_client.c suscribe command,
- *   config/desired, ota y el estado de partida, y este interceptor empareja por
- *   sufijo `/provision`, que nunca llega. Es decir, la cadena esta cableada y
- *   presente en el ELF, pero HOY NO ES ALCANZABLE POR TRANSPORTE
- *   (CONTRACT_GAP-PROVISION-COMMAND-TOPIC).
+ *   LOS DOS HUECOS DE D1b ESTAN CERRADOS (MP0-F.0, ADR-0008, contrato v1.2):
  *
- *   La cadena TERMINA en NVS. Tampoco se publica estado: el contrato v1 no
- *   tiene topico para ello y sus TopicKind estan congelados
- *   (CONTRACT_GAP-PROVISION-STATE-TOPIC).
+ *     · CONTRACT_GAP-PROVISION-COMMAND-TOPIC: mqtt_client.c ya suscribe
+ *       `provision` con QoS 1. Antes la cadena estaba cableada y presente en
+ *       el ELF pero NO era alcanzable por transporte, porque nadie se
+ *       suscribia al topico.
  *
- *   Ninguno de los dos huecos se resuelve anadiendo un topico suelto: exigiria
- *   un TopicKind nuevo, o sea modificar de facto el contrato v1 para poner
- *   verde un gate. Ambos estan transferidos a MP0-F.0 (PROVISIONING CONTRACT
- *   GATE), con ADR y evolucion contractual completa. NO es MP1: se movio al
- *   descubrirse que faltaba tambien el camino de ENTRADA, no solo el de salida.
+ *     · CONTRACT_GAP-PROVISION-STATE-TOPIC: `out.publish` ya se consume y el
+ *       estado de autoridad se emite retenido en `provision/state`.
+ *
+ *   Ninguno de los dos se ha cerrado anadiendo un topico suelto para poner
+ *   verde un gate: ambos TopicKind existen en el contrato (topics.ts,
+ *   contracts/mqtt/module-provision-{command,state}.schema.json) con ADR y
+ *   evolucion contractual deliberada. Este carril construye el PUENTE; el
+ *   motor de D1b no se toca.
  *
  * Este fichero es DELIBERADAMENTE fino. Todo lo que decide algo —parseo,
  * conformidad, delegacion, ECDSA, maquina de estados, persistencia, serializado
  * de la respuesta— vive en diana_core, que se compila y se ejercita en host. Lo
- * unico que hay aqui es lo que no se puede probar sin ESP-IDF: emparejar el
- * topico, sacar el flag retain del transporte y publicar. Si alguna regla
- * aparece en este fichero, esta en el sitio equivocado.
+ * unico que hay aqui es lo que no se puede probar sin ESP-IDF: sacar el flag
+ * retain del transporte y publicar. Si alguna regla aparece en este fichero,
+ * esta en el sitio equivocado. Por eso el emparejado del topico TAMPOCO vive
+ * ya aqui: lo decide diana_topic_route(), en diana_core, que si se ejecuta en
+ * la suite de host.
  *
  * LO QUE ESTE CARRIL **NO** RESUELVE, y hay que decirlo: la raiz de
  * aprovisionamiento se lee de NVS ("diana_prov"/"root_key", punto SEC1 de 65
@@ -84,39 +88,87 @@ void diana_prov_app_init(diana_app *a)
                       "sera rechazada (fallo cerrado)");
     }
 
-    /* CONTRACT_GAP-PROVISION-STATE-TOPIC: no se construye topico de estado.
-     * Los TopicKind del contrato v1 estan CONGELADOS y no incluyen
-     * provision/state. D1b entra aqui SOLO como camino de ordenes:
-     * recepcion, validacion y ejecucion. La publicacion del estado de
-     * autoridad se decide en MP1 con ADR y evolucion contractual
-     * deliberada, no metiendo dos topicos por la puerta de atras. */
+    /* El topico de estado lo construye build_topics() en app_main.c, con la
+     * misma tabla contractual que el resto (DIANA_TOPIC_PROVISION_STATE). */
 
     ESP_LOGI(TAG, "estado de aprovisionamiento al arranque: %s",
              diana_prov_state_str((diana_prov_state)a->prov.st.state));
 }
 
 /**
- * Atiende una orden del plano DEVICE_MANAGEMENT. NO publica nada: el estado de
- * autoridad resultante se queda sin emitir a proposito
- * (CONTRACT_GAP-PROVISION-STATE-TOPIC). El comentario que habia aqui hablaba de
- * publicar module-provision-state y contradecia al `(void)out.publish;` de unas
- * lineas mas abajo; era un resto de un publicador que no existe.
+ * Emite el estado de autoridad en targets/v1/module/{id}/provision/state.
  *
- * OJO AL ALCANCE: esta funcion empareja por sufijo `/provision`, y el firmware
- * NO se suscribe a ningun topico de provisioning
- * (CONTRACT_GAP-PROVISION-COMMAND-TOPIC). Es decir, hoy es alcanzable desde el
- * despacho pero NO desde el transporte.
+ * QoS y retain NO se eligen aqui: salen de la tabla del contrato
+ * (diana_topic_qos/diana_topic_retain sobre DIANA_TOPIC_PROVISION_STATE), como
+ * el resto de publicadores del modulo. El PAYLOAD lo serializa
+ * diana_prov_state_json() en diana_core: aqui no hay un segundo serializador,
+ * porque dos serializadores del mismo mensaje divergen siempre.
+ *
+ * NO_SECRET_IN_STATE: este camino no puede filtrar material sensible porque no
+ * lo escribe -- ni root_key, ni clave operativa, ni contrasena MQTT. La
+ * garantia esta donde se construye el JSON, y la prueba que la sostiene vive en
+ * test_host/tests/test_prov_bridge.c con control positivo.
+ */
+void diana_publish_provision_state(diana_app *a, const diana_prov_command *cmd,
+                                   const diana_prov_outcome *out)
+{
+    /* publish=false = descartado sin respuesta posible. No se inventa una
+     * fotografia para tener algo retenido en el broker. */
+    if (!out->publish) return;
+    if (a->topic_provision_state[0] == '\0') {
+        ESP_LOGE(TAG, "sin topico de estado de aprovisionamiento: no se publica");
+        return;
+    }
+
+    char buf[DIANA_MSG_JSON_MAX];
+    size_t n = diana_prov_state_json(&a->prov, cmd, out, buf, sizeof(buf));
+    if (n == 0) {
+        ESP_LOGE(TAG, "no se ha podido serializar module-provision-state");
+        return;
+    }
+
+    diana_hal_mqtt_msg msg = {
+        .topic = a->topic_provision_state,
+        .payload = buf,
+        .payload_len = n,
+        .qos = diana_topic_qos(DIANA_TOPIC_PROVISION_STATE),
+        .retain = diana_topic_retain(DIANA_TOPIC_PROVISION_STATE),
+    };
+    a->hal.mqtt_publish(a->hal.ctx, &msg);
+}
+
+/**
+ * Declaracion NO solicitada al conectar. Solo emite algo cuando hay algo que
+ * declarar (sin autoridad o autoridad caduca): diana_prov_connect_declaration()
+ * deja publish=false en READY y PREPARED.
+ */
+void diana_prov_app_announce(diana_app *a)
+{
+    diana_prov_outcome out;
+    diana_prov_connect_declaration(&a->prov, &out);
+    /* Sin orden que correlar: la declaracion no responde a ningun request_id y
+     * el esquema deja request_id opcional justamente para este caso. */
+    diana_publish_provision_state(a, NULL, &out);
+}
+
+/**
+ * Atiende una orden del plano DEVICE_MANAGEMENT y PUBLICA el estado resultante.
+ *
+ * El emparejado del topico ya no se hace aqui: diana_handle_message() enruta
+ * con diana_topic_route() y llama a esta funcion solo para
+ * DIANA_ROUTE_MODULE_PROVISION_COMMAND. Devuelve true si el mensaje era suyo,
+ * para que no siga por el canal de juego.
+ *
+ * El flag `retained` viaja intacto hasta diana_prov_message(), que lo rechaza
+ * LO PRIMERO de todo con retained_provisioning_rejected. Esa regla es de D1b y
+ * este carril NO la toca.
  */
 bool diana_prov_app_handle(diana_app *a, const diana_platform_rx *rx)
 {
-    /* Emparejado por SUFIJO exacto. Con strstr(), un topico
-     * ".../provision/state" —que el propio modulo publica— entraria por aqui.
-     * El resto del fichero de comandos usa strstr y ese defecto ya existe alli;
-     * aqui no se replica. */
-    size_t tlen = strlen(rx->topic);
-    static const char SUF[] = "/provision";
-    size_t slen = sizeof(SUF) - 1u;
-    if (tlen < slen || strcmp(rx->topic + (tlen - slen), SUF) != 0) return false;
+    char id[DIANA_ROUTE_ID_BUF];
+    if (diana_topic_route(rx->topic, id, sizeof(id)) !=
+        DIANA_ROUTE_MODULE_PROVISION_COMMAND)
+        return false;
 
     diana_prov_command cmd;
     diana_prov_outcome out;
@@ -129,12 +181,6 @@ bool diana_prov_app_handle(diana_app *a, const diana_platform_rx *rx)
              diana_prov_state_str(out.state), diana_prov_reason_str(out.reason),
              (int)out.applied);
 
-    /* CONTRACT_GAP-PROVISION-STATE-TOPIC: `out.publish` queda sin consumir a
-     * proposito. La orden SI se recibe, valida y aplica; lo que NO se emite es
-     * el estado de autoridad resultante, porque el contrato v1 no tiene topico
-     * para ello y sus TopicKind estan congelados. Se decide en MP1 con ADR.
-     *
-     * Tampoco existe aqui un `announce` de estado por la misma razon. */
-    (void)out.publish;
+    diana_publish_provision_state(a, &cmd, &out);
     return true;
 }
