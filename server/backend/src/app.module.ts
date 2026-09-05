@@ -18,6 +18,7 @@ import { GamesModule } from './modules/games/games.module';
 import { HealthModule } from './modules/health/health.module';
 import { HitsModule } from './modules/hits/hits.module';
 import { MaintenanceModule } from './modules/maintenance/maintenance.module';
+import { ProvisioningModule } from './modules/provisioning/provisioning.module';
 import { ModulesModule } from './modules/modules/modules.module';
 import { MqttModule } from './modules/mqtt/mqtt.module';
 import { ParticipantsModule } from './modules/participants/participants.module';
@@ -80,6 +81,7 @@ import { WebsocketModule } from './modules/websocket/websocket.module';
     ResilienceModule,
     FirmwareModule,
     MaintenanceModule,
+    ProvisioningModule,
     ExportsModule,
   ],
   providers: [

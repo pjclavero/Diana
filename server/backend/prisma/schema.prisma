@@ -1015,3 +1015,96 @@ model MatrixLayout {
   @@index([ownerId])
   @@map("matrix_layouts")
 }
+
+// ---------------------------------------------------------------------------
+// 14. Plano DEVICE_MANAGEMENT (contrato v1.2, ADR-0008)
+// ---------------------------------------------------------------------------
+//
+// Tres tablas y una frontera. Las dos primeras son el lado de MANDO (lo que el
+// backend EMITIÓ y desde dónde continúa la secuencia); la tercera es
+// OBSERVACIONAL (lo que el módulo REPORTÓ). Están separadas porque
+// `provision/state` no es autoridad: si la secuencia de la próxima orden
+// saliera de lo reportado, quien pudiera publicar en el tópico de un módulo
+// elegiría la secuencia del backend.
+//
+// NO_SECRET_IN_STATE: ninguna columna de `provisioning_state_observations`
+// admite material secreto. `provisioning_key_fingerprint` es una HUELLA
+// pública —un identificador— y el `additionalProperties: false` del esquema
+// MQTT es la primera mitad de esa barrera.
+
+/// Contador monotónico de `provisioning_sequence` por dispositivo.
+/// Vive en la base y no en memoria a propósito: sin persistencia, un reinicio
+/// del backend reemitiría secuencias ya consumidas, el módulo las rechazaría
+/// (`provisioning_sequence_rejected`) y el dispositivo quedaría inmanejable.
+model ProvisioningSequence {
+  deviceId     String   @id @map("device_id") @db.VarChar(63)
+  lastSequence BigInt   @default(0) @map("last_sequence")
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("provisioning_sequences")
+}
+
+/// Orden FIRMADA emitida por el backend. Es a la vez correlación
+/// (`request_id`) y rastro de quién ordenó qué.
+/// La FIRMA no se guarda: no aporta nada que no diga el `request_id` y sería
+/// material criptográfico en reposo sin necesidad.
+model ProvisioningOrder {
+  id                   String   @id @default(uuid()) @db.Uuid
+  requestId            String   @unique @map("request_id") @db.Uuid
+  deviceId             String   @map("device_id") @db.VarChar(63)
+  systemId             String   @map("system_id") @db.VarChar(63)
+  action               String   @db.VarChar(16)
+  mode                 String?  @db.VarChar(16)
+  provisioningSequence BigInt   @map("provisioning_sequence")
+  rotationId           String?  @map("rotation_id") @db.Uuid
+  epoch                String?  @db.Uuid
+  currentEpoch         String?  @map("current_epoch") @db.Uuid
+  nextEpoch            String?  @map("next_epoch") @db.Uuid
+  provisionId          String?  @map("provision_id") @db.Uuid
+  issuedAtMs           BigInt   @map("issued_at_ms")
+  /// Quién ordenó. Es el eslabón que ata una orden firmada a una persona.
+  actorUserId          String?  @map("actor_user_id") @db.Uuid
+  actorUsername        String?  @map("actor_username") @db.VarChar(64)
+  /// delivered | denied | timed_out | queued. Una denegación de ACL del broker
+  /// no se distingue por el código de retorno del cliente: lo único que la
+  /// delata es el `reasonCode` del PUBACK, y por eso se persiste.
+  publishOutcome       String   @map("publish_outcome") @db.VarChar(16)
+  publishReasonCode    Int?     @map("publish_reason_code")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([deviceId, provisioningSequence])
+  @@index([deviceId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("provisioning_orders")
+}
+
+/// Última fotografía OBSERVACIONAL del estado de autoridad de un módulo.
+/// El nombre lleva «observation» a propósito: no es «el estado del módulo»
+/// sino «lo que el módulo dijo», y ninguna decisión del backend puede depender
+/// de esta tabla como si fuera desired state ejecutable.
+model ProvisioningStateObservation {
+  deviceId                   String   @id @map("device_id") @db.VarChar(63)
+  systemId                   String   @map("system_id") @db.VarChar(63)
+  /// `request_id` de la orden a la que responde; nulo cuando el módulo declara
+  /// su autoridad al conectar, sin orden previa.
+  requestId                  String?  @map("request_id") @db.Uuid
+  /// `true` si el `request_id` casa con una orden que este backend emitió.
+  correlated                 Boolean  @default(false)
+  result                     String   @db.VarChar(32)
+  state                      String   @db.VarChar(16)
+  activeEpoch                String?  @map("active_epoch") @db.Uuid
+  pendingEpoch               String?  @map("pending_epoch") @db.Uuid
+  rotationId                 String?  @map("rotation_id") @db.Uuid
+  provisionId                String?  @map("provision_id") @db.Uuid
+  lastProvisioningSequence   BigInt   @map("last_provisioning_sequence")
+  lastDelegationSequence     BigInt   @map("last_delegation_sequence")
+  /// Huella PÚBLICA de la clave de fábrica. Identificador, no secreto.
+  provisioningKeyFingerprint String   @map("provisioning_key_fingerprint") @db.VarChar(64)
+  reason                     String?  @db.VarChar(64)
+  /// T3: instante de recepción. Lo pone el backend y jamás viaja en el payload.
+  receivedAt                 DateTime @map("received_at") @db.Timestamptz(6)
+  updatedAt                  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([requestId])
+  @@map("provisioning_state_observations")
+}
