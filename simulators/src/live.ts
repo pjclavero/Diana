@@ -26,10 +26,16 @@ import type { ModulePosition, ModuleRotation, SelectorPosition } from './domain/
 import { Simulation } from './simulation.js';
 
 export interface LiveModuleConfig {
-  /** URL del broker, p. ej. mqtt://127.0.0.1:1883 */
+  /** URL del broker, p. ej. mqtts://127.0.0.1:8883 */
   url: string;
   username?: string;
   password?: string;
+  /**
+   * CA con la que validar al broker. OBLIGATORIA si `url` es `mqtts://`: el
+   * broker de Diana usa una CA propia que no está en el almacén del sistema.
+   * Sin ella el transporte LANZA en vez de conectar sin validar (P0-2).
+   */
+  caFile?: string;
   moduleId: string;
   systemId: string;
   seed: number;
@@ -94,6 +100,7 @@ export function liveConfigFromEnv(overrides: Partial<LiveModuleConfig> = {}): Li
     url: process.env.DIANA_MQTT_URL ?? 'mqtt://127.0.0.1:1883',
     username: process.env.DIANA_MQTT_USERNAME || undefined,
     password: process.env.DIANA_MQTT_PASSWORD || undefined,
+    caFile: process.env.DIANA_MQTT_CA_FILE || undefined,
     moduleId: process.env.DIANA_MODULE_ID ?? 'module-01',
     systemId: process.env.DIANA_SYSTEM_ID ?? 'system-a',
     seed: envInt('DIANA_SEED', 1),
@@ -131,7 +138,7 @@ export async function startLiveModule(cfg: LiveModuleConfig): Promise<LiveModule
     systemId: cfg.systemId,
     seed: cfg.seed,
     clock,
-    mqtt: { url: cfg.url, username: cfg.username, password: cfg.password },
+    mqtt: { url: cfg.url, username: cfg.username, password: cfg.password, caFile: cfg.caFile },
   });
 
   const module = simulation.addModule({
