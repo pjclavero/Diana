@@ -422,6 +422,10 @@ void diana_task_network(void *arg)
                                    a->hal.now_us(a->hal.ctx));
             diana_publish_status(a);
             diana_publish_config_reported(a);
+            /* v1.2 · ADR-0008: al (re)conectar se declara el estado de
+             * autoridad si hay algo que declarar. Es reported state
+             * observacional, jamas una orden. */
+            diana_prov_app_announce(a);
             ESP_LOGI(TAG, "reconectado: vaciando %u eventos pendientes",
                      (unsigned)diana_queue_depth(&a->queue));
         } else if (!connected && was_connected) {
