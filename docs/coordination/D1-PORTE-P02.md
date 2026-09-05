@@ -12,7 +12,7 @@
 | repo | `https://github.com/pjclavero/Diana.git` |
 | rama de trabajo | `lane/d1-p02` |
 | `BASE_SHA` (= `origin/mp0/integration`) | `ac2b6db5c335d9656f407b00b03b54ffb1000ece` |
-| `HEAD_SHA` | `66b5eda31544083d4a6d15d0f3d5c626211ece06` |
+| `HEAD_SHA` | `01c8f18` (ver `log`; este documento se escribió en él) |
 | fuente del porte | `origin/hotfix/p02-tls-6da16d4` = `ad2d166dbef9e93a2f284e4c85ddecc17d1185a3` |
 | inventario que se sigue | `docs/coordination/P02-RECONCILIACION.md` §4, orden de 18 pasos |
 | fecha | 2026-09-05 |
@@ -41,10 +41,7 @@ el backend, van por TLS**.
 | `c2e37cf` | 10, 11, 12, 17a | `caFile`, `tlsOptions()`, `bootstrap().catch()`, `.env`, 3 spec |
 | `4307926` | 13 | simulador: `caFile`, `--cafile`, y un test que no valía |
 | `66b5eda` | 14, 15 | `test-acl.sh` con transporte TLS; dos falsos verdes corregidos |
-
-Y en este mismo árbol, sin commit propio todavía al escribir esta línea:
-`04-firewall.sh` (abre 8883, conserva 1883 marcado) y las tres evidencias TAKE
-con su aviso de procedencia.
+| `01c8f18` | 17, 18 | `04-firewall.sh`; 3 evidencias con aviso de procedencia; este documento |
 
 ## 3. Deltas portados
 
