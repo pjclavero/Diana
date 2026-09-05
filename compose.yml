@@ -137,7 +137,23 @@ services:
       PORT: ${BACKEND_PORT:-3000}
       DATABASE_URL: ${DATABASE_URL}
       MQTT_HOST: ${MQTT_HOST:-mosquitto}
-      MQTT_PORT: ${MQTT_PORT:-1883}
+      # Puerto INTERNO del broker, FIJO y sin variable. Antes era
+      # ${MQTT_PORT:-1883}, que es tambien el puerto PUBLICADO AL HOST: cambiar
+      # la publicacion --- algo que un operador hace sin pensar si el puerto le
+      # choca con otra cosa --- rompia la conexion del backend, que habla con
+      # `mosquitto:8883` DENTRO de la red. Configuracion que aparenta gobernar
+      # algo que no gobierna.
+      MQTT_PORT: 8883
+      MQTT_PROTOCOL: mqtts
+      # La CA propia con la que el backend valida al broker. Se monta SOLO el
+      # certificado publico: la clave de la CA no entra en este contenedor.
+      #
+      # PRERREQUISITO DE DESPLIEGUE (riesgo R3 del inventario): este fichero
+      # tiene que existir ANTES del primer `up`. Sin el, el backend falla
+      # cerrado en el arranque y entra en bucle de reinicio --- que es el
+      # comportamiento correcto, no un fallo. Ejecutar antes:
+      #   ./infrastructure/mosquitto/generate-certs.sh
+      MQTT_CA_FILE: /app/certs/mqtt-ca.crt
       MQTT_USERNAME: ${MQTT_BACKEND_USERNAME:-backend}
       MQTT_PASSWORD: ${MQTT_BACKEND_PASSWORD}
       # El backend lee JWT_SECRET (configuration.ts:48) y ABORTA en producción
@@ -156,6 +172,8 @@ services:
     volumes:
       - diana_exports:/app/exports
       - diana_firmware:/app/firmware
+      # Solo el certificado PUBLICO de la CA (ca.key jamas sale de su carpeta).
+      - ./infrastructure/mosquitto/certs/ca.crt:/app/certs/mqtt-ca.crt:ro
     networks:
       - edge
       - internal
@@ -296,18 +314,42 @@ services:
     logging: *default-logging
 
   # ----------------------------------------------------------------------------
-  # Mosquitto — sólo el puerto MQTT 1883 se publica al host (lo necesitan los
-  # módulos ESP32 físicos de la LAN). El puerto WebSocket (9001) queda interno.
+  # Mosquitto — publica el puerto MQTT sobre TLS (8883) y, TODAVIA, el puerto
+  # en claro (1883). El WebSocket (9001) queda interno.
+  #
+  # OJO con la frase que habia aqui: decia que el 1883 «lo necesitan los modulos
+  # ESP32 fisicos de la LAN». Eso sigue siendo cierto Y ES EL PROBLEMA: el
+  # firmware vigente lleva `mqtt://%s:1883` CABLEADO y no puede usar el 8883.
+  # Por eso el 1883 sobrevive a este porte, marcado como perfil de transicion.
+  # Su retirada es el paso 16 y depende de la decision D1 del operador.
   # ----------------------------------------------------------------------------
   mosquitto:
     image: eclipse-mosquitto:2.0.18
     restart: unless-stopped
     ports:
+      # Camino recomendado: MQTT sobre TLS.
+      - "${MQTT_TLS_PORT:-8883}:8883"
+      # PERFIL DE TRANSICION, con fecha de muerte. El 1883 en claro es el camino
+      # por el que se leian credenciales de la LAN (hallazgo H7-03): cualquiera
+      # con acceso a la red lee el CONNECT y se lleva usuario y contrasena. Se
+      # mantiene publicado UNICAMENTE porque el firmware fisico no sabe hablar
+      # TLS todavia. Retirarlo es el paso 16 del orden de porteo y exige la
+      # decision D1. Mientras viva, toda credencial que viaje por aqui debe
+      # considerarse comprometida ante cualquiera con acceso a la LAN.
       - "${MQTT_PORT:-1883}:1883"
     volumes:
       - ./infrastructure/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - ./infrastructure/mosquitto/acl:/mosquitto/config/acl:ro
       - ./infrastructure/mosquitto/passwd:/mosquitto/config/passwd:ro
+      # Material TLS generado por infrastructure/mosquitto/generate-certs.sh.
+      # Se montan los TRES ficheros uno a uno, NO el directorio: montar la
+      # carpeta entera meteria tambien `ca.key` dentro del contenedor si alguien
+      # la dejase ahi, y quien tenga esa clave puede emitir un certificado de
+      # servidor valido y suplantar al broker. La CA firma desde fuera.
+      # Solo lectura: el broker no tiene por que reescribir su propia clave.
+      - ./infrastructure/mosquitto/certs/ca.crt:/mosquitto/certs/ca.crt:ro
+      - ./infrastructure/mosquitto/certs/server.crt:/mosquitto/certs/server.crt:ro
+      - ./infrastructure/mosquitto/certs/server.key:/mosquitto/certs/server.key:ro
       - mosquitto_data:/mosquitto/data
     environment:
       MQTT_HEALTHCHECK_USERNAME: ${MQTT_HEALTHCHECK_USERNAME:-healthcheck}
@@ -322,7 +364,11 @@ services:
       # un mensaje que nadie emite y expiraba siempre («Timed out» → unhealthy),
       # aunque la conexión y la ACL funcionaran. Publicar prueba broker + auth +
       # permiso de escritura del usuario healthcheck sobre _health/probe.
-      test: ["CMD-SHELL", "mosquitto_pub -h 127.0.0.1 -p 1883 -u \"$$MQTT_HEALTHCHECK_USERNAME\" -P \"$$MQTT_HEALTHCHECK_PASSWORD\" -t _health/probe -m ping -i healthcheck_probe || exit 1"]
+      # Va por TLS contra `localhost` (nombre presente en el SAN del certificado)
+      # validando la CA: asi el healthcheck comprueba tambien que el material TLS
+      # sigue siendo valido, no solo que el broker acepta credenciales. Sondear el
+      # 1883 aqui dejaria el healthcheck en verde con el TLS roto.
+      test: ["CMD-SHELL", "mosquitto_pub -h localhost -p 8883 --cafile /mosquitto/certs/ca.crt -u \"$$MQTT_HEALTHCHECK_USERNAME\" -P \"$$MQTT_HEALTHCHECK_PASSWORD\" -t _health/probe -m ping -i healthcheck_probe || exit 1"]
       interval: 15s
       timeout: 6s
       retries: 5
@@ -548,8 +594,12 @@ networks:
   edge:
     driver: bridge
   # Red interna: backend/worker/migrate/backup <-> postgres/mosquitto. Ningún
-  # servicio de esta red publica puertos al host salvo mosquitto (1883,
-  # necesario para los módulos físicos de la LAN).
+  # servicio de esta red publica puertos al host salvo mosquitto, que publica
+  # 8883 (TLS) y todavia 1883 (en claro, perfil de transicion para el firmware
+  # fisico). NO escribir aqui «no queda ningun camino en claro»: hoy quedan dos
+  # --- el 1883 y el 9001 de WebSockets, que sigue sin cifrar dentro de esta
+  # red. La afirmacion cierta tras este porte es que el camino RECOMENDADO y el
+  # que usa el backend van por TLS.
   internal:
     driver: bridge
 
