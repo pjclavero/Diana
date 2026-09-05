@@ -8,6 +8,12 @@
 > está en `docs/coordination/STATUS.md`**; el recuento de tareas frente al encargo, en
 > `docs/INFORME-TAREAS-vs-ENCARGO.md` (revisado el 2026-07-26). Lo que aquí se dé por pendiente
 > puede estar hecho, y al revés: las cifras de pruebas de este informe son las de aquel día.
+>
+> **Corrección de puntero, 2026-09-05.** El estado vivo **ya no** está en
+> `docs/coordination/STATUS.md` (que también se quedó parado, en el 2026-08-04):
+> está en [`docs/STATE.md`](STATE.md). Y la fila «nunca compilado con ESP-IDF»
+> de este informe está caducada: hay `BUILD = PASS` documentado en
+> `docs/firmware/evidencia-build-esp-idf.md`.
 
 Este documento responde de forma honesta a «¿está todo hecho? ¿falta algo?». Sigue la
 estructura del §25 del encargo. **No** se usa «debería funcionar» ni «probablemente»: lo

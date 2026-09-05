@@ -20,12 +20,17 @@ HOST    := $(FW)/test_host
 BUILD   := $(FW)/build-host
 MSGDIR  := $(BUILD)/messages
 MSGDIR7 := $(BUILD)/messages-adr0007
-# Arbol de contratos RECONCILIADO (ADR-0007), extraido FUERA del repositorio.
-# contracts/** no es propiedad de este carril: no se copia al arbol de trabajo.
-ADR7REF ?= mp0b/contract-reconcile
-# Ruta FIJA (no mktemp): con `?=` recursivo, un $(shell mktemp) se reevaluaria
-# en cada referencia y cada linea de la receta miraria a un directorio distinto.
-ADR7DIR ?= /tmp/diana-contracts-adr0007-$(shell id -u)
+# Contrato ADR-0007: ya RECONCILIADO dentro de `contracts/` en este arbol.
+# Antes se extraia de la rama `mp0b/contract-reconcile`, que NUNCA existio en
+# `origin`: en un clon limpio (actions/checkout trae UNA sola rama) el
+# `rev-parse` fallaba y `make test` terminaba en Error 2 DESPUES de 853
+# comprobaciones verdes. La rama esta integrada -- `hit-event.schema.json` es
+# identico al de aquella rama -- asi que la validacion se hace contra el propio
+# arbol y ya no depende de ninguna referencia git.
+# Fichero y campo que materializan el contrato: se comprueban ANTES de validar
+# para que retirar el contrato salga ROJO en vez de pasar en silencio.
+ADR7SCHEMA := $(ROOT)/contracts/mqtt/hit-event.schema.json
+ADR7FIELD  := detection_method
 
 CFLAGS  := -std=c11 -MMD -MP -Wall -Wextra -Werror -Wshadow -Wconversion \
            -Wno-sign-conversion -O1 -g \
@@ -76,17 +81,21 @@ contracts:
 # cubre ninguna prueba de comportamiento, y se rompe sin que nada falle.
 	@$(PYTHON) $(FW)/tools/check_d1b_unique_path.py
 
+# P0-2 + F-02. app_main.c y mqtt_client.c NO se compilan en host: la unica
+# cobertura posible sobre ellos es estructural.
+	@$(PYTHON) $(FW)/tools/check_mqtt_tls.py
+
 # ADR-0007. Valida los payloads que llevan `detection_method` contra el contrato
-# reconciliado de $(ADR7REF), extraido a un directorio temporal fuera del repo.
-# Si esa referencia no existe, se dice y se falla: no se da por bueno en silencio.
+# de ESTE arbol. Sin descarga ni referencia git: funciona en un clon limpio.
+# La guarda de abajo no es cosmetica: si alguien retira el contrato ADR-0007 de
+# `contracts/`, la receta falla en vez de validar contra un esquema mudo.
 contracts-adr0007:
-	@git -C $(ROOT) rev-parse --verify $(ADR7REF) >/dev/null 2>&1 || \
-	  { echo "CONTRATO ADR-0007: falta la referencia $(ADR7REF); no se puede validar"; exit 1; }
-	@rm -rf $(ADR7DIR) && mkdir -p $(ADR7DIR)
-	@git -C $(ROOT) archive $(ADR7REF) contracts | tar -x -C $(ADR7DIR)
-	@echo "\n=== ADR-0007: contrato reconciliado de $(ADR7REF) @ $$(git -C $(ROOT) rev-parse --short $(ADR7REF)) ==="
-	@$(PYTHON) $(FW)/tools/validate_messages.py --dir $(MSGDIR7) \
-	   --contracts $(ADR7DIR)/contracts
+	@test -f $(ADR7SCHEMA) || \
+	  { echo "CONTRATO ADR-0007: falta $(ADR7SCHEMA); no se puede validar"; exit 1; }
+	@grep -q '"$(ADR7FIELD)"' $(ADR7SCHEMA) || \
+	  { echo "CONTRATO ADR-0007: $(ADR7SCHEMA) ya no declara $(ADR7FIELD); regresion del contrato"; exit 1; }
+	@echo "" && echo "=== ADR-0007: contrato reconciliado, validado contra el arbol de trabajo ==="
+	@$(PYTHON) $(FW)/tools/validate_messages.py --dir $(MSGDIR7)
 
 clean:
 	@rm -rf $(BUILD)

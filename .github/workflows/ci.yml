@@ -198,6 +198,24 @@ jobs:
         run: make -C firmware test
 
   # ---------------------------------------------------------------------------
+  # Fuente única de identidades MQTT. `make identities-check` existía en el
+  # Makefile desde MP0-A pero NINGÚN workflow lo ejecutaba: la puerta que
+  # garantiza que los 5 artefactos derivados (passwd, ACL, .env, etc.) siguen
+  # sincronizados con infrastructure/mosquitto/identities.json estaba declarada
+  # y nunca se cerraba. Verificado en verde sobre esta rama antes de añadirla.
+  # ---------------------------------------------------------------------------
+  identidades:
+    name: Identidades MQTT (fuente única sincronizada)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Falla si algún artefacto derivado diverge de identities.json
+        run: node infrastructure/mosquitto/generate-identities.mjs --check
+
+  # ---------------------------------------------------------------------------
   # Validación estática de Docker Compose: todos los perfiles.
   # No construye imágenes ni levanta nada; sólo `docker compose config`.
   # ---------------------------------------------------------------------------

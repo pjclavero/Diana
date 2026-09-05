@@ -38,9 +38,11 @@ jobs:
           docker compose up -d postgres mosquitto
           docker compose up --exit-code-from migrate migrate
           docker compose up -d backend worker
+      # FALSO VERDE CORREGIDO: era `npm ci || npm install`. tests/load tiene
+      # package-lock.json; el fallback sólo escondía un lock desincronizado.
       - name: Instalar el generador de carga
         working-directory: tests/load
-        run: npm ci || npm install
+        run: npm ci
       - name: Ejecutar el perfil de carga (9 módulos / 81 dianas, ráfagas)
         working-directory: tests/load
         env:

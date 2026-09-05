@@ -80,8 +80,31 @@ jobs:
           echo "Mosquitto no respondió a tiempo." >&2; exit 1
         working-directory: ${{ github.workspace }}
 
-      - name: "Pruebas de integración (NO se saltan: DATABASE_URL está definida)"
-        run: npm run test:integration
+      # FALSO VERDE CORREGIDO: el paso se llamaba "NO se saltan: DATABASE_URL
+      # está definida" pero no lo comprobaba. Las tres suites de
+      # test/integration usan `hasDatabase ? describe : describe.skip`: sin
+      # DATABASE_URL jest se salta TODO y sale con rc=0. Un typo en el `env:`
+      # del job habría dejado el paso verde con cero pruebas ejecutadas, que es
+      # justo lo que este job existe para descartar. Ahora se verifica el
+      # EFECTO: se captura el rc de jest por separado y se exige que el informe
+      # declare al menos una prueba REALMENTE ejecutada.
+      - name: "Pruebas de integración (se verifica que se ejecutan, no sólo que pasan)"
+        run: |
+          set -uo pipefail
+          test -n "${DATABASE_URL:-}" || { echo "DATABASE_URL vacía: las suites se saltarían." >&2; exit 1; }
+          npm run test:integration -- --json --outputFile=/tmp/jest-integration.json
+          rc=$?
+          echo "rc de jest = $rc"
+          if [ "$rc" -ne 0 ]; then exit "$rc"; fi
+          node -e '
+            const r = require("/tmp/jest-integration.json");
+            const pas = r.numPassedTests, tot = r.numTotalTests, skp = r.numPendingTests ?? 0;
+            console.log(`ejecutadas=${pas} saltadas=${skp} totales=${tot}`);
+            if (pas < 1) {
+              console.error("FALSO VERDE: jest salió con 0, pero no ejecutó NINGUNA prueba de integración.");
+              process.exit(1);
+            }
+          '
 
       - name: Recoger logs de Mosquitto si algo falla
         if: failure()

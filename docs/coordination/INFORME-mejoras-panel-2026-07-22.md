@@ -1,5 +1,17 @@
 # Informe — Mejoras del panel Diana (F3 + lote G-A…G-I)
 
+> **HISTORICAL — no describe el estado de hoy.** Se conserva sin retocar como
+> evidencia fechada. **No es fuente de estado**: la fuente canónica es
+> [`../STATE.md`](../STATE.md).
+>
+> Contradicción concreta ya resuelta: este documento afirma que **el firmware
+> nunca se ha compilado con ESP-IDF**. Eso fue cierto cuando se escribió y
+> **hoy es falso**. `docs/firmware/evidencia-build-esp-idf.md` registra
+> `BUILD = PASS` con `espressif/idf:v5.5`, con SHA-256 de los cuatro artefactos,
+> y **23 símbolos de D1b sobreviven a `--gc-sections`** en el ELF (medido con
+> `xtensa-esp32s3-elf-nm`). Compilar y enlazar **no** es haber flasheado ni
+> haber corrido en silicio: eso sigue pendiente.
+
 > Fecha: 2026-07-22 · Rama: `develop` · Entorno: VM 109 `diana-server`
 > (192.168.1.209 / Tailscale 100.117.178.92, panel en `:8080`).
 > Método por bloque: **implementación + tests + supervisor independiente** (§2.4) +

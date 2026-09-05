@@ -797,7 +797,13 @@ delega a ESP-IDF en lugar de reimplementar criptografía, que es la decisión co
 partición sólo se marca arrancable después de verificar; y hay rollback A/B. El eslabón que
 falta no está en la lógica OTA, está debajo de ella.
 
-**No verificado:** el firmware **nunca se ha compilado**. El propio fichero lo declara: *"este
+> **CORRECCIÓN 2026-09-05.** La frase «nunca se ha compilado» **ya no es cierta**:
+> `docs/firmware/evidencia-build-esp-idf.md` documenta `BUILD = PASS`
+> (`espressif/idf:v5.5`). El hallazgo **no se cierra por eso**: sigue sin
+> ejercerse la verificación de firma y sigue sin hardware. Ver
+> [`docs/STATE.md`](../STATE.md) §9.3.
+
+**No verificado:** ~~el firmware **nunca se ha compilado**~~. El propio fichero lo declara: *"este
 fichero NO se ha podido validar con un build real de ESP-IDF en el entorno donde se escribió
 (no hay toolchain instalado)"*. Tampoco existe hardware. Todo lo anterior es lectura de
 configuración, no comprobación sobre un dispositivo.

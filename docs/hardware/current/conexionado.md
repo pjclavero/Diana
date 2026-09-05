@@ -1,5 +1,11 @@
 # Conexionado maestro del prototipo V1
 
+> **CORRECCION 2026-09-05 — GPIO8 / RSTn.** La fila de GPIO8 decia
+> «Libre · W5500_RST historico · NC · Firmware actual usa reset software».
+> **Era falso** en `mp0/integration@ae69357`: el firmware conduce y pulsa RSTn.
+> Ver [`docs/STATE.md`](../../STATE.md) §9.1 para la evidencia. GPIO9 (`INT`) si
+> sigue sin usarse: el firmware sondea cada 10 ms.
+
 ## Tabla maestra GPIO
 
 | GPIO | Direccion | Funcion | Destino | Estado |
@@ -7,7 +13,7 @@
 | GPIO4 | OUT | LED_ROW1 | D1 -> D2 -> D3 | Firmware actual |
 | GPIO5 | OUT | LED_ROW2 | D4 -> D5 -> D6 | Firmware actual |
 | GPIO6 | OUT | LED_ROW3 | D7 -> D8 -> D9 | Firmware actual |
-| GPIO8 | Libre | W5500_RST historico | NC | Firmware actual usa reset software |
+| GPIO8 | OUT | W5500_RST | W5500 RSTn | **Conducido y pulsado por el firmware** (ver aviso) |
 | GPIO9 | Libre | W5500_INT historico | NC | Firmware actual usa sondeo de 10 ms |
 | GPIO10 | OUT | W5500_CS | W5500 CS/SCS/SS | Firmware actual |
 | GPIO11 | OUT | SPI_MOSI | W5500 MOSI/SI/DIN | Firmware actual |

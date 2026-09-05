@@ -79,5 +79,6 @@ int run_contract(void);
 int run_coordination(void);
 int run_led(void);
 int run_ota(void);
+int run_mqtt_endpoint(void);
 
 #endif /* DIANA_TEST_UTIL_H */

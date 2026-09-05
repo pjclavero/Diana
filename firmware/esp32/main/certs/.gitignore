@@ -1,0 +1,10 @@
+# El .gitignore raiz excluye *.pem, y con razon: casi todos los .pem que
+# aparecen en un arbol son claves privadas.
+#
+# broker_ca.pem es la excepcion legitima: es una CA (certificado PUBLICO) y,
+# ademas, main/CMakeLists.txt la empotra en la imagen con EMBED_TXTFILES. Si no
+# se versiona, el build cruzado falla en cualquier clon limpio.
+#
+# Aqui NUNCA va una clave privada. Si algun dia hace falta una, va fuera del
+# repositorio.
+!broker_ca.pem

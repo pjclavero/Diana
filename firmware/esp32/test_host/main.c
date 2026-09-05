@@ -91,6 +91,7 @@ int main(void)
         {"led",          run_led},
         {"ota",          run_ota},
         {"contract",     run_contract},
+        {"mqtt_endpoint",run_mqtt_endpoint},
     };
     const size_t n = sizeof(suites) / sizeof(suites[0]);
 

@@ -3,6 +3,28 @@
 Registro de huecos abiertos durante MP0. **Ninguno se ha corregido en silencio**:
 o están cerrados con evidencia, o figuran aquí con su estado real.
 
+> **ACTUALIZACIÓN 2026-09-05 — los tres `CONTRACT_GAP` marcados `OPEN` abajo han
+> avanzado.** Se dejan con su texto original porque describen fielmente por qué
+> se abrieron; lo que ha cambiado es el árbol, no el razonamiento. En
+> `mp0/integration@ae69357`:
+>
+> ```
+> ADR-0008                                            ACEPTADO (2026-09-04)
+> contracts/mqtt/module-provision-command.schema.json  EXISTE
+> contracts/mqtt/module-provision-state.schema.json    EXISTE
+> server/backend/src/contracts/topics.ts               reconoce ambos TopicKind
+> ```
+>
+> Con eso, la frase «`contracts/` no contiene **ningún** esquema del plano
+> `DEVICE_MANAGEMENT`» de `CONTRACT_GAP-DEVICE-MANAGEMENT-SCHEMA` **está
+> caducada**, y la mitad contractual de los dos gaps de tópico está cerrada.
+>
+> **Lo que sigue abierto es el lado firmware**, y sigue abierto de verdad: el
+> enum `messages.h:30-39` mantiene 9 `TopicKind` sin provisioning y
+> `mqtt_client.c` no menciona `provision`, así que
+> `DEVICE_MANAGEMENT_COMMAND_TRANSPORT = NOT_REACHABLE`. Fuente canónica:
+> [`docs/STATE.md`](../STATE.md) §2.
+
 Trazabilidad: composición `mp0/integration @ b2bb09da`, sobre
 `FIRMWARE_BASE = b883da0` (firmware verificado físicamente).
 
