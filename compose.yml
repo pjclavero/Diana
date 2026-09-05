@@ -201,10 +201,13 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       DATABASE_URL: ${DATABASE_URL}
-      MQTT_HOST: ${MQTT_HOST:-mosquitto}
-      MQTT_PORT: ${MQTT_PORT:-1883}
-      MQTT_USERNAME: ${MQTT_BACKEND_USERNAME:-backend}
-      MQTT_PASSWORD: ${MQTT_BACKEND_PASSWORD}
+      # SIN configuracion ni credenciales MQTT, a proposito (P0-2, celda 11).
+      # El worker no es cliente MQTT: su package.json no declara `mqtt`, no hay
+      # codigo MQTT en server/worker/src y su unico interlocutor TCP es
+      # postgres (verificado sobre este arbol). Recibia sin embargo
+      # MQTT_USERNAME/MQTT_PASSWORD del backend --- la credencial mas
+      # privilegiada del broker, en un proceso que jamas la usa: superficie de
+      # robo pura. Minimo privilegio: lo que no se consume, no se entrega.
       REPORTS_CRON: ${WORKER_REPORTS_CRON:-0 3 * * *}
       LOG_LEVEL: ${WORKER_LOG_LEVEL:-info}
       TZ: UTC
@@ -447,7 +450,7 @@ services:
       TZ: UTC
       PGTZ: UTC
     networks:
-      - internal
+      - testnet
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U diana_test -d diana_test"]
       interval: 5s
@@ -470,7 +473,7 @@ services:
     volumes:
       - ./infrastructure/mosquitto/mosquitto.test.conf:/mosquitto/config/mosquitto.conf:ro
     networks:
-      - internal
+      - testnet
     healthcheck:
       test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -p 1883 -t '$$SYS/broker/version' -C 1 -W 3 -i healthcheck_probe || exit 1"]
       interval: 5s
@@ -503,7 +506,7 @@ services:
       - ./:/workspace:ro
     command: ["sh", "-c", "pip install --quiet --no-cache-dir jsonschema referencing && python3 contracts/validate.py"]
     networks:
-      - internal
+      - testnet
     logging: *default-logging
 
   # ----------------------------------------------------------------------------
@@ -532,6 +535,14 @@ services:
     logging: *default-logging
 
 networks:
+  # Red del perfil `test`, DELIBERADAMENTE SEPARADA. El broker efimero de
+  # pruebas (mosquitto-test) escucha en claro a proposito, y mientras compartio
+  # la red `internal` ofrecia a cualquier contenedor de produccion un camino
+  # MQTT sin cifrar en cuanto se activaba el perfil. Un broker en claro solo es
+  # aceptable si esta aislado de verdad, no si esta «solo para tests» por
+  # convencion. No conectar servicios productivos a esta red.
+  testnet:
+    driver: bridge
   # Red de borde: proxy <-> frontend/backend. El proxy es el único servicio
   # con puertos publicados al host (además de mosquitto:1883).
   edge:
