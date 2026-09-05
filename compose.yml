@@ -441,12 +441,28 @@ services:
       mosquitto:
         condition: service_healthy
     environment:
-      MQTT_HOST: ${MQTT_HOST:-mosquitto}
-      MQTT_PORT: ${MQTT_PORT:-1883}
+      # MQTT_HOST/MQTT_PORT retiradas (P0-2): el simulador NO las lee. Su
+      # entrypoint es `node dist/cli.js` y el broker se elige exclusivamente con
+      # `--broker`; estas dos variables llevaban aqui desde el principio sin que
+      # nadie las consultara, apuntando ademas al 1883 en claro. Es el mismo
+      # defecto que tenia el backend --- configuracion que el despliegue pasa y
+      # el proceso ignora --- y enganaba igual. Verificado sobre este arbol:
+      # simulators/src/cli.ts y simulators/src/live.ts no leen ninguna de las
+      # dos (live.ts usa el prefijo DIANA_MQTT_*).
+      #
+      # Para lanzarlo contra el broker real, desde el host de la VM:
+      #   npx diana-sim run --broker mqtts://mosquitto:8883 \
+      #     --cafile /workspace/certs/ca.crt --username module-01 --password ***
       SIMULATOR_MODULE_COUNT: ${SIMULATOR_MODULE_COUNT:-3}
       SIMULATOR_SEED: ${SIMULATOR_SEED:-42}
       SIMULATOR_MODULE_PREFIX: ${SIMULATOR_MODULE_PREFIX:-sim}
       TZ: UTC
+    volumes:
+      # Solo la CA publica, en solo lectura: es lo unico que necesita para
+      # validar al broker. Ni la clave de la CA ni el certificado del servidor
+      # tienen nada que hacer aqui. Sin este montaje, `--cafile` no tendria
+      # ninguna ruta valida que senalar dentro del contenedor.
+      - ./infrastructure/mosquitto/certs/ca.crt:/workspace/certs/ca.crt:ro
     networks:
       - internal
     deploy:
