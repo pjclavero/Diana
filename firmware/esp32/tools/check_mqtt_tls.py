@@ -179,6 +179,53 @@ def check(ok, desc, detail=""):
         print("  FALLO %s%s" % (desc, ("  -- " + detail) if detail else ""))
 
 
+
+def bloque_tras(codigo, pos):
+    """Cuerpo { ... } que sigue a `pos`, con llaves EQUILIBRADAS.
+
+    Se usa para mirar QUE HACE una rama, no si cierto texto aparece cerca. Una
+    supervision independiente demostro que comprobar presencia y orden textual
+    no basta: sustituir `return -4;` por un ESP_LOGW, o anadir `&& false` a la
+    condicion, dejaba la suite entera en verde y el modulo habria conectado en
+    mqtts:// sin CA valida. Es el mismo patron que causo F-02 -- codigo sin
+    prueba capaz de ponerse roja -- y esta ola existia para cerrarlo."""
+    ini = codigo.find("{", pos)
+    if ini == -1:
+        return ""
+    prof, i = 0, ini
+    while i < len(codigo):
+        if codigo[i] == "{":
+            prof += 1
+        elif codigo[i] == "}":
+            prof -= 1
+            if prof == 0:
+                return codigo[ini:i + 1]
+        i += 1
+    return ""
+
+
+def condicion_de(codigo, pos):
+    """Texto de la condicion del `if` que contiene `pos`, con parentesis
+    equilibrados. Sirve para detectar que la guarda se ha neutralizado
+    anadiendole un `&& false` o similar."""
+    ap = codigo.rfind("if", 0, pos)
+    if ap == -1:
+        return ""
+    ini = codigo.find("(", ap)
+    if ini == -1:
+        return ""
+    prof, i = 0, ini
+    while i < len(codigo):
+        if codigo[i] == "(":
+            prof += 1
+        elif codigo[i] == ")":
+            prof -= 1
+            if prof == 0:
+                return codigo[ini:i + 1]
+        i += 1
+    return ""
+
+
 def main():
     sources = c_sources()
     if not sources:
@@ -272,6 +319,34 @@ def main():
     i_init = mcode.find("esp_mqtt_client_init")
     check(i_guard != -1 and i_init != -1 and i_guard < i_init,
           "la guarda de CA precede a esp_mqtt_client_init")
+
+    # EFECTO, no presencia: la rama negativa tiene que CORTAR. Que el nombre
+    # de la funcion aparezca antes de esp_mqtt_client_init no dice nada sobre
+    # lo que ocurre cuando la CA no vale.
+    cuerpo_guarda = bloque_tras(mcode, i_guard) if i_guard != -1 else ""
+    check(bool(re.search(r"\breturn\b\s*-?\w*\s*;", cuerpo_guarda)),
+          "la rama de CA invalida RETORNA (no solo registra un aviso)",
+          cuerpo_guarda.strip()[:80])
+    check("esp_mqtt_client_init" not in cuerpo_guarda,
+          "la rama de CA invalida NO crea el cliente")
+    cond_guarda = condicion_de(mcode, i_guard) if i_guard != -1 else ""
+    check("false" not in cond_guarda and "0 &&" not in cond_guarda,
+          "la condicion de la guarda no esta neutralizada",
+          cond_guarda.strip()[:80])
+
+    # Segunda capa: en app_main, la rama de "no puedo conectar" no puede
+    # arrancar MQTT. Mutar la condicion con `&& false` la anulaba en silencio.
+    amc = strip_comments(open(os.path.join(FW, "main/app_main.c"),
+                              encoding="utf-8").read())
+    i_may = amc.find("diana_mqtt_may_connect")
+    cuerpo_may = bloque_tras(amc, i_may) if i_may != -1 else ""
+    check(i_may != -1, "app_main consulta diana_mqtt_may_connect")
+    check("diana_platform_mqtt_start" not in cuerpo_may,
+          "la rama de CA ausente NO arranca MQTT")
+    cond_may = condicion_de(amc, i_may) if i_may != -1 else ""
+    check("false" not in cond_may and "0 &&" not in cond_may,
+          "la condicion de may_connect no esta neutralizada",
+          cond_may.strip()[:80])
     check("verification.certificate" in mcode,
           "mqtt_client.c pasa una CA explicita a esp-mqtt")
 

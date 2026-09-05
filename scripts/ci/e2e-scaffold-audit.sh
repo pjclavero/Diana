@@ -58,7 +58,21 @@ if (( RUNNABLE > 0 )); then
   exit 1
 fi
 
+# El NUMERO tambien forma parte de la afirmacion. El nombre del job dice
+# "16 test.fixme"; si alguien anade un decimoseptimo, el nombre pasa a mentir
+# y hasta ahora nada lo habria detectado, porque solo se comprobaba
+# RUNNABLE == 0. Una cifra publicada que nadie verifica es una cifra falsa
+# esperando su turno.
+DECLARADOS=${E2E_EXPECTED_FIXME:-16}
+if (( FIXME != DECLARADOS )); then
+  echo
+  echo "E2E AUDIT: hay $FIXME test.fixme, pero el job anuncia $DECLARADOS."
+  echo "Actualiza el nombre del job en .github/workflows/e2e.yml y la variable"
+  echo "E2E_EXPECTED_FIXME, o corrige el recuento. El nombre debe ser cierto."
+  exit 1
+fi
+
 echo
 echo "E2E AUDIT: los $TOTAL escenarios son ANDAMIAJE. Se ejecutan 0 aserciones."
-echo "El job se anuncia como 'scaffold': el nombre corresponde con los hechos."
+echo "El job se anuncia como 'scaffold' con $FIXME: nombre y hechos coinciden."
 exit 0

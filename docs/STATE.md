@@ -11,7 +11,7 @@
 ```
 DATE             = 2026-09-05
 CANONICAL_BRANCH = mp0/integration
-CANONICAL_HEAD   = ae6935746cdaf5c57bf70b9a9264757c34efe4f1
+CANONICAL_HEAD   = 7ff89a24c6fba9b1ca4a382ec52e2d5e3af7f0b0   # Ola 1 integrada
 MILESTONE        = MP0-F.0 · PROVISIONING CONTRACT GATE (en curso, pasos 1-5 integrados)
 ```
 
@@ -66,7 +66,7 @@ Deliberadamente **no** se declara `DEVICE_MANAGEMENT = COMPLETE` ni
 |---|---|---|
 | `CONTRACT_GAP-PROVISION-COMMAND-TOPIC` | contrato cerrado, **firmware no** | MP0-F.0 |
 | `CONTRACT_GAP-PROVISION-STATE-TOPIC` | contrato cerrado, **firmware no** | MP0-F.0 |
-| `MQTT_USERNAME_DOUBLE_PREFIX` | **ABIERTO · corrección EN CURSO en firmware, otro carril** | Ola 1 |
+| `MQTT_USERNAME_DOUBLE_PREFIX` | **CERRADO** en la Ola 1. `username == module_id`; atado a `identities.json`, `acl` y `users.generated.txt` por `test_mqtt_endpoint.c`, que PARSEA los ficheros reales. Calibrado: reintroducir el prefijo da 38 fallos. En el ELF cruzado, `strings \| grep -c module-module` = 0 | — |
 | `DEVICE_MANAGEMENT_COMMAND_TRANSPORT` | `NOT_REACHABLE` | MP0-F.0 / MP0-F.2 |
 | `P0-2 TLS 8883` | sin fusionar en la línea canónica | antes de `PROVISIONING_BASE` |
 
@@ -254,22 +254,41 @@ corrido en silicio desde ese entorno. El propio documento de evidencia lo dice.
 
 `CANONICAL_BRANCHES.md` apuntaba a `9b5e161` / `3711632`. Real: `ae69357`.
 
-### 9.5 Username MQTT `module-module-01` — ABIERTA, corrección EN CURSO
+### 9.5 Username MQTT `module-module-01` — **CERRADA en la Ola 1**
 
-```
-contracts/mqtt/README.md:42                  el username del módulo ES su module_id (F-02)
-infrastructure/mosquitto/identities.json:37  { "username": "module-01", "module_id": "module-01" }
-firmware/esp32/main/app_main.c:263           snprintf(user, …, "module-%.*s", …, a->id.module_id)
-```
+**Lo que ocurría.** `module_id` ya es `module-01`…`module-09`, así que
+`snprintf(user, …, "module-%.*s", …)` producía `module-module-01`: un usuario
+inexistente en `acl` y en `users.generated.txt`. El módulo **no podía
+autenticarse**. Y el comentario del código afirmaba que «el contrato §8 fija
+ambas», cuando el contrato dice justo lo contrario.
 
-Con `module_id = "module-01"` el firmware envía `module-module-01`, que **no
-existe** en el fichero de usuarios del broker
-(`infrastructure/mosquitto/users.generated.txt`). El defecto está incluso
-fosilizado en una prueba: `firmware/esp32/test_host/tests/test_reconnect.c:58`
-pasa literalmente `"module-module-05"`.
+**Por qué pudo ocurrir, que es lo que importa.** La construcción del usuario
+vivía en `app_main.c`, que **ninguna prueba compila**. Ésa es la causa raíz de
+que F-02 se pudiera reabrir sin síntoma: no había nada capaz de ponerse rojo.
 
-**Otro carril lo está corrigiendo en el firmware ahora mismo.** Este documento
-sólo registra el estado; DOCS no toca `firmware/`.
+**Corrección.** La construcción se extrajo a `diana_mqtt_username()` en
+`diana_core` — testeable — y `test_mqtt_endpoint.c` **parsea** los ficheros
+reales del árbol y ata las cuatro fuentes en ambos sentidos, incluido que
+ningún `user` del `acl` sea ajeno a `identities.json`.
+
+**Evidencia.** 38 fallos al reintroducir el prefijo; `strings` sobre el ELF
+cruzado real da **0** ocurrencias de `module-module`.
+
+**Residuo declarado.** `diana_identity_provision()` acepta y persiste un
+`mqtt_user` en NVS **que el arranque ignora**. Hoy no hay defecto vivo, pero es
+un campo persistido sin invariante: si algún día alguien lo cablea, F-02
+volvería por la puerta de atrás. Ver §9.6.
+
+### 9.6 `mqtt_user` en NVS — camino latente, sin defecto vivo
+
+`diana_identity_provision()` no valida que el `mqtt_user` recibido sea igual al
+`module_id`, y `docs/firmware/recuperacion.md` §4 instruye al operador a
+escribirlo al reaprovisionar sin decir que debe coincidir. El arranque lo
+ignora (`app_main.c` deriva el usuario de `module_id`), así que **no hay
+defecto hoy**. Se declara en vez de silenciarlo. Dos salidas baratas, ninguna
+aplicada todavía: validar `mqtt_user == module_id` en la provisión, o retirar
+el campo.
+
 
 ### 9.6 D1b y el transporte — NO ES CONTRADICCIÓN, es la distinción del §0
 
