@@ -1,5 +1,14 @@
 # MP0 · Congelación de evidencia de la recomposición
 
+> **HISTORICAL — 2026-08-25.** Documento de evidencia congelada. Describe el
+> árbol de aquel día, no el estado actual. **No es fuente de estado**: la fuente
+> canónica es [`docs/STATE.md`](../STATE.md).
+>
+> En concreto, la cifra `HOST TESTS 748 / 748` de más abajo **fue correcta
+> entonces** y hoy está caducada: en `mp0/integration@ae69357` la suite da
+> `TOTAL: 853 comprobaciones, 853 correctas, 0 fallidas`. Se conserva tal cual
+> porque es evidencia fechada.
+
 Estado congelado el **2026-08-25**, previo a supervisión independiente.
 
 ## Identidad del artefacto — dos identificadores, NO confundirlos

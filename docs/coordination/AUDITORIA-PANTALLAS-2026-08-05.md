@@ -1,5 +1,9 @@
 # Auditoría de las once pantallas que siguen colgando de `realAdapter`/`mockAdapter`
 
+> **HISTORICAL — no describe el estado de hoy.** Se conserva sin retocar como
+> evidencia fechada. **No es fuente de estado**: la fuente canónica es
+> [`../STATE.md`](../STATE.md).
+
 - Fecha: 2026-08-05
 - Rama y punto de partida: `develop` @ `4257ba8` (`git log --oneline -3` → `4257ba8 docs: despliegue del 2026-08-05 en la VM 109`)
 - Alcance: **sólo auditoría**. No se ha modificado código de producción, no se ha tocado la VM 109 (192.168.1.209), no se ha hecho commit ni push, y no se han tocado `simulators/**` ni `server/backend/**` (sólo lectura).

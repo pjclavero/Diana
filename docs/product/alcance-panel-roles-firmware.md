@@ -327,8 +327,13 @@ Decisiones:
 - **DECISIÓN 2 — DHCP por defecto en el primer arranque**; IP fija opcional por config remota
   o por la web del propio módulo (idea V2). Ya soportado por el contrato (`network.mode`).
 
+> **CORRECCIÓN 2026-09-05:** «nunca compilado con ESP-IDF» **está caducado**; hay build
+> `PASS` documentado en `docs/firmware/evidencia-build-esp-idf.md`. Lo demás de este
+> párrafo (AUTO, aplicación de config, OTA, reloj) sigue vigente. Ver
+> [`docs/STATE.md`](../STATE.md) §9.3.
+>
 > Implementación real de estas tres depende de **retomar el firmware** (hoy el gran pendiente:
-> nunca compilado con ESP-IDF; AUTO, aplicación de config, descarga OTA `esp_https_ota` y
+> ~~nunca compilado con ESP-IDF~~; AUTO, aplicación de config, descarga OTA `esp_https_ota` y
 > sincronización de reloj están sin terminar). El **contrato** sí se puede ampliar ya (DECISIÓN 1).
 >
 > **Hecho el 2026-07-26 (`ade9a21`):** DECISIÓN 1 aplicada — `coordinator_module_id` está en el

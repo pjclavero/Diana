@@ -1,5 +1,17 @@
 # Diana · Informe de tareas frente al encargo
 
+> **HISTORICAL — no describe el estado de hoy.** Se conserva sin retocar como
+> evidencia fechada. **No es fuente de estado**: la fuente canónica es
+> [`STATE.md`](STATE.md).
+>
+> Contradicción concreta ya resuelta: este documento afirma que **el firmware
+> nunca se ha compilado con ESP-IDF**. Eso fue cierto cuando se escribió y
+> **hoy es falso**. `docs/firmware/evidencia-build-esp-idf.md` registra
+> `BUILD = PASS` con `espressif/idf:v5.5`, con SHA-256 de los cuatro artefactos,
+> y **23 símbolos de D1b sobreviven a `--gc-sections`** en el ELF (medido con
+> `xtensa-esp32s3-elf-nm`). Compilar y enlazar **no** es haber flasheado ni
+> haber corrido en silicio: eso sigue pendiente.
+
 **Fecha:** 2026-08-04 (barrido de obsolescencia) · **Rama:** `develop` @ `1aa1fbc` ·
 **Desplegado en la VM:** `develop` @ `133d760` (**seis commits por detrás del HEAD**; incluye D9, verificado por SSH el 2026-07-26) · **VM:** `diana-server` (109, 192.168.1.209)
 

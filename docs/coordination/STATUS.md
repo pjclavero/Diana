@@ -1,5 +1,15 @@
 # ESTADO DE EJECUCIÓN
 
+> **NO ES LA FUENTE DE ESTADO — 2026-09-05.** Este fichero se quedó en el barrido
+> del 2026-08-04 sobre `develop`, y el trabajo vivo va por `mp0/integration`. La
+> fuente canónica es [`docs/STATE.md`](../STATE.md).
+>
+> Dos afirmaciones concretas de la fila WP-04 están **caducadas**:
+> «389/389 comprobaciones en host» (hoy `TOTAL: 853`, medido el 2026-09-05) y
+> «nunca compilado con ESP-IDF» (hay `BUILD = PASS` con `espressif/idf:v5.5`,
+> `docs/firmware/evidencia-build-esp-idf.md`). Lo que **sí** sigue en pie es que
+> **nunca se ha corrido en silicio**. No se reescribe la fila: se fecha.
+
 Actualizado por el organizador. Última actualización: **2026-08-04** (barrido de documentación).
 Rama `develop` @ `1aa1fbc`.
 
