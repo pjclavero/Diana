@@ -1,0 +1,14 @@
+{
+  "name": "@diana/e2e-offline",
+  "version": "0.1.0",
+  "private": true,
+  "description": "E2E-2 · offline / recovery: LWT real, presencia retenida, caída por silencio y recuperación sin duplicar efecto.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 offline-recovery.test.mjs"
+  },
+  "dependencies": {
+    "mqtt": "5.10.1",
+    "pg": "8.13.1"
+  }
+}
