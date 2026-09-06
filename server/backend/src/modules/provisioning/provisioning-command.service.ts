@@ -290,6 +290,22 @@ export class ProvisioningCommandService {
       scope: delegation.scope,
       delegation_sequence: exactUint64(delegation.delegationSequence, 'delegation_sequence'),
       system_id: delegation.systemId,
+      // GAP-D1B-DELEG-ALG, la mitad que faltaba. `conforms()` del firmware EXIGE
+      // este campo (provisioning.c, bloque `if (c->has_delegation)`), y el
+      // esquema lo declara requerido con additionalProperties:false. Sin el, el
+      // propio MqttService rechaza el payload antes de publicarlo con
+      // "/delegation must have required property 'signature_alg'".
+      //
+      // NO entra en la canonica de la delegacion -- son 9 registros y ninguno es
+      // este (prov_canonical.c:144-152) --, asi que es campo de TRANSPORTE, como
+      // root_signature: anadirlo no altera ninguna firma.
+      //
+      // La primera correccion del P0 toco esquema, ejemplos y firmware pero NO
+      // este emisor, que es justamente quien tiene que producir la orden. El
+      // resultado fue peor que el defecto original: el esquema paso a exigir un
+      // campo que el unico emisor no ponia, y 11 de 15 casos del E2E-3 se
+      // pusieron rojos. Arreglar la mitad de un camino no es arreglarlo.
+      signature_alg: SIGNATURE_ALG,
       root_signature: delegation.rootSignature,
     };
   }

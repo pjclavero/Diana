@@ -368,11 +368,23 @@ if (!available) {
      * demuestra la causa, y todo lo que se mida con él va etiquetado como
      * «fuera de contrato» en el informe.
      */
-    function withDelegationAlg(raw: Buffer | string): string {
+    /**
+     * El backend YA emite `delegation.signature_alg` (GAP-D1B-DELEG-ALG
+     * cerrado). Este ayudante existe ahora para lo contrario: QUITARLO, y poder
+     * demostrar que sin ese campo la orden muere como malformed. Antes anadia
+     * el campo a mano porque el emisor no lo ponia, y el arnes codificaba el
+     * defecto como comportamiento esperado.
+     */
+    function withoutDelegationAlg(raw: Buffer | string): string {
       const payload = JSON.parse(raw.toString()) as Record<string, any>;
       if (!payload.delegation) throw new Error('esta orden no lleva delegación');
-      payload.delegation.signature_alg = 'ECDSA-P256-SHA256-P1363-B64URL';
+      delete payload.delegation.signature_alg;
       return JSON.stringify(payload);
+    }
+
+    /** Identidad: lo que emite el backend ya es aplicable tal cual. */
+    function withDelegationAlg(raw: Buffer | string): string {
+      return raw.toString();
     }
 
     it('CONTROL POSITIVO · una orden válida produce EXACTAMENTE UN efecto en el módulo y UNA fila en la BD', async () => {
@@ -406,15 +418,16 @@ if (!available) {
       positivePayload = arrival!.payload;
 
       // ── D1b: el camino de runtime del firmware ──────────────────────────
-      // DIFERENCIAL que aísla el defecto de interoperación: el payload TAL
-      // COMO SALIÓ DEL BACKEND muere por forma; el mismo payload con
-      // `delegation.signature_alg` —el único byte de diferencia— se aplica.
-      const asWired = await device.feed(positivePayload, false);
-      expect(asWired.applied).toBe(false);
-      expect(asWired.reason).toBe('malformed_provisioning_message');
-      expect(asWired.snapshot.kvWrites).toBe(0);
-
-      applicablePayload = withDelegationAlg(positivePayload);
+      // El payload TAL COMO SALIÓ DEL BACKEND se aplica, sin parchear nada.
+      //
+      // Este bloque tenía antes un diferencial que exigía lo contrario
+      // (`asWired.applied === false`, muerto por `malformed`): documentaba
+      // GAP-D1B-DELEG-ALG, con el emisor sin poner `delegation.signature_alg`.
+      // Cerrado el gap en el emisor, mantener aquella expectativa habría
+      // convertido el arnés en guardián del defecto. La mitad negativa no se
+      // pierde: vive en el caso de regresión, que quita el campo a propósito y
+      // exige que muera.
+      applicablePayload = positivePayload.toString();
       const outcome = await device.feed(applicablePayload, false);
       expect(outcome.applied).toBe(true);
       expect(outcome.authorityChanged).toBe(true);
@@ -467,7 +480,7 @@ if (!available) {
       expect(emitted[0].publishOutcome).toBe('delivered');
     }, 180000);
 
-    it('GAP-D1B-DELEG-ALG · el camino CONFORME AL CONTRATO no llega a aplicarse (defecto REAL, no del arnés)', async () => {
+    it('GAP-D1B-DELEG-ALG (CERRADO) · lo que emite el backend se aplica tal cual, y sin signature_alg muere', async () => {
       // Se repite el diferencial sobre un módulo VIRGEN, para que no dependa
       // del estado que dejó el control positivo:
       //   · payload EXACTAMENTE como lo emitió el backend  → malformado
@@ -486,15 +499,20 @@ if (!available) {
         rootKeyId: authority.rootKeyId,
       });
       try {
-        const wired = await fresh.feed(positivePayload, false);
-        expect(wired.applied).toBe(false);
-        expect(wired.reason).toBe('malformed_provisioning_message');
-        expect(wired.snapshot.state).toBe('UNPROVISIONED');
-        expect(wired.snapshot.kvWrites).toBe(0);
+        // 1. Sin el campo: muere como malformed, CERO escrituras. Es la mitad
+        //    negativa, y es la que impide que el gap se reabra en silencio.
+        const sinAlg = await fresh.feed(withoutDelegationAlg(positivePayload), false);
+        expect(sinAlg.applied).toBe(false);
+        expect(sinAlg.reason).toBe('malformed_provisioning_message');
+        expect(sinAlg.snapshot.state).toBe('UNPROVISIONED');
+        expect(sinAlg.snapshot.kvWrites).toBe(0);
 
-        const patched = await fresh.feed(withDelegationAlg(positivePayload), false);
-        expect(patched.applied).toBe(true);
-        expect(patched.snapshot.state).toBe('READY');
+        // 2. Tal cual lo emitio el backend, SIN parchear nada: se aplica.
+        //    Antes esta rama exigia un parche a mano porque el emisor no ponia
+        //    el campo; ahora lo pone, y por eso el camino conforme funciona.
+        const wired = await fresh.feed(positivePayload, false);
+        expect(wired.applied).toBe(true);
+        expect(wired.snapshot.state).toBe('READY');
       } finally {
         fresh.stop();
       }
