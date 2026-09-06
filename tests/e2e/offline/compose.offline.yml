@@ -1,0 +1,109 @@
+# ==============================================================================
+# Diana · stack EFÍMERO del carril E2E-2 · OFFLINE / RECOVERY
+# ==============================================================================
+# PostgreSQL real, Mosquitto real, backend real (la MISMA imagen que
+# server/backend/Dockerfile construye para producción). Lo único simulado es el
+# firmware: los módulos son clientes MQTT del arnés, que es exactamente lo que
+# el contrato permite simular.
+#
+# Todo el stack es efímero: sin volúmenes nombrados, sin persistencia en el
+# broker, puertos altos para no chocar con nada del anfitrión. `docker compose
+# down -v` no deja rastro.
+#
+# El contexto de build es la RAÍZ DEL REPO (el backend lee contracts/ en
+# tiempo de ejecución). Por eso se invoca siempre con:
+#   docker compose -f tests/e2e/offline/compose.offline.yml --project-directory .
+# ==============================================================================
+
+name: diana-e2e-offline
+
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    restart: "no"
+    environment:
+      POSTGRES_USER: diana_e2e
+      POSTGRES_PASSWORD: diana_e2e
+      POSTGRES_DB: diana_e2e
+      TZ: UTC
+    tmpfs:
+      - /var/lib/postgresql/data
+    ports:
+      - "15433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U diana_e2e -d diana_e2e"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  mosquitto:
+    image: eclipse-mosquitto:2.0.18
+    restart: "no"
+    volumes:
+      - ./tests/e2e/offline/mosquitto.offline.conf:/mosquitto/config/mosquitto.conf:ro
+    ports:
+      - "11883:1883"
+    healthcheck:
+      # `mosquitto_sub -E` sale en cuanto la suscripción está confirmada: es una
+      # prueba de que el broker ACEPTA sesiones, no de que el puerto está abierto.
+      test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -p 1883 -t '$$SYS/#' -C 1 -W 3 -E >/dev/null 2>&1 || exit 1"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    build:
+      context: .
+      # La receta de producción con UNA divergencia declarada (chown no
+      # recursivo). El porqué, medido, está en la cabecera del fichero.
+      dockerfile: tests/e2e/offline/Dockerfile.backend
+    image: diana/backend:e2e-offline
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://diana_e2e:diana_e2e@postgres:5432/diana_e2e?schema=public
+      TZ: UTC
+    command: ["npx", "prisma", "migrate", "deploy"]
+
+  backend:
+    build:
+      context: .
+      dockerfile: tests/e2e/offline/Dockerfile.backend
+    image: diana/backend:e2e-offline
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      # NODE_ENV=test, NO production: MqttService aborta el arranque con MQTT en
+      # claro si NODE_ENV=production (P0-2). Aquí el broker es efímero y sin
+      # datos, y el propio código contempla este caso ("el laboratorio y las
+      # pruebas de integración lo necesitan").
+      NODE_ENV: test
+      PORT: 3000
+      DATABASE_URL: postgresql://diana_e2e:diana_e2e@postgres:5432/diana_e2e?schema=public
+      MQTT_URL: mqtt://mosquitto:1883
+      MQTT_ENABLED: "true"
+      MQTT_CLIENT_ID: diana-backend-e2e-offline
+      JWT_SECRET: e2e-offline-not-a-production-secret
+      CORS_ORIGINS: http://localhost:8080
+      LOG_LEVEL: debug
+      # Barrido de módulos callados cada 5 s (por defecto 15 s). Acorta la
+      # espera del escenario de "stale" sin tocar STALE_AFTER_MS, que es una
+      # constante del dominio y NO se falsea desde el entorno.
+      RESILIENCE_SWEEP_MS: "5000"
+      TZ: UTC
+    ports:
+      - "13000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 10s
