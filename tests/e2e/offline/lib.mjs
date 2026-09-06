@@ -73,10 +73,23 @@ export async function countHitsByModule(slug) {
   return rows[0].n;
 }
 
+/**
+ * Incidencias de un módulo.
+ *
+ * OJO: ResilienceService escribe estas incidencias con `moduleId`, NO con
+ * `module_slug` (que se queda NULL). Filtrar por `module_slug` devolvía cero
+ * filas SIEMPRE, y una aserción de "existe la incidencia" habría fallado por la
+ * razón equivocada — o, peor, una de "no existe" habría pasado trivialmente.
+ * Se resuelve el módulo por su slug y se filtra por su identificador.
+ */
 export async function incidents(kind, slug) {
   return sql(
-    'SELECT kind, severity, message FROM incidents WHERE kind = $1 AND (module_slug = $2 OR $2 IS NULL) ORDER BY occurred_at DESC',
-    [kind, slug ?? null],
+    `SELECT i.kind, i.severity, i.message, i.detail
+       FROM incidents i
+       JOIN modules m ON m.id = i.module_id
+      WHERE i.kind = $1 AND m.slug = $2
+      ORDER BY i.occurred_at DESC`,
+    [kind, slug],
   );
 }
 
