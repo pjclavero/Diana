@@ -1,0 +1,78 @@
+# syntax=docker/dockerfile:1
+# ==============================================================================
+# Diana · backend para el carril E2E-2 (offline / recovery)
+# ==============================================================================
+# ESTA RECETA ES LA DE `server/backend/Dockerfile`, PASO A PASO, CON UNA SOLA
+# DIFERENCIA, y hay que saber cuál:
+#
+#   producción:  RUN mkdir -p /app/exports /app/firmware && chown -R diana:diana /app
+#   aquí:        RUN mkdir -p /app/exports /app/firmware && chown    diana:diana /app/exports /app/firmware
+#
+# Es decir: el `chown` deja de ser RECURSIVO. Motivo medido, no supuesto: en el
+# anfitrión de desarrollo (docker rootless sobre fuse-overlayfs) ese `chown -R`
+# sobre ~1,3 GB de node_modules se llevó 25 minutos y murió con exit 137 (OOM),
+# y en un segundo intento seguía sin terminar a los 44 minutos. No es un defecto
+# del Dockerfile de producción —en la VM destino funciona—; es una limitación
+# del anfitrión donde se ejecuta esta prueba.
+#
+# QUÉ SE PIERDE Y QUÉ NO. Se sigue ejecutando como el usuario NO root `diana`,
+# con el mismo artefacto compilado, los mismos contratos congelados y las mismas
+# dependencias de producción. Lo único que cambia es la propiedad de
+# `/app/node_modules` y `/app/dist`, que el backend sólo necesita LEER (los
+# ficheros quedan legibles para todo el mundo, que es el modo por defecto de
+# `npm ci`). Las dos rutas donde el backend SÍ escribe —`/app/exports` y
+# `/app/firmware`— siguen siendo suyas.
+#
+# NO se usa para desplegar nada. Sólo la levanta
+# tests/e2e/offline/compose.offline.yml.
+#
+# CONTEXTO DE BUILD: raíz del repositorio (el backend lee contracts/ en runtime).
+# ==============================================================================
+
+# ---------------------------------------------------------------- build
+FROM node:20.19-bookworm-slim AS build
+WORKDIR /app
+
+COPY server/backend/package.json server/backend/package-lock.json ./
+RUN npm ci
+
+COPY server/backend/tsconfig.json server/backend/tsconfig.build.json server/backend/nest-cli.json ./
+COPY server/backend/prisma ./prisma
+COPY server/backend/src ./src
+RUN npx prisma generate && npm run build
+
+# ---------------------------------------------------------------- runtime
+FROM node:20.19-bookworm-slim AS runtime
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssl wget \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd --system diana \
+    && useradd --system --gid diana --home-dir /app --shell /usr/sbin/nologin diana
+
+WORKDIR /app
+ENV NODE_ENV=production \
+    DIANA_CONTRACTS_DIR=/app/contracts
+
+COPY server/backend/package.json server/backend/package-lock.json ./
+RUN npm ci --omit=dev \
+    && npm install --no-save prisma@6.14.0 \
+    && npm cache clean --force
+
+COPY server/backend/prisma ./prisma
+RUN npx prisma generate
+
+COPY --from=build /app/dist ./dist
+COPY contracts ./contracts
+
+# ÚNICA divergencia con producción (ver cabecera): chown NO recursivo.
+RUN mkdir -p /app/exports /app/firmware \
+    && chown diana:diana /app/exports /app/firmware
+
+USER diana
+EXPOSE 3000
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
+  CMD wget -qO- http://127.0.0.1:3000/api/health || exit 1
+
+CMD ["node", "dist/main.js"]

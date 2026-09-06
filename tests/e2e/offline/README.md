@@ -62,6 +62,28 @@ que algo ha cambiado** y exige que se ponga **ROJO por el motivo correcto**: la
 aserción «El reenvío duplicó el impacto». Un rojo por otro motivo se declara
 `CALIBRACIÓN DUDOSA`, no éxito.
 
+## Resultado medido (2026-09-06)
+
+Ejecutado tres veces sobre el stack real, sin hardware, sin producción y sin
+VM109.
+
+```
+verde        → 6/6 · O-5: HIT_PRE=1 HIT_TWIN=0 HIT_QUEUED=1 total=2 · duplicates 0→4
+--calibrate  → 4/6 · O-5: HIT_PRE=4 HIT_TWIN=1 HIT_QUEUED=1 total=6 · duplicates 0→0
+               «El reenvío duplicó el impacto: 4 filas para el mismo event_id»
+verde (2ª)   → 6/6 · idénticos números que la primera
+```
+
+O-4 tarda ~95 s de reloj real: es el plazo `STALE_AFTER_MS` del dominio, y se
+espera de verdad. La incidencia observada lo dice con sus propias palabras:
+«El módulo e2e-module-05 lleva 92 s sin dar señal de vida (máximo tolerado
+90 s). Se da por caído sin haber recibido su Last Will».
+
+En O-2 el LWT llega **en vivo** con `retain:false` —que es lo correcto: la
+bandera sólo se marca al entregar desde el almacén de retenidos— y O-3 recoge
+esa misma fotografía con `retain:true` en un suscriptor nuevo. Los dos hechos
+son distintos y se miden por separado.
+
 ## Frontera declarada
 
 - **NO atraviesa `infrastructure/mosquitto/set-coordinator.sh`** ni la ACL de
@@ -72,3 +94,24 @@ aserción «El reenvío duplicó el impacto». Un rojo por otro motivo se declar
   broker `Exited (13)`).
 - Tampoco toca hardware físico, producción ni la VM109. Todo es efímero:
   `tmpfs` en Postgres, `persistence false` en el broker, `down -v` al salir.
+- La imagen del backend se construye con `Dockerfile.backend`, que es la receta
+  de `server/backend/Dockerfile` **con una sola divergencia declarada**: el
+  `chown` final deja de ser recursivo. El motivo está medido en la cabecera de
+  ese fichero (el `chown -R` sobre ~1,3 GB murió con exit 137 en el anfitrión
+  rootless). Sigue ejecutándose como el usuario no root `diana` y con el mismo
+  artefacto compilado y los mismos contratos congelados.
+
+## NO MEDIDO en este carril
+
+- La ACL y la autenticación del broker de producción, y con ellas la decisión
+  D6 y el `set-coordinator.sh`.
+- El comportamiento del **firmware real** ante la reconexión: aquí la cola local
+  se reinyecta desde el arnés. Que el ESP32 persista `local_sequence` en NVS y
+  reenvíe exactamente lo pendiente es cosa del firmware y no se ejerce.
+- La caducidad por `expires_in_ms`/`nonce` del canal de órdenes (contrato §6):
+  este carril mide la idempotencia del camino **módulo → backend**, no la del
+  camino **backend → módulo**.
+- La auto-pausa de ronda ante la caída de un módulo implicado: exige una partida
+  en curso, que es materia del carril de juego.
+- El reinicio del **backend** con eventos encolados en el broker (E-13/E-14 en
+  su lectura estricta): aquí se cae el módulo, no el backend.

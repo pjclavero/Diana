@@ -7,7 +7,9 @@
 // ============================================================================
 
 import mqtt from 'mqtt';
-import { Client } from 'pg';
+// `pg` es CommonJS: no expone `Client` como named export bajo ESM.
+import pg from 'pg';
+const { Client } = pg;
 import { randomUUID } from 'node:crypto';
 
 export const MQTT_URL = process.env.E2E_MQTT_URL ?? 'mqtt://127.0.0.1:11883';

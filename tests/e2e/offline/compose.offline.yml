@@ -54,7 +54,9 @@ services:
   migrate:
     build:
       context: .
-      dockerfile: server/backend/Dockerfile
+      # La receta de producción con UNA divergencia declarada (chown no
+      # recursivo). El porqué, medido, está en la cabecera del fichero.
+      dockerfile: tests/e2e/offline/Dockerfile.backend
     image: diana/backend:e2e-offline
     restart: "no"
     depends_on:
@@ -68,7 +70,7 @@ services:
   backend:
     build:
       context: .
-      dockerfile: server/backend/Dockerfile
+      dockerfile: tests/e2e/offline/Dockerfile.backend
     image: diana/backend:e2e-offline
     restart: "no"
     depends_on:
