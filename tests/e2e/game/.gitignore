@@ -1,0 +1,4 @@
+# Material EFÍMERO del arnés: certificados, `passwd` cifrado, contraseñas
+# generadas y el contrato env.json. Lo crea harness/up.sh y lo borra
+# harness/down.sh. Jamás entra en git.
+.tmp/

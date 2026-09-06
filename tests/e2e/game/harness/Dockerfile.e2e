@@ -1,0 +1,79 @@
+# syntax=docker/dockerfile:1
+# ==============================================================================
+# Diana · E2E-1 GAME — imagen del backend para el ARNÉS
+# ==============================================================================
+# Es `server/backend/Dockerfile` COPIADO, con UNA sola diferencia, y hay que
+# saber cuál es:
+#
+#   producción:  RUN mkdir -p /app/exports /app/firmware && chown -R diana:diana /app
+#   aquí:        RUN mkdir -p /app/exports /app/firmware && chown diana:diana /app/exports /app/firmware
+#
+# POR QUÉ. Este entorno corre Docker **rootless** sobre fuse-overlayfs. Ahí un
+# `chown -R` sobre /app copia al alza (copy-up) los ~50.000 ficheros de
+# node_modules uno a uno: MEDIDO en esta máquina, 374 MB escritos en 18 minutos
+# y luego 0,6 MB en 2 minutos más, es decir, no termina. No es un capricho del
+# arnés: es que esa instrucción no es ejecutable aquí en un tiempo acotado.
+#
+# QUÉ SE CONSERVA, que es lo que hace que la prueba siga siendo válida:
+#   - el mismo `FROM`, el mismo `npm ci`, el mismo `prisma generate`, el mismo
+#     `nest build` y el mismo `dist` compilado;
+#   - los contratos congelados en /app/contracts;
+#   - el usuario NO root `diana` y el `USER diana` final;
+#   - el mismo `CMD` y el mismo puerto.
+# El proceso sigue arrancando sin privilegios y con permiso de escritura sólo
+# donde lo necesita (exports y firmware). Lo que se pierde es la propiedad
+# nominal de ficheros que el proceso únicamente LEE.
+#
+# CONTEXTO DE BUILD: raíz del repositorio (necesita contracts/), igual que el
+# original:
+#   docker build -f tests/e2e/game/harness/Dockerfile.e2e -t diana/backend:e2egame .
+# ==============================================================================
+
+# ---------------------------------------------------------------- build
+FROM node:20.19-bookworm-slim AS build
+WORKDIR /app
+
+COPY server/backend/package.json server/backend/package-lock.json ./
+RUN npm ci
+
+COPY server/backend/tsconfig.json server/backend/tsconfig.build.json server/backend/nest-cli.json ./
+COPY server/backend/prisma ./prisma
+COPY server/backend/src ./src
+RUN npx prisma generate && npm run build
+
+# ---------------------------------------------------------------- runtime
+FROM node:20.19-bookworm-slim AS runtime
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssl wget \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd --system diana \
+    && useradd --system --gid diana --home-dir /app --shell /usr/sbin/nologin diana
+
+WORKDIR /app
+ENV NODE_ENV=production \
+    DIANA_CONTRACTS_DIR=/app/contracts
+
+COPY server/backend/package.json server/backend/package-lock.json ./
+RUN npm ci --omit=dev \
+    && npm install --no-save prisma@6.14.0 \
+    && npm cache clean --force
+
+COPY server/backend/prisma ./prisma
+RUN npx prisma generate
+
+COPY --from=build /app/dist ./dist
+COPY contracts ./contracts
+
+# ÚNICA diferencia con producción (ver cabecera): chown ACOTADO a los dos
+# directorios en los que el proceso escribe, en vez de recursivo sobre /app.
+RUN mkdir -p /app/exports /app/firmware \
+    && chown diana:diana /app/exports /app/firmware
+
+USER diana
+EXPOSE 3000
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
+  CMD wget -qO- http://127.0.0.1:3000/api/health || exit 1
+
+CMD ["node", "dist/main.js"]
