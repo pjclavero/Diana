@@ -22,6 +22,7 @@
     "scope": "DIANA_PROVISIONING",
     "delegation_sequence": 1,
     "system_id": "system-a",
+    "signature_alg": "ECDSA-P256-SHA256-P1363-B64URL",
     "root_signature": "cm9vdC1zaWduYXR1cmUtZXhhbXBsZQ"
   },
   "retain_me": true,

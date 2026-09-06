@@ -21,6 +21,7 @@
     "scope": "DIANA_PROVISIONING",
     "delegation_sequence": 1,
     "system_id": "system-a",
+    "signature_alg": "ECDSA-P256-SHA256-P1363-B64URL",
     "root_signature": "cm9vdC1zaWduYXR1cmUtZXhhbXBsZQ"
   },
   "_reason": "Sin request_id: el firmware rechaza la orden (traza request-id-missing) y sin el no hay correlacion con el reported state."

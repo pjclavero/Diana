@@ -22,7 +22,7 @@
     "scope": "DIANA_PROVISIONING",
     "delegation_sequence": 1,
     "system_id": "system-a",
-    "signature_alg": "ECDSA-P256-SHA256-P1363-B64URL",
     "root_signature": "cm9vdC1zaWduYXR1cmUtZXhhbXBsZQ"
-  }
+  },
+  "_reason": "GAP-D1B-DELEG-ALG: delegacion SIN signature_alg. conforms() lo EXIGE (provisioning.c:325) y sin el la orden muere como malformed_provisioning_message con CERO escrituras de NVS. El esquema lo omitia con additionalProperties:false, asi que ninguna orden conforme podia aprovisionar un modulo. Este ejemplo existe para que la omision no pueda repetirse en silencio."
 }

@@ -73,6 +73,7 @@ int run_idempotency(void);
 int run_crosstalk(void);
 int run_do_only(void);
 int run_provisioning(void);
+int run_prov_contract_json(void);
 int run_command(void);
 int run_reconnect(void);
 int run_contract(void);

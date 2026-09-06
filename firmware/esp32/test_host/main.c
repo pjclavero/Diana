@@ -85,6 +85,7 @@ int main(void)
         {"crosstalk",    run_crosstalk},
         {"do_only",      run_do_only},
         {"provisioning", run_provisioning},
+        {"contrato-json", run_prov_contract_json},
         {"command",      run_command},
         {"reconnect",    run_reconnect},
         {"coordination", run_coordination},
