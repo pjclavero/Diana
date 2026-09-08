@@ -10,7 +10,7 @@
     "start:dev": "ts-node -T src/main.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "jest --runInBand",
-    "prisma:generate": "prisma generate --schema ../backend/prisma/schema.prisma"
+    "prisma:generate": "node scripts/generate-prisma.mjs"
   },
   "dependencies": {
     "@prisma/client": "6.14.0"

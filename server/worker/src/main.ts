@@ -11,6 +11,7 @@ import * as path from 'path';
 import { dueTasks, TaskDefinition } from './schedule';
 import { applyRetention, recomputePlayerStatistics, WorkerConfig } from './tasks';
 import { HeartbeatState, initialHeartbeat, recordTaskOutcome, touchHeartbeat } from './health';
+import { probeDatabase, TAREA_SONDA } from './probe';
 
 function int(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(value ?? '', 10);
@@ -96,6 +97,22 @@ async function main(): Promise<void> {
 
   while (running) {
     const now = new Date();
+
+    // SONDA FUNCIONAL en cada vuelta, antes que nada. Sin ella, con PostgreSQL
+    // caído el bucle seguía girando y `touchHeartbeat` mantenía el latido
+    // fresco: el worker se declaraba sano sin poder hacer absolutamente nada,
+    // porque para acumular fallos hay que llegar a intentar una tarea y las
+    // tareas sólo se intentan cuando les toca (estadísticas cada 5 min,
+    // retención cada 24 h). Ahora hay un resultado real por vuelta.
+    const sonda = await probeDatabase(prisma);
+    heartbeat = recordTaskOutcome(
+      heartbeat,
+      TAREA_SONDA,
+      sonda.ok ? { ok: true } : { ok: false, error: sonda.error },
+      new Date(),
+    );
+    if (!sonda.ok) log(`ERROR en la sonda de base de datos: ${sonda.error}`);
+
     const due = dueTasks(tasks, now);
     for (const task of due) {
       try {

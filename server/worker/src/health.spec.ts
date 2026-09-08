@@ -7,7 +7,12 @@ const tarea = (consecutiveFailures: number, lastError: string | null = null, las
   lastSuccessAt,
 });
 
-const THRESHOLDS = { maxAgeMs: 180000, maxConsecutiveFailures: 3 };
+const THRESHOLDS = {
+  maxAgeMs: 180000,
+  maxConsecutiveFailures: 3,
+  maxSuccessAgeMs: 300000,
+  startupGraceMs: 180000,
+};
 
 describe('initialHeartbeat', () => {
   it('arranca sin fallos y sin éxito registrado', () => {
@@ -15,6 +20,9 @@ describe('initialHeartbeat', () => {
     const state = initialHeartbeat(now);
     expect(state).toEqual<HeartbeatState>({
       updatedAt: now.toISOString(),
+      // `startedAt` distingue «acaba de arrancar» de «lleva horas sin
+      // conseguir hacer nada»; antes ambos salían SANOS (ver health.ts).
+      startedAt: now.toISOString(),
       tasks: {},
       lastError: null,
       lastSuccessAt: null,

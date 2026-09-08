@@ -1,12 +1,24 @@
 import type { CommandAck, DiagnosticResults, DianaApiClient } from "./client";
 import { ApiError } from "./client";
 import { apiRequestAs } from "./typedRequest";
+import { OPERACIONES, SIN_ATENDER } from "./rutasDelPanel";
+import {
+  aGamePreset,
+  aGameSummary,
+  aIncident,
+  aModuleConfig,
+  aModuleStatus,
+  type ConfiguracionDeseada,
+  type FilaIncidencia,
+  type FilaModulo,
+  type FilaPartida,
+  type FilaPreset,
+} from "./backendShapes";
 import type {
   FirmwareRelease,
   GameState,
   GameSummary,
   ModuleDiagnosticEvent,
-  ModuleStatus,
   Player,
   SystemStatus,
   Team,
@@ -46,42 +58,26 @@ import type {
  */
 
 /**
- * Rutas que el panel necesita y el backend NO expone (verificado ruta a ruta
- * contra `contracts/api/openapi.json`, 112 rutas). El valor es lo que el panel
- * pedía; el comentario, lo más parecido que sí existe, si existe algo.
+ * Huecos que quedan. Ya NO es una lista plana de «faltan trece»: cada
+ * operación está clasificada con su veredicto y su evidencia en
+ * `./rutasDelPanel.ts`, y las que el backend sí sirve con otro nombre están
+ * PORTADAS abajo. Aquí sólo quedan las que de verdad no se pueden atender.
  */
-export const RUTAS_AUSENTES_DEL_BACKEND = {
-  /** El contrato lista módulos con `/api/modules`, no por sistema. */
-  listModules: "/api/systems/{id}/modules",
-  getModuleTelemetry: "/api/modules/{id}/telemetry",
-  /** Lo más cercano: `/api/modules/{id}/config/desired` y `/config/push`. */
-  getModuleConfig: "/api/modules/{id}/config",
-  updateModuleConfig: "/api/modules/{id}/config/patch",
-  /** Lo más cercano: `/api/topology`, `/api/topology/{id}`, `/api/topology/panels`. */
-  getTopology: "/api/systems/{id}/topology",
-  saveTopology: "/api/systems/{id}/topology/save",
-  /** Lo más cercano: `/api/presets`. */
-  listPresets: "/api/game-presets",
-  /** No hay orden de «arranque de partida»; sí `/api/games/{id}/rounds/{roundId}/start`. */
-  startGame: "/api/games/{id}/start",
-  getGameState: "/api/games/{id}/state",
-  getGameResult: "/api/games/{id}/result",
-  /** El diagnóstico global sin módulo no existe; sólo por módulo. */
-  listDiagnostics: "/api/diagnostics",
-  listIncidents: "/api/incidents",
-  resolveIncident: "/api/incidents/{id}/resolve",
-} as const;
+export const RUTAS_AUSENTES_DEL_BACKEND = Object.fromEntries(
+  SIN_ATENDER.map((nombre) => [nombre, OPERACIONES[nombre].rutaPedida]),
+) as Record<string, string>;
 
-export type OperacionAusente = keyof typeof RUTAS_AUSENTES_DEL_BACKEND;
+export type OperacionAusente = keyof typeof OPERACIONES;
 
 /**
- * Hueco DECLARADO. Falla sin salir a la red y diciendo la causa real, en vez
- * de disfrazarse de 404 «recurso no encontrado».
+ * Hueco DECLARADO. Falla sin salir a la red, diciendo la causa real y el
+ * veredicto, en vez de disfrazarse de 404 «recurso no encontrado».
  */
 async function huecoDeclarado(op: OperacionAusente): Promise<never> {
+  const info = OPERACIONES[op];
   throw new ApiError(
-    `Esta pantalla pide «${RUTAS_AUSENTES_DEL_BACKEND[op]}», que el backend no expone (X-21). ` +
-      `No es un fallo de red ni un identificador equivocado: falta el endpoint.`,
+    `Esta pantalla pide «${info.rutaPedida}» (${info.veredicto}). ` +
+      `No es un fallo de red ni un identificador equivocado: ${info.motivo}`,
   );
 }
 
@@ -99,10 +95,30 @@ export function createRealApiClient(): DianaApiClient {
     },
 
     // --- Módulos ---
-    listModules: () => huecoDeclarado("listModules"),
-    getModule: (moduleId) => apiRequestAs<ModuleStatus>()("/api/modules/{id}", `/api/modules/${moduleId}`),
+    // PORTADO. El contrato lista módulos globalmente; el filtro por sistema se
+    // hace aquí porque la fila trae `targetSystemId`. `take=500` es el tope
+    // duro del CRUD del backend: pedir más no trae más, así que no se finge.
+    listModules: async (systemId) => {
+      const page = await apiRequestAs<{ items: FilaModulo[] }>()("/api/modules", "/api/modules?take=500");
+      return page.items.filter((m) => m.targetSystemId === systemId).map(aModuleStatus);
+    },
+    getModule: async (moduleId) => {
+      // Antes esto afirmaba `apiRequestAs<ModuleStatus>()` sobre la fila de
+      // Prisma. `ModuleStatus` es la forma del contrato MQTT, no la del REST:
+      // `module_id`, `targets` y `queue_depth` habrían llegado `undefined` y
+      // la pantalla habría pintado huecos sin dar ningún error.
+      const fila = await apiRequestAs<FilaModulo>()("/api/modules/{id}", `/api/modules/${moduleId}`);
+      return aModuleStatus(fila);
+    },
     getModuleTelemetry: () => huecoDeclarado("getModuleTelemetry"),
-    getModuleConfig: () => huecoDeclarado("getModuleConfig"),
+    // PORTADO a la «configuración deseada» del backend.
+    getModuleConfig: async (moduleId) => {
+      const fila = await apiRequestAs<ConfiguracionDeseada>()(
+        "/api/modules/{id}/config/desired",
+        `/api/modules/${moduleId}/config/desired`,
+      );
+      return aModuleConfig(fila, moduleId);
+    },
     updateModuleConfig: () => huecoDeclarado("updateModuleConfig"),
     identifyModule: (moduleId, durationMs) =>
       apiRequestAs<CommandAck>()<"/api/modules/{idOrSlug}/commands/identify", "post">(
@@ -161,7 +177,13 @@ export function createRealApiClient(): DianaApiClient {
       }),
 
     // --- Partidas ---
-    listPresets: () => huecoDeclarado("listPresets"),
+    // PORTADO a `/api/presets`, la MISMA ruta que ya usa `presetsApi.ts`: dos
+    // clientes del panel pidiendo presets a sitios distintos era la receta
+    // para que una pantalla enseñara una lista y otra, otra.
+    listPresets: async () => {
+      const page = await apiRequestAs<{ items: FilaPreset[] }>()("/api/presets", "/api/presets");
+      return page.items.map(aGamePreset);
+    },
     createGame: (config) =>
       apiRequestAs<GameSummary>()<"/api/games", "post">("/api/games", "/api/games", {
         method: "POST",
@@ -183,15 +205,45 @@ export function createRealApiClient(): DianaApiClient {
         `/api/games/${gameId}/control/abort_game`,
         { method: "POST", preferServerDetail: true },
       ),
-    getGameState: () => huecoDeclarado("getGameState"),
-    getGameResult: () => huecoDeclarado("getGameResult"),
+    // PORTADO a la fila de la partida. Sólo se afirma lo que la fila dice: la
+    // fase. Lo que no sabe (ronda, cronómetro, dianas activas) va marcado como
+    // desconocido —cadena vacía, -1, lista vacía— y NUNCA como cero medido,
+    // que es como un panel acaba diciendo «0 impactos» cuando lo cierto es
+    // «no lo sé».
+    getGameState: async (gameId) => {
+      const fila = await apiRequestAs<FilaPartida>()("/api/games/{id}", `/api/games/${gameId}`);
+      const resumen = aGameSummary(fila);
+      return {
+        system_id: resumen.system_id,
+        game_id: resumen.game_id,
+        round_id: "",
+        phase: resumen.phase,
+        mode: resumen.mode,
+        coordinator_module_id: "",
+        elapsed_us: -1,
+        targets_remaining: -1,
+        targets_hit: -1,
+        penalties: -1,
+        active_targets: [],
+      };
+    },
+    // PORTADO. Las FILAS de resultado no vienen aquí (viven en
+    // `/api/scoreboard/games/{id}`, que sirve `scoreboardApi.ts`): esta llamada
+    // devuelve el resumen y `results: []` significa «esta llamada no los trae»,
+    // no «no hubo resultados».
+    getGameResult: async (gameId) => {
+      const fila = await apiRequestAs<FilaPartida>()("/api/games/{id}", `/api/games/${gameId}`);
+      return aGameSummary(fila);
+    },
     listResults: async () => {
-      // `/api/games` está paginado igual que el resto de listados.
-      const page = await apiRequestAs<{ items: GameSummary[] }>()(
-        "/api/games",
-        "/api/games?take=100&status=finished",
-      );
-      return page.items;
+      // DEFECTO CORREGIDO AQUÍ: se pedía `?status=finished` y el backend NO
+      // filtra por estado — `GET /api/games` sólo lee `take` (games.module.ts).
+      // La consulta se aceptaba, el parámetro se tiraba a la basura y la
+      // pantalla de resultados enseñaba TAMBIÉN borradores y partidas en
+      // curso, presentados como resultados. El filtro se hace aquí, que es
+      // donde hoy se puede hacer de verdad.
+      const page = await apiRequestAs<{ items: FilaPartida[] }>()("/api/games", "/api/games?take=100");
+      return page.items.map(aGameSummary).filter((g) => g.phase === "finished" || g.phase === "cancelled");
     },
 
     // --- Diagnóstico ---
@@ -210,8 +262,25 @@ export function createRealApiClient(): DianaApiClient {
     },
 
     // --- Incidencias ---
-    listIncidents: () => huecoDeclarado("listIncidents"),
-    resolveIncident: () => huecoDeclarado("resolveIncident"),
+    // PORTADO a `/api/maintenance/incidents`.
+    listIncidents: async () => {
+      const page = await apiRequestAs<{ items: FilaIncidencia[] }>()(
+        "/api/maintenance/incidents",
+        "/api/maintenance/incidents?take=100",
+      );
+      return page.items.map(aIncident);
+    },
+    // PORTADO. Método PATCH, no POST: escrito con POST habría sido un 404 mudo.
+    resolveIncident: async (id) => {
+      const fila = await apiRequestAs<FilaIncidencia>()<
+        "/api/maintenance/incidents/{id}/resolve",
+        "patch"
+      >("/api/maintenance/incidents/{id}/resolve", `/api/maintenance/incidents/${id}/resolve`, {
+        method: "PATCH",
+        preferServerDetail: true,
+      });
+      return aIncident(fila);
+    },
 
     // --- Usuarios ---
     listUsers: async () => {

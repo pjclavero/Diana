@@ -53,6 +53,14 @@ function main(): void {
     // considera "colgada" a partir de 3 ticks sin actualizar el heartbeat.
     maxAgeMs: int(process.env.WORKER_HEALTH_MAX_AGE_MS, tickMs * 3),
     maxConsecutiveFailures: int(process.env.WORKER_HEALTH_MAX_FAILURES, 3),
+    // La sonda de base de datos corre en CADA vuelta, así que el último éxito
+    // no puede tener más de unas pocas vueltas de antigüedad. El umbral se
+    // ata al tick por el mismo motivo que `maxAgeMs`: un valor absoluto
+    // mentiría en cuanto alguien cambiara el intervalo del bucle.
+    maxSuccessAgeMs: int(process.env.WORKER_HEALTH_MAX_SUCCESS_AGE_MS, tickMs * 5),
+    // Margen de arranque: la primera vuelta (y con ella la primera sonda)
+    // ocurre de inmediato, así que basta con cubrir el arranque del proceso.
+    startupGraceMs: int(process.env.WORKER_HEALTH_STARTUP_GRACE_MS, tickMs * 3),
   };
 
   const state = readHeartbeat(heartbeatFile);

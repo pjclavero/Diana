@@ -114,7 +114,41 @@ run_mosquitto_passwd() {
 }
 
 run_mosquitto_passwd
+
+# --------------------------------------------------------------------------
+# Permisos y PROPIETARIO adecuados al proceso (gemelo de D6, comprobado).
+#
+# `chmod 600` a secas dejaba el passwd legible solo por el operador. El broker
+# abre `password_file` DESPUES de dejar los privilegios de root y pasar a uid
+# 1883, y en compose.yml el fichero se monta `:ro`, asi que el `chown -R
+# mosquitto /mosquitto/config` del entrypoint de la imagen FALLA en silencio
+# («Read-only file system»). Resultado observado con eclipse-mosquitto:2.0.18:
+#   Error: Unable to open pwfile "/mosquitto/config/passwd"  ->  Exited(13)
+#
+# La correccion NO es relajar a 0644 —ahi hay hashes de contrasena—, sino dar
+# el fichero al uid del broker manteniendolo en 0600. Eso exige privilegios que
+# este script no tiene por que tener: si no puede, lo dice con el comando
+# exacto en vez de dejar un despliegue que muere al arrancar.
+# --------------------------------------------------------------------------
+BROKER_UID="${MOSQUITTO_UID:-1883}"
+BROKER_GID="${MOSQUITTO_GID:-1883}"
 chmod 600 "$PASSWD_FILE"
+if chown "${BROKER_UID}:${BROKER_GID}" "$PASSWD_FILE" 2>/dev/null; then
+  :
+elif chgrp "$BROKER_GID" "$PASSWD_FILE" 2>/dev/null && chmod 640 "$PASSWD_FILE"; then
+  :
+fi
+# Se comprueba el EFECTO, no que el chown haya devuelto 0.
+PASSWD_UID="$(stat -c '%u' "$PASSWD_FILE")"
+PASSWD_GID="$(stat -c '%g' "$PASSWD_FILE")"
+PASSWD_MODE="$(stat -c '%a' "$PASSWD_FILE")"
+if [[ "$PASSWD_UID" != "$BROKER_UID" ]] &&
+   ! { [[ "$PASSWD_GID" == "$BROKER_GID" ]] && [[ "$(( 8#${PASSWD_MODE} & 8#0040 ))" -ne 0 ]]; }; then
+  echo "AVISO: $PASSWD_FILE queda como uid=${PASSWD_UID} gid=${PASSWD_GID} modo=${PASSWD_MODE}." >&2
+  echo "       El broker corre con uid ${BROKER_UID} y lo monta en solo lectura: NO podra abrirlo" >&2
+  echo "       y arrancara con «Unable to open pwfile» / Exited(13). Ejecuta antes del despliegue:" >&2
+  echo "         sudo chown ${BROKER_UID}:${BROKER_GID} '${PASSWD_FILE}' && sudo chmod 600 '${PASSWD_FILE}'" >&2
+fi
 
 echo "Usuario '$USERNAME' creado/actualizado en $PASSWD_FILE" >&2
 if [[ "$PRINT_ONLY" == "--print-only" ]]; then

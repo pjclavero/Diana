@@ -11,5 +11,8 @@ idf_component_register(
     # justo lo que espera esp-mqtt en broker.verification.certificate. Si el
     # fichero no contiene un PEM, el modulo se niega a arrancar MQTT: ver
     # diana_mqtt_ca_is_valid() y el propio broker_ca.pem.
-    EMBED_TXTFILES "certs/broker_ca.pem"
+    # La DECLARACION (C-1) viaja en el mismo binario que el PEM: el modulo
+    # compara lo que lleva dentro contra lo que dice llevar, no contra lo que
+    # ponia el repositorio el dia de la compilacion. Ver main/certs/README.md.
+    EMBED_TXTFILES "certs/broker_ca.pem" "certs/broker_ca.sha256"
 )

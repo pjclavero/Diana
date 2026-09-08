@@ -36,6 +36,21 @@ static size_t broker_ca_len(void)
     return (size_t)(broker_ca_pem_end - broker_ca_pem_start);
 }
 
+/* DECLARACION de que CA se espera (C-1). Se empota junto al PEM, en el mismo
+ * binario, para que la comparacion la haga el modulo con lo que de verdad
+ * lleva dentro y no con lo que ponia el repositorio el dia de la compilacion.
+ *
+ * Por que existe, si ya hay una guarda de CA valida: `ca_is_valid` solo exige
+ * que HAYA un PEM. Un certificado de ejemplo, un autofirmado de pruebas o el
+ * snakeoil de Debian la pasan igual de bien que la CA de produccion, y
+ * convierten el fallo RUIDOSO de "no hay CA" en uno silencioso que no aparece
+ * hasta el handshake. La declaracion ata el binario a UN certificado concreto:
+ * cambiarlo sin cambiarla deja el modulo sin conectar y lo dice con las dos
+ * huellas delante. Ver main/certs/README.md. */
+extern const char broker_ca_fp_start[] asm("_binary_broker_ca_sha256_start");
+
+static const char *broker_ca_declared(void) { return broker_ca_fp_start; }
+
 #define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
 #define BYTE_TO_BINARY(byte) \
     ((byte) & 0x80u ? '1' : '0'), ((byte) & 0x40u ? '1' : '0'), \
@@ -335,10 +350,26 @@ void app_main(void)
                 ESP_LOGE(TAG, "revisa main/certs/broker_ca.pem (P0-2)");
                 diana_module_fsm_apply(&a->fsm, DIANA_EV_ERROR_RAISED,
                                        a->hal.now_us(a->hal.ctx));
+            } else if (transport == DIANA_MQTT_TRANSPORT_TLS &&
+                       !diana_mqtt_ca_is_declared(ca_pem, ca_len,
+                                                  broker_ca_declared())) {
+                /* C-1 · la CA que lleva la imagen no es la DECLARADA. No se
+                 * conecta y se dicen las dos huellas: si alguien planto un
+                 * certificado de ejemplo, aqui se ve cual y con que compararlo.
+                 * No hay rama alternativa -- igual que con la CA ausente. */
+                char got[DIANA_MQTT_CA_FP_HEXLEN + 1];
+                (void)diana_mqtt_ca_fingerprint(ca_pem, ca_len, got);
+                ESP_LOGE(TAG, "CA empotrada NO DECLARADA: MQTT NO se arranca");
+                ESP_LOGE(TAG, "  huella empotrada : %s", got[0] ? got : "(sin huella)");
+                ESP_LOGE(TAG, "  huella declarada : %s", broker_ca_declared());
+                ESP_LOGE(TAG, "  ver main/certs/README.md (C-1)");
+                diana_module_fsm_apply(&a->fsm, DIANA_EV_ERROR_RAISED,
+                                       a->hal.now_us(a->hal.ctx));
             } else {
                 ESP_LOGI(TAG, "broker %s, usuario '%s'", uri, user);
                 diana_platform_mqtt_start(a->pf, a->id.module_id, uri, user,
                                           a->id.mqtt_pass, ca_pem, ca_len,
+                                          broker_ca_declared(),
                                           a->topic_presence, lwt);
                 diana_platform_mqtt_subscribe(a->pf, a->id.module_id);
             }

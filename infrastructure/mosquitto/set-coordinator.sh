@@ -125,8 +125,47 @@ awk -v start="$START_MARKER" -v end="$END_MARKER" -v body="$NEW_BODY" '
   exit 1
 }
 
-mv "$TMP" "$ACL_FILE"
+# D6 (P1, cerrado) — NO se usa `mv`. `mktemp` crea el temporal en 0600 y `mv`
+# arrastra ese modo al destino: tras cada ejecución la ACL quedaba -rw-------
+# propiedad de quien ejecutase el script, y el broker —que abre acl_file DESPUÉS
+# de dejar los privilegios de root y pasar a uid 1883 (usuario `mosquitto`)— ya
+# no podía leerla: «Error: Unable to open acl_file» y contenedor en Exited(13).
+# Reproducido con eclipse-mosquitto:2.0.18 antes de este arreglo.
+#
+# Escribir el contenido DENTRO del inodo existente (`cat > "$ACL_FILE"`) conserva
+# propietario, grupo y modo del fichero que ya estaba desplegado, en vez de
+# imponer los del temporal. Es lo correcto por defecto: el script edita un
+# fichero de configuración existente, no lo crea.
+cat "$TMP" > "$ACL_FILE"
+rm -f "$TMP"
 trap - EXIT
+
+# Post-condición explícita: la ACL tiene que ser LEGIBLE POR EL PROCESO DEL
+# BROKER, que no es este usuario. No es una relajación «a lo bruto»: la ACL no
+# contiene ningún secreto (sólo nombres de usuario y patrones de tópico; las
+# credenciales viven en `passwd`, que debe seguir en 0600 y NO se toca aquí),
+# así que el permiso de lectura para grupo/otros es el mínimo que hace falta
+# para que el broker funcione. Se comprueba el EFECTO con stat, no se asume que
+# el chmod haya surtido efecto.
+ACL_MODE="$(stat -c '%a' "$ACL_FILE")"
+if [[ "$(( 8#${ACL_MODE} & 8#0044 ))" -ne $(( 8#0044 )) ]]; then
+  chmod a+r "$ACL_FILE" || {
+    echo "ERROR: no se pudo dar permiso de lectura a $ACL_FILE (modo ${ACL_MODE})." >&2
+    exit 1
+  }
+  ACL_MODE="$(stat -c '%a' "$ACL_FILE")"
+fi
+if [[ "$(( 8#${ACL_MODE} & 8#0044 ))" -ne $(( 8#0044 )) ]]; then
+  echo "ERROR: $ACL_FILE queda en modo ${ACL_MODE}: el broker (uid 1883) no podrá" \
+       "abrir acl_file y arrancará con Exited(13). Abortando sin dejarlo así." >&2
+  exit 1
+fi
+# La ACL nunca debe ser ESCRIBIBLE por grupo/otros: eso permitiría a otra cuenta
+# del host reescribir la autorización del broker.
+if [[ "$(( 8#${ACL_MODE} & 8#0022 ))" -ne 0 ]]; then
+  chmod go-w "$ACL_FILE"
+  ACL_MODE="$(stat -c '%a' "$ACL_FILE")"
+fi
 
 echo "Coordinador ${DESC} en $ACL_FILE." >&2
 echo "Recarga mosquitto para aplicar: docker compose kill -s HUP mosquitto" \

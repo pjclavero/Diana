@@ -33,6 +33,13 @@ struct diana_platform {
     volatile bool      mqtt_connected;
     volatile uint32_t  mqtt_reconnects;
     QueueHandle_t      rx_queue;
+    /* Diagnostico de banco (C-2). Un PUBLISH denegado por ACL en MQTT 5 no
+     * devuelve error: el broker acepta el CONNECT (rc=0) y descarta la
+     * publicacion. La unica senal observable desde el cliente es que el PUBACK
+     * de un QoS 1 no llega nunca. Se cuentan publicaciones entregadas al
+     * cliente y PUBACK recibidos para que esa diferencia sea VISIBLE. */
+    volatile uint32_t  mqtt_pub_sent;
+    volatile uint32_t  mqtt_pub_acked;
 
     /* sensores DO-only por 2 x 74HC165 */
     QueueHandle_t      trigger_queue;

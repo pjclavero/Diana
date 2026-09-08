@@ -25,7 +25,12 @@ import type {
 export interface Incident {
   id: string;
   created_at: string;
-  severity: "info" | "warning" | "critical";
+  /**
+   * `error` NO estaba y el backend SÍ lo emite (`enum IncidentSeverity`:
+   * info | warning | error | critical). Una incidencia de esa severidad
+   * llegaba al panel como valor fuera del tipo y se pintaba sin etiqueta.
+   */
+  severity: "info" | "warning" | "error" | "critical";
   source: string;
   message: string;
   resolved: boolean;
