@@ -41,10 +41,29 @@ echo "== relajamientos de TLS: se comprueba la LLAMADA, no el simbolo =="
 # de cualquier imagen que enlace la libreria. Contarlos como hallazgo seria un
 # falso positivo. Lo que importa es si el codigo de Diana los LLAMA, y eso se
 # ve en el desensamblado de nuestras unidades, no en la tabla de simbolos.
-if xtensa-esp32s3-elf-objdump -d --demangle "$ELF" \
-     | grep -iE "call[0-9]*[[:space:]]+.*(crt_bundle_attach|global_ca_store|conn_new_sync_insecure)"; then
-  echo "  HALLAZGO: hay una LLAMADA a un relajamiento de verificacion"
-  HALLAZGOS=$((HALLAZGOS + 1))
+# Se atribuye cada llamada a SU LLAMANTE y solo cuenta si el llamante es codigo
+# de Diana. Sin esa atribucion el chequeo daba un falso positivo permanente: la
+# unica llamada a global_ca_store del binario la hace `esp_mqtt_task`, codigo
+# interno de esp-mqtt en una rama que este firmware nunca pide. Una guarda que
+# esta roja sobre una imagen correcta acaba desactivada, que es peor que no
+# tenerla.
+RELAJ=$(xtensa-esp32s3-elf-objdump -d --demangle "$ELF" | awk '
+  /^[0-9a-f]+ <.*>:$/ { fn = $2; gsub(/[<>:]/, "", fn); next }
+  /call[0-9]*[ \t]+.*(crt_bundle_attach|global_ca_store|conn_new_sync_insecure)/ {
+    print fn " -> " $NF
+  }')
+
+if [ -n "$RELAJ" ]; then
+  echo "$RELAJ" | sed 's/^/    /'
+  # Solo es hallazgo si quien llama es codigo NUESTRO.
+  PROPIAS=$(echo "$RELAJ" | grep -E '^(diana_|app_|mqtt_client)' || true)
+  if [ -n "$PROPIAS" ]; then
+    echo "  HALLAZGO: codigo de Diana LLAMA a un relajamiento de verificacion"
+    HALLAZGOS=$((HALLAZGOS + 1))
+  else
+    echo "  llamadas presentes, pero SOLO desde codigo de terceros (esp-mqtt):"
+    echo "  ninguna procede de Diana (correcto). check_mqtt_tls.py lo fija sobre el fuente."
+  fi
 else
   echo "  ninguna llamada (correcto)"
 fi

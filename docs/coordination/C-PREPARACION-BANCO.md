@@ -310,3 +310,63 @@ la configuración pide `use_global_ca_store`, cosa que este firmware nunca hace.
 Lo que descarta esa rama no es el `nm` sino que **el identificador no aparece en
 ninguna fuente de Diana**, y eso lo fija `check_mqtt_tls.py`. Se documenta para
 que nadie lo reencuentre y lo confunda con un hallazgo.
+
+---
+
+## Comandos canónicos verificados (`CANONICAL_TEST_COMMANDS = VERIFIED`)
+
+Existe esta sección porque `npm run test:unit` del backend **ejecutaba cero
+tests y salía con código 1** durante un tiempo indeterminado, y era la puerta que
+usa `.github/workflows/ci.yml` — la forma `--testPathIgnorePatterns=integration`
+(con `=`) rompe el parseo de argumentos de jest. Nadie lo vio porque nadie
+comprueba que el comando canónico *ejecute algo*.
+
+Cada uno de estos se ha ejecutado y ha devuelto el `rc` indicado, con su cifra:
+
+| comando | rc | qué mide |
+|---|---|---|
+| `make -C firmware test` | 0 | `HOST_SUITE` 1028 · `MQTT/TLS` 26 · `BROKER_CA` 30 · `PROVISION_BRIDGE` 38 |
+| `python3 contracts/validate.py` | 0 | `CONTRACT_CHECKS` 89 |
+| `bash scripts/security/secrets-scan.sh` | 0 | 971 ficheros rastreados |
+| `bash scripts/security/secrets-scan.sh --self-test` | 0 | 9 calibraciones |
+| `npm run test:unit` (en `server/backend`) | 0 | **961** tests · 3 pasadas seguidas |
+| `npm test` (en `server/frontend`) | 0 | 308 tests · requiere `npm ci` antes |
+| `bash tools/idf_verify_ca.sh` (en `firmware/esp32`, dentro de `espressif/idf:v5.5`) | 0 | guarda de la CA sobre el ELF |
+
+**Regla permanente.** Un comando canónico que no ejecuta nada es peor que uno
+que falla: el primero se lee como verde. Antes de apoyarse en cualquiera de
+estos como puerta, comprobar que **la cifra de tests es mayor que cero**, no
+sólo que el `rc` sea 0.
+
+`npm test` en `server/backend` **NO es una puerta**: incluye las suites de
+integración, levanta contenedores y es inestable por contención. La puerta es
+`npm run test:unit`.
+
+## Regla permanente para guardas de seguridad
+
+`idf_verify_ca.sh` terminaba en `grep … && echo "HALLAZGO" || echo "ninguna"`, y
+el `||` se tragaba el código: **devolvía 0 incluso encontrando una llamada a un
+relajamiento de TLS**. Prohibido a partir de ahora:
+
+```sh
+# MAL: el rc lo decide el último comando de la tubería
+grep -q PATRON "$f" && echo "HALLAZGO" || echo "ok"
+
+# BIEN: acumular y cortar explícitamente
+if grep -q PATRON "$f"; then HALLAZGOS=$((HALLAZGOS + 1)); fi
+[ "$HALLAZGOS" -gt 0 ] && exit 1
+```
+
+Y toda guarda debe demostrarse **roja al menos una vez** sobre un artefacto que
+de verdad incumpla. Esta se demostró: `rc=1` sobre un ELF de agosto sin la
+declaración de huella, `rc=0` sobre el ELF recién construido.
+
+## Regla permanente para exclusiones de escáneres
+
+`secrets-scan.sh` excluía `*/testdata/*` en bloque: bastaba colocar una clave
+privada real bajo un directorio con ese nombre. Y no compraba nada —
+`git ls-files | grep /testdata/` devolvía **cero** ficheros.
+
+**No se admiten exclusiones por patrón de ruta.** Una excepción se declara por
+fichero y con su motivo. Una lista vacía es mejor que una excepción «por si
+acaso»: la excepción por patrón la escribe el infractor.
