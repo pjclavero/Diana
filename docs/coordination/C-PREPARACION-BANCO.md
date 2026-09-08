@@ -548,3 +548,53 @@ hexadecimal— deja `"NONE"` como `"NONe"`, así que ni `NONE` ni `none` casaban
 el caso caía al mensaje genérico de huella distinta. El **veredicto era
 correcto**; el **diagnóstico, inútil**. Y el diagnóstico es justo lo que hace
 falta a las tres de la mañana con la placa delante.
+
+---
+
+# ORDEN DE LA SESIÓN DE BANCO (fijado por el operador)
+
+## Arranque, sin atajos
+
+```
+CA_DIR correcta → leaf del broker reemitida para mqtt.diana.local
+→ broker_ca.pem → broker_ca.sha256 → preflight 9/9 → BUILD → FLASH → B0
+```
+
+## No saltar capas
+
+```
+[TCP] [TLS] [CERT] [HOSTNAME] [AUTH] [ACL] [MQTT] [D1B] [NVS] [STATE] [BACKEND] [DB]
+```
+
+**Si una falla, se resuelve esa capa antes de continuar.** El firmware etiqueta
+cada una precisamente para que «MQTT connection failed» no sea nunca una
+respuesta aceptable.
+
+## Los pendientes, en cuatro grupos separados
+
+Separarlos importa: mezclarlos convierte un fallo de nivel lógico en horas
+buscando en la capa equivocada.
+
+| grupo | qué |
+|---|---|
+| **TRANSPORTE FÍSICO** | TLS 8883 real · CA / hostname · AUTH / ACL |
+| **CRYPTO / RUNTIME** | P-256 en ESP32 · stack · heap · watchdog |
+| **HARDWARE** | 74HC165 y niveles · D1–D9 · W5500 · alimentación |
+| **ESTABILIDAD** | StoreProhibited · reconexión · endurance |
+
+## Fuera del banco inicial
+
+No condicionan la prueba física y no deben distraerla:
+`MULTIPLANE_SEQ_GUARDS` (diferido a A3/B5) · auditoría histórica de git ·
+listener 9001 en claro (D4) · las tres rutas del frontend sin backend
+equivalente · el resto de hardenings que no tocan el camino físico.
+
+## La regla que resume este bloque
+
+> **Un gate verde no constituye evidencia hasta haber demostrado que puede
+> ponerse rojo por la razón exacta que pretende detectar.**
+
+Nace de cinco arneses que resultaron ciegos a lo que decían vigilar, todos
+verdes: un guardián que contaba texto, una suite que se probaba contra sí misma,
+un gate ciego a la truncadura que decía comprobar, una prueba que declaraba F-02
+abierto por mera presencia, y una guarda de TLS que siempre devolvía 0.
