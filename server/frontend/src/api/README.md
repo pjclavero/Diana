@@ -122,3 +122,42 @@ backend no expone (X-21). Ya no producen un 404 mudo: fallan diciendo qué
 falta. La prueba comprueba que ninguna exista ya en el contrato, de modo que
 el día que el backend implemente cualquiera, CI se pone rojo y obliga a
 migrarla en vez de dejar el hueco muerto.
+
+## `real` como modo desplegable: qué falta y qué ya no (2026-09-08)
+
+**Qué cambió.** `realAdapter.ts` ya no es una lista de trece agujeros iguales.
+Las trece operaciones —contadas parseando el registro, no de memoria: lo
+comprueba `rutasDelPanel.test.ts`— están clasificadas en `rutasDelPanel.ts`
+con su veredicto y su evidencia, y las que el backend sí sirve están portadas:
+
+| Veredicto | Nº | Operaciones |
+| --- | --- | --- |
+| `PORT_FRONTEND` (portadas) | 6 | `listModules`, `getModuleConfig`, `getGameState`, `getGameResult`, `listIncidents`, `resolveIncident` |
+| `DUPLICATE` (portada a la ruta que ya usaba otro cliente) | 1 | `listPresets` |
+| `IMPLEMENT_BACKEND` | 3 | `getModuleTelemetry`, `updateModuleConfig`, `startGame` |
+| `OBSOLETE` | 2 | `getTopology`, `saveTopology` |
+| `NOT_NEEDED` | 1 | `listDiagnostics` (el global, sin módulo) |
+
+Cada veredicto se verifica contra `contracts/api/openapi.json`: la ruta que el
+panel pedía NO debe existir y la ruta real con la que se resuelve SÍ, con su
+método. El día que el backend implemente cualquiera de las tres pendientes, la
+prueba se pone roja y obliga a portarla.
+
+**Dos defectos silenciosos encontrados al portar, ya corregidos:**
+
+- `listResults` pedía `/api/games?take=100&status=finished`. El backend **no
+  filtra por estado** (`games.module.ts` sólo lee `take`): el parámetro se
+  aceptaba y se tiraba, así que la pantalla de resultados habría enseñado
+  borradores y partidas en curso como si fueran resultados.
+- `getModule`/`listModules` afirmaban `apiRequestAs<ModuleStatus>()` sobre la
+  fila de Prisma. `ModuleStatus` es la forma del contrato **MQTT**; el REST
+  devuelve `id`/`slug`/`targetSystemId`. `module_id` habría llegado
+  `undefined` y la pantalla habría pintado huecos sin dar error. La traducción
+  vive ahora en `backendShapes.ts`, con pruebas.
+
+**Lo que NO se puede declarar todavía.** Todo lo anterior está *implementado y
+probado contra la forma del contrato*, con un `fetch` doble que comprueba URL,
+método y traducción. **No está probado contra un backend en marcha**: eso
+exige levantar backend + PostgreSQL, y este carril no toca despliegue. El
+`ARG VITE_API_MODE` del `Dockerfile` sigue en `mock` a propósito: cambiarlo es
+una decisión de despliegue del operador, no de este carril.

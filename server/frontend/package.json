@@ -9,7 +9,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --maxWorkers=2",
     "test:watch": "vitest",
     "e2e": "playwright test",
     "api:types": "npx -y openapi-typescript@7.13.0 ../../contracts/api/openapi.json -o src/api/generated/schema.d.ts"

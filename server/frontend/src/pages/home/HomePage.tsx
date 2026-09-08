@@ -5,6 +5,12 @@ import { useAsync } from "../../hooks/useAsync";
 import { useAuth } from "../../auth/AuthContext";
 import { Card, ErrorState, LoadingState } from "../../components/ui/Feedback";
 import { summarizeConflicts, systemStateLabel } from "../../api/systemStatusLabels";
+import type { Incident } from "../../api/client";
+
+/** Alertas que siguen abiertas. Función aparte para no recalcularla en línea. */
+function alertasAbiertas(incidencias: Incident[]): Incident[] {
+  return incidencias.filter((i) => !i.resolved);
+}
 
 /**
  * `system` se fusionó aquí (auditoría 2026-08-05 §4, decisión del operador):
@@ -19,8 +25,13 @@ export function HomePage() {
   const { can } = useAuth();
   const seesSystem = can("systems:read");
   const { data: system, loading, error, reload } = useAsync(() => apiClient.getSystemStatus(DEFAULT_SYSTEM_ID), []);
-  const { data: modules } = useAsync(() => apiClient.listModules(DEFAULT_SYSTEM_ID), []);
-  const { data: incidents } = useAsync(() => apiClient.listIncidents(), []);
+  // OJO: aquí NO se puede desestructurar sólo `data`. Ése era el defecto:
+  // con `error` descartado, un fallo de red y «no hay nada» quedaban
+  // indistinguibles, y la tarjeta de alertas decía «Sin alertas activas» — la
+  // frase más peligrosa que puede enseñar este panel — cuando lo cierto era
+  // que no había podido preguntar.
+  const modulesState = useAsync(() => apiClient.listModules(DEFAULT_SYSTEM_ID), []);
+  const incidentsState = useAsync(() => apiClient.listIncidents(), []);
 
   const conflictSummary = system ? summarizeConflicts(system.conflicts) : null;
 
@@ -88,26 +99,42 @@ export function HomePage() {
       )}
 
       <Card title="Módulos conectados">
+        {modulesState.loading && <LoadingState label="Cargando módulos…" />}
+        {modulesState.error && <ErrorState message={modulesState.error} onRetry={modulesState.reload} />}
+        {!modulesState.loading && !modulesState.error && modulesState.data && (
+          <p>{modulesState.data.length} módulos respondiendo.</p>
+        )}
         <p>
-          {modules ? `${modules.length} módulos respondiendo.` : "Cargando módulos…"} <Link to="/modulos">Ver módulos</Link>
+          <Link to="/modulos">Ver módulos</Link>
         </p>
       </Card>
 
       <Card title="Alertas">
-        {incidents && incidents.length > 0 ? (
-          <ul>
-            {incidents
-              .filter((i) => !i.resolved)
-              .map((i) => (
-                <li key={i.id}>
+        {incidentsState.loading && <LoadingState label="Consultando incidencias…" />}
+        {incidentsState.error && (
+          // «Sin alertas» y «no he podido preguntar» NO son lo mismo, y el
+          // segundo es peor. Se dice cuál de los dos es.
+          <ErrorState
+            message={`No se ha podido consultar el registro de incidencias, así que NO se puede afirmar que no haya alertas. ${incidentsState.error}`}
+            onRetry={incidentsState.reload}
+          />
+        )}
+        {!incidentsState.loading && !incidentsState.error && incidentsState.data && (
+          alertasAbiertas(incidentsState.data).length > 0 ? (
+            <ul>
+              {alertasAbiertas(incidentsState.data).map((i) => (
+                <li key={i.id} role="alert">
                   [{i.severity}] {i.message} ({i.source})
                 </li>
               ))}
-          </ul>
-        ) : (
-          <p>Sin alertas activas.</p>
+            </ul>
+          ) : (
+            <p>Sin alertas activas (comprobado ahora mismo).</p>
+          )
         )}
-        <Link to="/incidencias">Ver incidencias</Link>
+        <p>
+          <Link to="/incidencias">Ver incidencias</Link>
+        </p>
       </Card>
 
       <Card title="Accesos rápidos">
