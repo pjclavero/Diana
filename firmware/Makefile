@@ -85,6 +85,12 @@ contracts:
 # cobertura posible sobre ellos es estructural.
 	@$(PYTHON) $(FW)/tools/check_mqtt_tls.py
 
+# C-1 + C-2. La CA no puede degradarse en silencio (declaracion explicita de
+# huella) y el camino de conexion tiene que distinguir la capa que falla. Vive
+# en app_main.c / mqtt_client.c y en el CONTENIDO de main/certs/, nada de lo
+# cual compila en host. Contador PROPIO, no sumado a MQTT/TLS.
+	@$(PYTHON) $(FW)/tools/check_broker_ca.py
+
 # MP0-F.0 · ADR-0008. El puente del plano DEVICE_MANAGEMENT vive en
 # main/app_commands.c, main/app_provision.c y mqtt_client.c, que NO se compilan
 # en host: que el enrutado sea exacto lo prueba la suite (test_prov_bridge.c),

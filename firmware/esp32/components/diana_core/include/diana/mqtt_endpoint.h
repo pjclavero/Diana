@@ -107,6 +107,49 @@ bool diana_mqtt_ca_is_valid(const char *pem, size_t len);
 bool diana_mqtt_may_connect(diana_mqtt_transport transport, const char *ca_pem,
                             size_t ca_len, const char *module_id);
 
+/** Huella SHA-256 en hex minusculas + NUL. Es la MISMA que imprime
+ *  `openssl x509 -noout -fingerprint -sha256` (hash sobre el DER). */
+#define DIANA_MQTT_CA_FP_HEXLEN 64
+
+/**
+ * Calcula la huella SHA-256 del PRIMER certificado de `pem` y la escribe en
+ * `out_hex` (64 chars + NUL).
+ *
+ * El hash se toma sobre el DER, no sobre el texto: asi la huella coincide con
+ * la que el operador obtiene con openssl y no cambia por reindentar el fichero,
+ * cambiar los finales de linea o anadir texto alrededor del bloque PEM.
+ *
+ * @return false si no hay un bloque PEM decodificable; `out_hex` queda vacio.
+ */
+bool diana_mqtt_ca_fingerprint(const char *pem, size_t len, char *out_hex);
+
+/**
+ * ¿Es el material empotrado EXACTAMENTE la CA declarada?
+ *
+ * Por que existe, ademas de diana_mqtt_ca_is_valid(): esa comprobacion solo
+ * mira que haya un PEM. Un certificado de ejemplo, autofirmado o copiado de un
+ * tutorial la pasa igual de bien que la CA de produccion, y convierte un fallo
+ * RUIDOSO (el modulo no arranca MQTT y lo grita) en uno SILENCIOSO que no
+ * aparece hasta el handshake -- o que no aparece nunca, si ese certificado
+ * resulta firmar algo.
+ *
+ * La defensa es una DECLARACION explicita: main/certs/broker_ca.sha256 dice
+ * que huella se espera, y aqui se compara. Sustituir la CA sin tocar la
+ * declaracion deja el modulo sin conectar; sustituir ambas es un cambio
+ * visible en el diff, que es justo lo que se queria.
+ *
+ * @param declared_hex  contenido de la declaracion. Se aceptan espacios,
+ *                      saltos de linea y mayusculas alrededor de las 64 cifras
+ *                      hex. El texto centinela "NONE" significa "aqui todavia
+ *                      no hay CA" y devuelve false salvo que el PEM tampoco
+ *                      sea valido -- pero eso lo decide el llamante: aqui
+ *                      "NONE" es siempre false, porque nunca autoriza nada.
+ * @return true SOLO si hay 64 cifras hex declaradas y la huella coincide.
+ *         Declaracion ausente, vacia, malformada o distinta -> false.
+ */
+bool diana_mqtt_ca_is_declared(const char *pem, size_t len,
+                               const char *declared_hex);
+
 #ifdef __cplusplus
 }
 #endif

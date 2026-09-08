@@ -10,10 +10,169 @@
 
 #include "diana/mqtt_endpoint.h"
 
+#include "esp_err.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 
+#include <errno.h>
+#include <string.h>
+
 static const char *TAG = "diana.mqtt";
+
+/* ===========================================================================
+ * C-2 · DIAGNOSTICO DISTINGUIBLE POR CAPAS
+ * ===========================================================================
+ *
+ * Cuando el banco falle hay que saber EN QUE CAPA, y el codigo de salida no lo
+ * dice. Medido: en MQTT 5 un fallo de autenticacion da rc=135, pero una
+ * denegacion de ACL en publicacion devuelve rc=0 y un `Warning: ... Not
+ * authorized` que solo esta en el log del BROKER. Desde el cliente, un
+ * PUBLISH denegado y uno entregado son indistinguibles salvo por el PUBACK que
+ * no llega.
+ *
+ * Este bloque existe para que cada capa tenga un mensaje PROPIO:
+ *
+ *   [TCP]      no hay socket: cable, IP, ruta, puerto cerrado
+ *   [TLS]      hay socket, el handshake no cuaja: version, cifrados, alerta
+ *   [CERT]     el handshake llega a validar y la cadena no encaja: CA distinta
+ *   [HOSTNAME] la cadena valida pero el nombre no esta en el CN/SAN
+ *   [AUTH]     TLS completo, CONNACK rechaza credenciales (rc=4 / rc=135)
+ *   [ACL]      CONNACK acepta y el broker descarta lo que el modulo hace
+ *
+ * Sin esto, el banco es una adivinanza: los seis fallos se ven igual desde
+ * fuera (el modulo no publica).
+ * =========================================================================== */
+
+/* Banderas de verificacion de mbedTLS que esp-tls propaga tal cual. Se
+ * redeclaran aqui, en vez de incluir mbedtls/x509.h, para que este fichero no
+ * dependa de la disposicion interna de mbedTLS: son valores del formato del
+ * campo, estables y publicos. */
+#define DIANA_X509_BADCERT_EXPIRED      0x01u
+#define DIANA_X509_BADCERT_REVOKED      0x02u
+#define DIANA_X509_BADCERT_CN_MISMATCH  0x04u
+#define DIANA_X509_BADCERT_NOT_TRUSTED  0x08u
+#define DIANA_X509_BADCERT_FUTURE       0x200u
+
+/** Traduce las banderas de verificacion a la CAPA que hay que mirar. */
+static void log_cert_flags(uint32_t flags)
+{
+    if (flags == 0) return;
+
+    if (flags & DIANA_X509_BADCERT_CN_MISMATCH)
+        ESP_LOGE(TAG, "[HOSTNAME] el nombre del broker NO figura en el CN/SAN "
+                      "del certificado del servidor");
+    if (flags & DIANA_X509_BADCERT_NOT_TRUSTED)
+        ESP_LOGE(TAG, "[CERT] la cadena no llega a la CA empotrada: el broker "
+                      "presenta un certificado de OTRA autoridad");
+    if (flags & DIANA_X509_BADCERT_EXPIRED)
+        ESP_LOGE(TAG, "[CERT] certificado del servidor CADUCADO (o el reloj del "
+                      "modulo esta atrasado: sin NTP la fecha no es de fiar)");
+    if (flags & DIANA_X509_BADCERT_FUTURE)
+        ESP_LOGE(TAG, "[CERT] certificado aun NO VALIDO (reloj del modulo "
+                      "adelantado, o emitido en el futuro)");
+    if (flags & DIANA_X509_BADCERT_REVOKED)
+        ESP_LOGE(TAG, "[CERT] certificado del servidor REVOCADO");
+
+    uint32_t conocidas = DIANA_X509_BADCERT_EXPIRED | DIANA_X509_BADCERT_REVOKED
+                       | DIANA_X509_BADCERT_CN_MISMATCH
+                       | DIANA_X509_BADCERT_NOT_TRUSTED
+                       | DIANA_X509_BADCERT_FUTURE;
+    if (flags & ~conocidas)
+        ESP_LOGE(TAG, "[CERT] otras banderas de verificacion: 0x%08x",
+                 (unsigned)(flags & ~conocidas));
+}
+
+/** Traduce el codigo de CONNACK. Distingue AUTENTICACION de todo lo demas. */
+static void log_connack(int rc)
+{
+    switch (rc) {
+    case 0:
+        return;                            /* aceptado */
+    case 1:
+        ESP_LOGE(TAG, "[MQTT] CONNACK 1: version de protocolo no soportada");
+        break;
+    case 2:
+        ESP_LOGE(TAG, "[MQTT] CONNACK 2: client_id rechazado. El broker usa "
+                      "use_username_as_clientid; revisa que el usuario exista");
+        break;
+    case 3:
+        ESP_LOGE(TAG, "[MQTT] CONNACK 3: broker no disponible");
+        break;
+    case 4:
+    case 135:
+        /* 4 = MQTT 3.1.1 'bad user or password'; 135 = MQTT 5 'not authorized'
+         * en el CONNACK. Ambos son AUTENTICACION, no ACL: aqui el broker ni
+         * siquiera ha aceptado la sesion. */
+        ESP_LOGE(TAG, "[AUTH] CONNACK %d: usuario o contrasena RECHAZADOS", rc);
+        ESP_LOGE(TAG, "[AUTH] el usuario tiene que ser el module_id LITERAL, "
+                      "sin prefijo (F-02), y estar en el fichero de passwords");
+        break;
+    case 5:
+        ESP_LOGE(TAG, "[AUTH] CONNACK 5: no autorizado a conectar");
+        break;
+    default:
+        ESP_LOGE(TAG, "[MQTT] CONNACK %d", rc);
+        break;
+    }
+}
+
+/**
+ * Descompone un MQTT_EVENT_ERROR en la capa que lo produjo.
+ *
+ * LIMITE HONESTO: esp-mqtt no siempre rellena todos los campos. Cuando el
+ * handshake falla sin banderas de verificacion, lo unico que se puede afirmar
+ * es "[TLS] el handshake no cuaja", y se dice asi -- no se adivina la causa.
+ */
+static void log_mqtt_error(esp_mqtt_event_handle_t ev)
+{
+    const esp_mqtt_error_codes_t *e = ev->error_handle;
+    if (!e) {
+        ESP_LOGE(TAG, "[MQTT] error de transporte sin detalle disponible");
+        return;
+    }
+
+    switch (e->error_type) {
+    case MQTT_ERROR_TYPE_TCP_TRANSPORT:
+        if (e->esp_tls_cert_verify_flags != 0) {
+            /* Hubo socket Y handshake: el fallo es de VERIFICACION, no de red. */
+            ESP_LOGE(TAG, "[TLS] handshake rechazado en la verificacion del "
+                          "certificado (flags=0x%08x)",
+                     (unsigned)e->esp_tls_cert_verify_flags);
+            log_cert_flags((uint32_t)e->esp_tls_cert_verify_flags);
+        } else if (e->esp_tls_stack_err != 0) {
+            ESP_LOGE(TAG, "[TLS] handshake fallido en la pila TLS: "
+                          "stack_err=-0x%04x (version, cifrados o alerta del "
+                          "servidor). No hay banderas de certificado: el fallo "
+                          "es ANTERIOR a validar la cadena",
+                     (unsigned)(-e->esp_tls_stack_err));
+        } else if (e->esp_transport_sock_errno != 0) {
+            ESP_LOGE(TAG, "[TCP] no hay socket con el broker: errno=%d (%s). "
+                          "Capa de red: enlace, IP, ruta o puerto cerrado -- "
+                          "el TLS ni se ha intentado",
+                     e->esp_transport_sock_errno,
+                     strerror(e->esp_transport_sock_errno));
+        } else {
+            ESP_LOGE(TAG, "[TCP/TLS] transporte caido sin detalle: "
+                          "esp_tls_last_esp_err=0x%x", (unsigned)e->esp_tls_last_esp_err);
+        }
+        if (e->esp_tls_last_esp_err != 0)
+            ESP_LOGE(TAG, "        esp_tls_last_esp_err=0x%x (%s)",
+                     (unsigned)e->esp_tls_last_esp_err,
+                     esp_err_to_name(e->esp_tls_last_esp_err));
+        break;
+
+    case MQTT_ERROR_TYPE_CONNECTION_REFUSED:
+        /* Se llego a hablar MQTT: TCP y TLS estan BIEN. Lo que falla es de
+         * sesion, y casi siempre es autenticacion. */
+        ESP_LOGE(TAG, "[MQTT] el broker rechazo el CONNECT (TCP y TLS OK)");
+        log_connack((int)e->connect_return_code);
+        break;
+
+    default:
+        ESP_LOGE(TAG, "[MQTT] error tipo %d", (int)e->error_type);
+        break;
+    }
+}
 
 static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t id,
                                void *data)
@@ -26,12 +185,46 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t id,
     case MQTT_EVENT_CONNECTED:
         p->mqtt_connected = true;
         p->mqtt_reconnects++;
-        ESP_LOGI(TAG, "conectado al broker");
+        /* Este mensaje acota MUCHO: si aparece, TCP, TLS, la cadena, el
+         * hostname y la AUTENTICACION estan los cinco bien. Todo lo que falle
+         * despues es ACL o logica. */
+        ESP_LOGI(TAG, "[OK] CONNACK aceptado: TCP+TLS+cert+hostname+auth "
+                      "correctos (sesion #%u)", (unsigned)p->mqtt_reconnects);
         break;
 
     case MQTT_EVENT_DISCONNECTED:
         p->mqtt_connected = false;
-        ESP_LOGW(TAG, "desconectado del broker");
+        /* Una desconexion INMEDIATA tras el CONNACK suele ser el broker
+         * cerrando por ACL o por un LWT mal formado, no un fallo de red. Sin
+         * el detalle del error no se puede afirmar cual: se dice lo que se ve. */
+        ESP_LOGW(TAG, "[MQTT] desconectado del broker (sesiones=%u, "
+                      "publicados=%u, confirmados=%u)",
+                 (unsigned)p->mqtt_reconnects, (unsigned)p->mqtt_pub_sent,
+                 (unsigned)p->mqtt_pub_acked);
+        break;
+
+    case MQTT_EVENT_SUBSCRIBED:
+        /* ACL EN SUSCRIPCION. Aqui SI hay senal en el cliente: el SUBACK
+         * devuelve 0x80 y esp-mqtt lo marca como SUBSCRIBE_FAILED. Es el unico
+         * fallo de ACL que el modulo puede detectar por si mismo. */
+        if (ev->error_handle &&
+            ev->error_handle->error_type == MQTT_ERROR_TYPE_SUBSCRIBE_FAILED) {
+            ESP_LOGE(TAG, "[ACL] SUBACK 0x80: el broker DENIEGA la suscripcion "
+                          "(msg_id=%d). Autenticado si, autorizado no: revisa "
+                          "el acl para este usuario", ev->msg_id);
+        } else {
+            ESP_LOGI(TAG, "[OK] suscripcion concedida (msg_id=%d)", ev->msg_id);
+        }
+        break;
+
+    case MQTT_EVENT_PUBLISHED:
+        /* PUBACK de un QoS 1. Es la UNICA confirmacion de que el broker acepto
+         * la publicacion: sin esto, un PUBLISH denegado por ACL es
+         * indistinguible de uno entregado (rc=0 en ambos casos). La diferencia
+         * publicados/confirmados es el sintoma que hay que mirar en el banco. */
+        p->mqtt_pub_acked++;
+        ESP_LOGD(TAG, "[OK] PUBACK msg_id=%d (%u/%u confirmados)", ev->msg_id,
+                 (unsigned)p->mqtt_pub_acked, (unsigned)p->mqtt_pub_sent);
         break;
 
     case MQTT_EVENT_DATA: {
@@ -65,7 +258,7 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t id,
     }
 
     case MQTT_EVENT_ERROR:
-        ESP_LOGE(TAG, "error de transporte MQTT");
+        log_mqtt_error(ev);
         break;
 
     default:
@@ -76,6 +269,7 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t id,
 int diana_platform_mqtt_start(struct diana_platform *p, const char *client_id,
                               const char *uri, const char *user, const char *pass,
                               const char *ca_pem, size_t ca_len,
+                              const char *ca_declared_fp,
                               const char *lwt_topic, const char *lwt_payload)
 {
     if (!p || !uri || !user || !client_id) return -1;
@@ -91,6 +285,15 @@ int diana_platform_mqtt_start(struct diana_platform *p, const char *client_id,
     if (tls && !diana_mqtt_ca_is_valid(ca_pem, ca_len)) {
         ESP_LOGE(TAG, "mqtts:// sin CA valida: no se conecta (fallo cerrado)");
         return -4;
+    }
+    /* C-1 · segunda capa: la CA empotrada tiene que ser la DECLARADA. Una CA
+     * sintacticamente valida pero ajena -- un certificado de ejemplo plantado
+     * "para que arranque" -- pasa la guarda de arriba y convierte un fallo
+     * ruidoso en uno silencioso. Aqui no pasa: se corta igual que sin CA.
+     * Ver main/certs/README.md. */
+    if (tls && !diana_mqtt_ca_is_declared(ca_pem, ca_len, ca_declared_fp)) {
+        ESP_LOGE(TAG, "mqtts:// con CA NO DECLARADA: no se conecta (fallo cerrado)");
+        return -5;
     }
     if (!tls) {
         /* Solo se llega aqui con el perfil de banco compilado a proposito. */
@@ -196,6 +399,24 @@ int diana_pf_mqtt_publish(void *ctx, const diana_hal_mqtt_msg *msg)
     int id = esp_mqtt_client_publish(p->mqtt, msg->topic, (const char *)msg->payload,
                                      (int)msg->payload_len, msg->qos,
                                      msg->retain ? 1 : 0);
+    /* C-2 · se cuenta lo ENTREGADO AL CLIENTE. Comparado con mqtt_pub_acked
+     * (PUBACK), la diferencia sostenida en QoS 1 es la firma de una denegacion
+     * de ACL en publicacion, que no produce ningun error en este punto. */
+    if (id >= 0 && msg->qos > 0) {
+        p->mqtt_pub_sent++;
+
+        /* Sintoma de ACL en publicacion, hecho OBSERVABLE. Con QoS 1 el broker
+         * confirma todo lo que acepta; si el modulo lleva 16 publicaciones
+         * entregadas al cliente y NINGUNA confirmada estando conectado, no es
+         * congestion: el broker las esta descartando. Es la unica forma de ver
+         * desde el modulo un `Not authorized` que solo existe en el log del
+         * broker. Se avisa una vez por umbral, no en cada publicacion. */
+        if (p->mqtt_pub_acked == 0 && p->mqtt_pub_sent == 16)
+            ESP_LOGE(TAG, "[ACL] 16 publicaciones QoS1 SIN un solo PUBACK "
+                          "estando conectado: el broker las esta descartando. "
+                          "Autenticacion correcta, autorizacion NO: revisa el "
+                          "acl para el topico '%s'", msg->topic);
+    }
     /* Un id negativo significa que el cliente no lo ha aceptado: el core lo
      * encolara localmente. Con QoS 1 un id >= 0 significa entregado al cliente,
      * no confirmado por el broker; la confirmacion real la da el PUBACK. */

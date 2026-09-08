@@ -45,13 +45,18 @@ int diana_platform_init(diana_platform **out, diana_hal *hal);
  *                   identities.json y contra el acl del broker.
  * @param ca_pem     CA que firma al broker, en PEM terminado en NUL.
  * @param ca_len     longitud del buffer de CA, NUL incluido.
+ * @param ca_declared_fp  huella SHA-256 hex DECLARADA para esa CA (C-1), tal y
+ *                   como la empota main/certs/broker_ca.sha256. Con mqtts://
+ *                   tiene que coincidir con la huella real del PEM.
  *
- * FALLO CERRADO: con una URI mqtts:// y una CA ausente o invalida devuelve -4 y
- * NO conecta. No degrada a texto en claro bajo ninguna circunstancia.
+ * FALLO CERRADO: con una URI mqtts:// y una CA ausente, invalida o NO DECLARADA
+ * devuelve un codigo negativo y NO conecta. No degrada a texto en claro bajo
+ * ninguna circunstancia.
  */
 int diana_platform_mqtt_start(diana_platform *p, const char *client_id,
                               const char *uri, const char *user, const char *pass,
                               const char *ca_pem, size_t ca_len,
+                              const char *ca_declared_fp,
                               const char *lwt_topic, const char *lwt_payload);
 
 /** Suscribe a los topicos de entrada del modulo (command, config, ota, game). */

@@ -576,6 +576,143 @@ static void suite_fail_closed(void)
           "el perfil de banco no exige CA (pero hay que pedirlo en Kconfig)");
 }
 
+
+/* ==========================================================================
+ * TAREA C-1 · la CA no puede degradarse en silencio
+ * ==========================================================================
+ *
+ * Certificado REAL, generado con openssl y congelado aqui como vector. Su
+ * huella se obtuvo con:
+ *
+ *   openssl x509 -in ec.pem -noout -fingerprint -sha256
+ *
+ * Que la funcion del firmware reproduzca ese valor es lo que hace util a la
+ * declaracion: el operador la calcula con openssl, el modulo la recalcula al
+ * arrancar, y ambos numeros tienen que ser el mismo o la comparacion seria un
+ * ritual vacio.
+ * ========================================================================== */
+static const char CA_FIXTURE[] =
+    "-----BEGIN CERTIFICATE-----\n"
+    "MIIBjDCCATGgAwIBAgIUc5Te8/kcXp4Lj6yDSCo10xkYmV0wCgYIKoZIzj0EAwIw\n"
+    "GzEZMBcGA1UEAwwQRGlhbmEgRml4dHVyZSBDQTAeFw0yNjA5MDgwMjE1MTZaFw0z\n"
+    "NjA5MDUwMjE1MTZaMBsxGTAXBgNVBAMMEERpYW5hIEZpeHR1cmUgQ0EwWTATBgcq\n"
+    "hkjOPQIBBggqhkjOPQMBBwNCAARCV57oWcTyHA6eBTG1Wbp38CwMq9+W1oTfOY4s\n"
+    "szzTpXMdnI2nGSF7MeHbqXPncfKxIXjYjS0+fhFz8QbF1yyJo1MwUTAdBgNVHQ4E\n"
+    "FgQUsAWSnP1MKvXOHdr8fv/9Ra3BwjQwHwYDVR0jBBgwFoAUsAWSnP1MKvXOHdr8\n"
+    "fv/9Ra3BwjQwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNJADBGAiEAhWbB\n"
+    "j/wLWs+YqTWjy0OoW2x5tQyzc9RpA8XpPH4bIEMCIQCM7LJOEg+R4n3RrX8Tlbj+\n"
+    "Hf5SXXcMG3bGfUaMJwi22w==\n"
+    "-----END CERTIFICATE-----\n";
+
+/* openssl x509 -noout -fingerprint -sha256, sin ':' y en minusculas. */
+static const char CA_FIXTURE_FP[] =
+    "f8a4a35b158295ee4e2ea798f9384a0fd56a411701f18021ce6469c466ab19e8";
+
+static void suite_ca_declaration(void)
+{
+    char fp[DIANA_MQTT_CA_FP_HEXLEN + 1];
+
+    SECTION("C-1 · huella de la CA == la que imprime openssl");
+
+    CHECK(diana_mqtt_ca_fingerprint(CA_FIXTURE, sizeof(CA_FIXTURE), fp),
+          "calcula la huella de un certificado real");
+    CHECK_EQ_STR(fp, CA_FIXTURE_FP,
+                 "la huella coincide LETRA A LETRA con openssl -fingerprint -sha256");
+
+    /* Un PEM sintacticamente valido pero con base64 corrupto no puede producir
+     * una huella "casi buena": no produce ninguna. */
+    char corrupto[sizeof(CA_FIXTURE)];
+    memcpy(corrupto, CA_FIXTURE, sizeof(CA_FIXTURE));
+    corrupto[40] = '!';                        /* caracter fuera del alfabeto */
+    CHECK(!diana_mqtt_ca_fingerprint(corrupto, sizeof(corrupto), fp),
+          "base64 corrupto -> sin huella (no se hashea a medias)");
+    CHECK_EQ_STR(fp, "", "y la salida queda vacia, no con basura anterior");
+
+    char marcador[512];
+    memset(marcador, 'x', sizeof(marcador) - 1);
+    marcador[sizeof(marcador) - 1] = '\0';
+    CHECK(!diana_mqtt_ca_fingerprint(marcador, sizeof(marcador), fp),
+          "el marcador no-PEM no tiene huella");
+
+    SECTION("C-1 · un certificado NO declarado no autoriza nada");
+
+    CHECK(diana_mqtt_ca_is_declared(CA_FIXTURE, sizeof(CA_FIXTURE), CA_FIXTURE_FP),
+          "PEM + declaracion que coincide -> declarado");
+    CHECK(diana_mqtt_ca_is_declared(CA_FIXTURE, sizeof(CA_FIXTURE),
+                                    "F8A4A35B158295EE4E2EA798F9384A0FD56A411701F18021CE6469C466AB19E8\n"),
+          "se tolera mayusculas y el salto de linea final del fichero");
+
+    /* ESTE es el caso que motiva toda la tarea: alguien planta un certificado
+     * de ejemplo -- cualquiera, valido y bien formado -- para "que arranque".
+     * Sin tocar la declaracion, no arranca. */
+    static const char CA_EJEMPLO[] =
+        "-----BEGIN CERTIFICATE-----\n"
+        "MIIBazCCARGgAwIBAgIUEjRWeJCrze8SNFZ4kKvN7xI0VngwCgYIKoZIzj0EAwIw\n"
+        "FjEUMBIGA1UEAwwLZXhhbXBsZS5jb20wHhcNMjAwMTAxMDAwMDAwWhcNMzAwMTAx\n"
+        "MDAwMDAwWjAWMRQwEgYDVQQDDAtleGFtcGxlLmNvbTBZMBMGByqGSM49AgEGCCqG\n"
+        "SM49AwEHA0IABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n"
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAo1MwUTAdBgNVHQ4EFgQUAAAAAAAA\n"
+        "AAAAAAAAAAAAAAAAAAAwHwYDVR0jBBgwFoAUAAAAAAAAAAAAAAAAAAAAAAAAAAAw\n"
+        "DwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNHADBEAiAAAAAAAAAAAAAAAAAA\n"
+        "AAAAAAAAAAAAAAAAAAAAAAIgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n"
+        "-----END CERTIFICATE-----\n";
+
+    CHECK(diana_mqtt_ca_is_valid(CA_EJEMPLO, sizeof(CA_EJEMPLO)),
+          "el certificado de ejemplo SI pasa la validez sintactica (por eso hacia falta mas)");
+    CHECK(!diana_mqtt_ca_is_declared(CA_EJEMPLO, sizeof(CA_EJEMPLO), CA_FIXTURE_FP),
+          "...pero NO esta declarado: no autoriza la conexion");
+
+    SECTION("C-1 · la declaracion no admite estados a medias");
+
+    CHECK(!diana_mqtt_ca_is_declared(CA_FIXTURE, sizeof(CA_FIXTURE), NULL),
+          "declaracion ausente -> false");
+    CHECK(!diana_mqtt_ca_is_declared(CA_FIXTURE, sizeof(CA_FIXTURE), ""),
+          "declaracion vacia -> false (no existe 'acepta lo que haya')");
+    CHECK(!diana_mqtt_ca_is_declared(CA_FIXTURE, sizeof(CA_FIXTURE), "NONE\n"),
+          "centinela NONE -> false");
+    CHECK(!diana_mqtt_ca_is_declared(CA_FIXTURE, sizeof(CA_FIXTURE),
+                                     "f8a4a35b158295ee4e2ea798f9384a0fd56a411701f18021ce6469c466ab19"),
+          "declaracion de 62 cifras -> false (no se compara un prefijo)");
+    CHECK(!diana_mqtt_ca_is_declared(CA_FIXTURE, sizeof(CA_FIXTURE),
+                                     "f8a4a35b158295ee4e2ea798f9384a0fd56a411701f18021ce6469c466ab19e800"),
+          "declaracion de mas de 64 cifras -> false");
+    CHECK(!diana_mqtt_ca_is_declared(CA_FIXTURE, sizeof(CA_FIXTURE),
+                                     "F8:A4:A3:5B:15:82:95:EE:4E:2E:A7:98:F9:38:4A:0F:"
+                                     "D5:6A:41:17:01:F1:80:21:CE:64:69:C4:66:AB:19:E8"),
+          "el formato con ':' de openssl se rechaza: la declaracion es canonica");
+    CHECK(!diana_mqtt_ca_is_declared(marcador, sizeof(marcador), CA_FIXTURE_FP),
+          "marcador no-PEM con declaracion valida -> false");
+
+    SECTION("C-1 · el arbol real declara un estado coherente");
+
+    /* Se leen LOS FICHEROS DEL REPOSITORIO, no constantes escritas aqui: es la
+     * unica forma de que plantar un certificado en main/certs/ ponga esto
+     * rojo sin que nadie se acuerde de actualizar la prueba. */
+    size_t pem_len = 0, dec_len = 0;
+    char *pem = slurp("firmware/esp32/main/certs/broker_ca.pem", &pem_len);
+    char *dec = slurp("firmware/esp32/main/certs/broker_ca.sha256", &dec_len);
+    CHECK(pem != NULL, "se lee main/certs/broker_ca.pem");
+    CHECK(dec != NULL, "se lee main/certs/broker_ca.sha256 (la declaracion)");
+
+    if (pem && dec) {
+        /* +1: el fichero se empotra como TEXTO terminado en NUL, y asi lo ve
+         * el firmware. slurp() deja el NUL fuera de la longitud. */
+        bool pem_valido = diana_mqtt_ca_is_valid(pem, pem_len + 1);
+        bool declarado  = diana_mqtt_ca_is_declared(pem, pem_len + 1, dec);
+        bool none       = (strncmp(dec, "NONE", 4) == 0);
+
+        CHECK(none ? !pem_valido : true,
+              "declaracion NONE => broker_ca.pem sigue siendo el marcador no-PEM");
+        CHECK(pem_valido ? declarado : true,
+              "hay un PEM en el arbol => su huella coincide con la declarada");
+        CHECK(none || declarado,
+              "el arbol esta en UNO de los dos estados legales (NONE, o CA declarada)");
+    }
+
+    free(pem);
+    free(dec);
+}
+
 int run_mqtt_endpoint(void)
 {
     TEST_SUITE("mqtt_endpoint");
@@ -583,5 +720,6 @@ int run_mqtt_endpoint(void)
     suite_username_rules();
     suite_transport();
     suite_fail_closed();
+    suite_ca_declaration();
     return g_tests_failed;
 }
