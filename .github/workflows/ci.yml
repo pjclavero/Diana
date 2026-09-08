@@ -216,6 +216,53 @@ jobs:
         run: node infrastructure/mosquitto/generate-identities.mjs --check
 
   # ---------------------------------------------------------------------------
+  # Escaneo de secretos (D2/D3). No había NINGUNA puerta que impidiese commitear
+  # una clave privada, un `passwd` del broker o una contraseña de laboratorio en
+  # la fuente única de identidades: SECURITY.md lo prohibía por escrito y nada
+  # lo comprobaba. El escáner se calibra en el mismo job —planta secretos de
+  # mentira y exige ponerse rojo con cada uno— antes de creerse su PASS.
+  # ---------------------------------------------------------------------------
+  secrets:
+    name: Escaneo de secretos (D2/D3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # El escáner trabaja sobre `git ls-files` y su autoprueba clona el
+          # repositorio: necesita el árbol completo, no un checkout superficial.
+          fetch-depth: 0
+      - name: Calibración — el escáner debe ponerse ROJO ante secretos plantados
+        run: ./scripts/security/secrets-scan.sh --self-test
+      - name: Escaneo del repositorio
+        run: ./scripts/security/secrets-scan.sh
+
+  # ---------------------------------------------------------------------------
+  # D6 · permisos de la ACL tras set-coordinator.sh, contra un broker REAL.
+  # `mktemp` + `mv` dejaban la ACL en 0600 y el broker —que la abre ya como uid
+  # 1883— moría con «Unable to open acl_file» / Exited(13). La prueba levanta
+  # eclipse-mosquitto en un contenedor efímero (sin puertos publicados) y mide
+  # el EFECTO: arranca, autentica y aplica la ACL. Incluye su propia
+  # calibración: con MUTATE_ACL_0600=1 tiene que fallar.
+  # ---------------------------------------------------------------------------
+  coordinador-broker:
+    name: D6 - ACL legible por el broker (broker real)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Calibración — con la ACL en 0600 la prueba DEBE fallar
+        run: |
+          if MUTATE_ACL_0600=1 ./infrastructure/mosquitto/test-coordinator-broker.sh; then
+            echo "CALIBRACION ROTA: la prueba pasa con la ACL en 0600; no detecta D6." >&2
+            exit 1
+          fi
+          echo "Calibracion correcta: la prueba se pone roja ante el defecto D6."
+      - name: El broker arranca, autentica y aplica la ACL tras set-coordinator.sh
+        run: ./infrastructure/mosquitto/test-coordinator-broker.sh
+
+  # ---------------------------------------------------------------------------
   # Validación estática de Docker Compose: todos los perfiles.
   # No construye imágenes ni levanta nada; sólo `docker compose config`.
   # ---------------------------------------------------------------------------
