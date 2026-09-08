@@ -132,8 +132,17 @@ mapfile -t TRACKED < <(git ls-files)
 # ---------------------------------------------------------------------------
 is_allowlisted() {
   case "$1" in
-    # Material de prueba explícitamente marcado como tal.
-    *"/testdata/"*)                       return 0 ;;
+    # NO hay excepcion por directorio. Habia una, `*/testdata/*`, y era un
+    # bypass en bloque: bastaba colocar una clave privada REAL bajo un
+    # directorio con ese nombre para que el escaner la ignorase. Una supervision
+    # independiente lo exploto y colo 6 de 6 evasiones, incluida una clave con
+    # material. Ademas no protegia nada: `git ls-files | grep /testdata/`
+    # devolvia CERO ficheros, asi que el agujero no compraba ni una excepcion
+    # legitima.
+    #
+    # Si algun dia hace falta material de prueba que dispare una regla, la
+    # excepcion se declara POR FICHERO y con su motivo, como las dos de abajo.
+    # Una excepcion por patron de ruta la escribe el infractor.
     # Este mismo escáner y su documentación describen los patrones que buscan.
     scripts/security/secrets-scan.sh)     return 0 ;;
     docs/security/pki-y-secretos.md)      return 0 ;;

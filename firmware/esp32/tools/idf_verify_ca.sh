@@ -6,6 +6,13 @@
 #   docker run --rm -v "$PWD":/w -w /w espressif/idf:v5.5 \
 #       bash /w/firmware/esp32/tools/idf_verify_ca.sh
 set -u
+
+# Contador de hallazgos. SIN esto el script era una guarda que NO PODIA FALLAR:
+# terminaba en un `grep ... && echo HALLAZGO || echo ninguna`, y el `||` se
+# tragaba el codigo de salida, asi que devolvia 0 incluso encontrando una
+# llamada a un relajamiento de TLS. Lo detecto una supervision independiente.
+# Una guarda que nunca ha estado roja no es una guarda.
+HALLAZGOS=0
 cd /w/firmware/esp32
 source "$IDF_PATH/export.sh" >/dev/null 2>&1
 
@@ -20,8 +27,12 @@ xtensa-esp32s3-elf-nm "$ELF" | grep -iE \
 
 echo
 echo "== la DECLARACION viaja de verdad en la imagen =="
-xtensa-esp32s3-elf-nm "$ELF" | grep -i "broker_ca_sha256" \
-  && echo "  (los simbolos _binary_broker_ca_sha256_* existen: el fichero esta empotrado)"
+if xtensa-esp32s3-elf-nm "$ELF" | grep -i "broker_ca_sha256"; then
+  echo "  (los simbolos _binary_broker_ca_sha256_* existen: el fichero esta empotrado)"
+else
+  echo "  FALLO: la declaracion de huella NO viaja en la imagen"
+  HALLAZGOS=$((HALLAZGOS + 1))
+fi
 
 echo
 echo "== relajamientos de TLS: se comprueba la LLAMADA, no el simbolo =="
@@ -30,11 +41,22 @@ echo "== relajamientos de TLS: se comprueba la LLAMADA, no el simbolo =="
 # de cualquier imagen que enlace la libreria. Contarlos como hallazgo seria un
 # falso positivo. Lo que importa es si el codigo de Diana los LLAMA, y eso se
 # ve en el desensamblado de nuestras unidades, no en la tabla de simbolos.
-xtensa-esp32s3-elf-objdump -d --demangle "$ELF" \
-  | grep -iE "call[0-9]*[[:space:]]+.*(crt_bundle_attach|global_ca_store|conn_new_sync_insecure)" \
-  && echo "  HALLAZGO: hay una LLAMADA a un relajamiento de verificacion" \
-  || echo "  ninguna llamada (correcto)"
+if xtensa-esp32s3-elf-objdump -d --demangle "$ELF" \
+     | grep -iE "call[0-9]*[[:space:]]+.*(crt_bundle_attach|global_ca_store|conn_new_sync_insecure)"; then
+  echo "  HALLAZGO: hay una LLAMADA a un relajamiento de verificacion"
+  HALLAZGOS=$((HALLAZGOS + 1))
+else
+  echo "  ninguna llamada (correcto)"
+fi
 
 # NOTA sobre lo que NO sale en `nm`: log_mqtt_error, log_cert_flags y
 # log_connack son `static`, asi que el enlazador no los publica. Su presencia
 # se fija estructuralmente en check_broker_ca.py sobre el fuente, no aqui.
+
+echo
+if [ "$HALLAZGOS" -gt 0 ]; then
+  echo "idf_verify_ca: $HALLAZGOS HALLAZGO(S) — la imagen NO es aceptable"
+  exit 1
+fi
+echo "idf_verify_ca: sin hallazgos"
+exit 0
