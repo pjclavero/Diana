@@ -1,0 +1,4 @@
+# Copia local del esquema del backend, generada por scripts/generate-prisma.mjs.
+prisma/
+dist/
+node_modules/

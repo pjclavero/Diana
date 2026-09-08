@@ -27,6 +27,13 @@ export interface HeartbeatState {
   /** Última vez que el bucle principal completó una vuelta. */
   updatedAt: string;
   /**
+   * Arranque de ESTE proceso. Sin él, «todavía no ha corrido nada» y «lleva
+   * horas sin conseguir correr nada» eran indistinguibles, y ambos salían
+   * SANOS: ver `evaluateHealth`. Opcional para poder leer latidos escritos por
+   * una versión anterior sin declararlos ilegibles.
+   */
+  startedAt?: string;
+  /**
    * Cuenta POR TAREA, no una global.
    *
    * Con un único contador compartido, el éxito de una tarea frecuente borraba
@@ -46,6 +53,7 @@ export interface HeartbeatState {
 export function initialHeartbeat(now: Date): HeartbeatState {
   return {
     updatedAt: now.toISOString(),
+    startedAt: now.toISOString(),
     tasks: {},
     lastError: null,
     lastSuccessAt: null,
@@ -82,6 +90,7 @@ export function recordTaskOutcome(
   // tiene que seguir enseñando el fallo de `retention`, no quedarse en blanco.
   const enFallo = Object.values(tasks).find((t) => t.consecutiveFailures > 0);
   return {
+    ...state,
     updatedAt: now.toISOString(),
     tasks,
     lastError: enFallo ? enFallo.lastError : null,
@@ -109,6 +118,17 @@ export interface HealthThresholds {
   maxAgeMs: number;
   /** Fallos consecutivos de tareas a partir de los cuales se declara no-sano. */
   maxConsecutiveFailures: number;
+  /**
+   * Tiempo máximo SIN que ninguna tarea termine con éxito. Un worker que da
+   * vueltas al bucle refrescando el latido pero no completa nada NO está sano,
+   * por muy vivo que esté el proceso: es «no me llegan datos, luego todo bien».
+   */
+  maxSuccessAgeMs: number;
+  /**
+   * Margen desde el arranque antes de exigir el primer éxito. Sólo cubre el
+   * arranque; pasado, la ausencia de éxitos es un fallo, no una espera.
+   */
+  startupGraceMs: number;
 }
 
 export interface HealthResult {
@@ -144,6 +164,47 @@ export function evaluateHealth(state: HeartbeatState | null, now: Date, threshol
     return {
       healthy: false,
       reason: `la tarea '${peor.name}' acumula ${peor.task.consecutiveFailures} fallos consecutivos (>= ${thresholds.maxConsecutiveFailures}): ${peor.task.lastError ?? 'sin detalle'}`,
+    };
+  }
+
+  // AUSENCIA DE TRABAJO NO ES SALUD.
+  //
+  // Hasta aquí, un worker con `tasks: {}` y el latido fresco se declaraba SANO:
+  // es el estado exacto de un proceso que arranca, no consigue hablar con
+  // PostgreSQL y se limita a dar vueltas al bucle refrescando el latido con
+  // `touchHeartbeat`. Nunca acumulaba fallos consecutivos —para fallar hay que
+  // intentarlo, y las tareas sólo se intentan cuando les toca—, así que el
+  // orquestador veía `healthy` indefinidamente. Es el mismo defecto que el
+  // panel que pinta «sin alertas» porque no le llegó nada.
+  const referencia = state.lastSuccessAt ?? state.startedAt ?? null;
+  if (referencia === null) {
+    return {
+      healthy: false,
+      reason: 'el latido no dice ni cuándo arrancó ni cuándo tuvo éxito por última vez',
+    };
+  }
+  const desde = new Date(referencia);
+  if (Number.isNaN(desde.getTime())) {
+    return { healthy: false, reason: `marca de tiempo inválida en el latido: ${referencia}` };
+  }
+  const sinExitoMs = now.getTime() - desde.getTime();
+  if (state.lastSuccessAt === null) {
+    if (sinExitoMs > thresholds.startupGraceMs) {
+      return {
+        healthy: false,
+        reason:
+          `arrancó hace ${sinExitoMs}ms y no ha completado NINGUNA tarea con éxito ` +
+          `(margen de arranque ${thresholds.startupGraceMs}ms)` +
+          (state.lastError ? `: ${state.lastError}` : ''),
+      };
+    }
+  } else if (sinExitoMs > thresholds.maxSuccessAgeMs) {
+    return {
+      healthy: false,
+      reason:
+        `ninguna tarea ha terminado con éxito desde hace ${sinExitoMs}ms ` +
+        `(> ${thresholds.maxSuccessAgeMs}ms): el proceso vive, pero no está sirviendo` +
+        (state.lastError ? `. Último error: ${state.lastError}` : ''),
     };
   }
 
