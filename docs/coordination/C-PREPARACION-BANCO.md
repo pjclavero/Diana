@@ -370,3 +370,105 @@ privada real bajo un directorio con ese nombre. Y no compraba nada —
 **No se admiten exclusiones por patrón de ruta.** Una excepción se declara por
 fichero y con su motivo. Una lista vacía es mejor que una excepción «por si
 acaso»: la excepción por patrón la escribe el infractor.
+
+---
+
+# DECISIONES DEL OPERADOR PARA EL BANCO (cerradas)
+
+Las dos que bloqueaban la sesión. Ya no hay que pensarlas con la placa delante.
+
+## 1 · CA declarada = **CA privada de Diana**, no `NONE`
+
+```
+BROKER_CA         = Diana private CA
+TLS_VERIFY        = REQUIRED
+INSECURE_FALLBACK = FORBIDDEN
+```
+
+`NONE` es un estado de **preparación**, no una configuración válida de banco. El
+banco debe probar exactamente el modelo que queremos conservar en producción: el
+ESP32 valida una CA concreta, valida el nombre del broker, y **falla cerrado** si
+la CA no está disponible.
+
+**La CA pública va como material de confianza en el firmware.** La **clave
+privada de la CA no entra en el ESP32 ni en el repositorio** — vive sólo en
+`$CA_DIR` de la máquina de administración (ver `docs/security/pki-y-secretos.md`).
+
+Antes del banco hay que rellenar `main/certs/broker_ca.pem` con la CA real y
+`main/certs/broker_ca.sha256` con su huella:
+
+```sh
+openssl x509 -in ca.crt -noout -fingerprint -sha256
+```
+
+La guarda `diana_mqtt_ca_is_declared()` exige que coincidan. Un certificado
+plantado que no case con la declaración **no conecta**, y eso está calibrado
+(`tools/ca_guard_calibration.sh`, caso E2: certificado de nombre plausible,
+ausente de toda lista negra, rechazado igualmente).
+
+## 2 · Direccionamiento del broker = **NOMBRE**, no IP
+
+```
+BROKER_HOST       = mqtt.diana.local
+BROKER_PORT       = 8883
+BROKER_TRANSPORT  = mqtts
+IP SAN            = opcional, NUNCA la identidad principal
+```
+
+**El motivo no es estético.** Si la identidad TLS es la IP, una decisión de red
+pasa a formar parte del certificado: cada cambio de dirección obliga a reemitirlo
+o a arrastrar SAN de IP adicionales. Con nombre, la IP cambia sin tocar la
+identidad.
+
+### Lo que había, y lo que se ha cambiado
+
+`generate-certs.sh` emitía `IP:192.168.1.209` **para el camino de los módulos
+ESP32, sin ningún nombre DNS**, y `CONFIG_DIANA_BROKER_HOST` traía esa misma IP
+por defecto. Es decir, el árbol implementaba exactamente el anti-patrón.
+
+Ahora:
+- `MQTT_PUBLIC_NAME` (por defecto `mqtt.diana.local`) encabeza el SAN;
+- la IP se conserva **como conveniencia secundaria**, no como identidad;
+- `CONFIG_DIANA_BROKER_HOST` pasa a ser el nombre, con la razón escrita en su
+  `help` para que nadie lo revierta a una IP sin leerla.
+
+### Verificado ejecutando, no razonado
+
+PKI generada con `NEW_CA=1` en un directorio efímero:
+
+```
+SAN emitido: DNS:mqtt.diana.local, DNS:mosquitto, DNS:localhost,
+             IP Address:127.0.0.1, IP Address:192.168.1.209
+
+openssl verify -verify_hostname mqtt.diana.local   -> VALIDA
+openssl verify -verify_hostname mosquitto          -> VALIDA
+openssl verify -verify_hostname broker.ajeno.local -> RECHAZADO
+```
+
+**Requisito para la red del banco:** el nombre debe resolver desde el módulo. No
+hace falta montar DNS interno: basta que resuelva de forma controlada durante la
+prueba. Lo que no admite excepción es que el nombre usado por el firmware
+coincida **exactamente** con un `DNS:` del SAN.
+
+## Gate del banco
+
+Positivo, completo:
+```
+ESP32 real → Ethernet → resolve hostname → TLS 8883 → CA OK → hostname OK
+  → MQTT auth → ACL → provision command → D1b → EXACTAMENTE 1 efecto
+  → provision state → backend → PostgreSQL
+repetir la MISMA orden → 0 efectos adicionales
+```
+
+Negativos obligatorios, cada uno con su capa distinguible en el log
+(`[TCP] [TLS] [CERT] [HOSTNAME] [AUTH] [ACL]`):
+```
+CA incorrecta         -> FAIL            hostname incorrecto  -> FAIL
+sin CA                -> FAIL CLOSED     certificado expirado -> FAIL
+credencial incorrecta -> AUTH DENIED     ACL incorrecta       -> ACL DENIED
+1883                  -> NO CONNECTION / NOT USED
+```
+
+Recordatorio que evita horas de depuración: **una denegación de ACL en
+publicación devuelve `rc=0`**; sólo el fallo de autenticación da 135. El
+diagnóstico por capas existe precisamente para separarlas.

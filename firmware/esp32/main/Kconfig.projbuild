@@ -2,9 +2,20 @@ menu "Diana · configuracion del modulo"
 
 config DIANA_BROKER_HOST
     string "Host del broker MQTT"
-    default "192.168.1.209"
+    default "mqtt.diana.local"
     help
-      Direccion del broker Mosquitto en la red local.
+      NOMBRE del broker Mosquitto, no su IP.
+
+      Este valor es la IDENTIDAD TLS: se compara contra el subjectAltName del
+      certificado del broker. Poner aqui una IP convierte una decision de red en
+      parte del certificado, y cada cambio de direccion obliga a reemitirlo o a
+      arrastrar SAN de IP adicionales. Con nombre, la IP puede cambiar sin tocar
+      la identidad TLS.
+
+      El nombre debe resolver desde el modulo (DNS interno o entrada equivalente
+      en la red del banco) y coincidir EXACTAMENTE con un `DNS:` del SAN del
+      certificado. Si no coincide, la conexion falla en la capa [HOSTNAME], que
+      el firmware distingue de [CERT] y de [AUTH].
 
       El usuario MQTT del modulo es EXACTAMENTE su module_id, sin prefijo
       (contrato MQTT §8; el prefijo 'module-' se retiro al cerrar F-02). No se

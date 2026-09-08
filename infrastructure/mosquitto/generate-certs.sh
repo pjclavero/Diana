@@ -20,7 +20,9 @@
 #   DNS:mosquitto    el backend y el resto de contenedores, por la red interna
 #   DNS:localhost    el healthcheck, dentro del propio contenedor
 #   IP:127.0.0.1     ídem
-#   IP:<MQTT_PUBLIC_IP>  los módulos ESP32 y el simulador, desde la LAN
+#   DNS:<MQTT_PUBLIC_NAME>  los modulos ESP32: es la IDENTIDAD TLS principal
+#   IP:<MQTT_PUBLIC_IP>  conveniencia para clientes que aun direccionen por IP.
+#                        NO es la identidad: ver la nota de MQTT_PUBLIC_NAME.
 #
 # Un nombre que falte aquí NO se traduce en un aviso: la conexión falla cerrada.
 # Eso es deliberado — es justo la propiedad que P0-2 quiere garantizar.
@@ -43,6 +45,10 @@ CERT_DIR="${CERT_DIR:-${SCRIPT_DIR}/certs}"
 # Ubicación de la CA, FUERA del árbol de despliegue.
 CA_DIR="${CA_DIR:-/root/diana-pki}"
 MQTT_PUBLIC_IP="${MQTT_PUBLIC_IP:-192.168.1.209}"
+# NOMBRE del broker: es la IDENTIDAD TLS principal. La IP queda como SAN
+# secundaria de conveniencia, no como identidad: si la identidad fuese la IP,
+# cada cambio de direccion obligaria a reemitir el certificado.
+MQTT_PUBLIC_NAME="${MQTT_PUBLIC_NAME:-mqtt.diana.local}"
 CA_DAYS="${CA_DAYS:-3650}"
 SERVER_DAYS="${SERVER_DAYS:-825}"   # límite habitual de los clientes TLS modernos
 
@@ -136,7 +142,7 @@ cat > "${CERT_DIR}/server.ext" <<EOF
 basicConstraints = critical,CA:FALSE
 keyUsage = critical,digitalSignature,keyEncipherment
 extendedKeyUsage = serverAuth
-subjectAltName = DNS:mosquitto,DNS:localhost,IP:127.0.0.1,IP:${MQTT_PUBLIC_IP}
+subjectAltName = DNS:${MQTT_PUBLIC_NAME},DNS:mosquitto,DNS:localhost,IP:127.0.0.1,IP:${MQTT_PUBLIC_IP}
 EOF
 
 openssl x509 -req -in "${CERT_DIR}/server.csr" -sha256 -days "$SERVER_DAYS" \
