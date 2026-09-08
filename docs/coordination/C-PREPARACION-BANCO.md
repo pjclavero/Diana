@@ -472,3 +472,79 @@ credencial incorrecta -> AUTH DENIED     ACL incorrecta       -> ACL DENIED
 Recordatorio que evita horas de depuración: **una denegación de ACL en
 publicación devuelve `rc=0`**; sólo el fallo de autenticación da 135. El
 diagnóstico por capas existe precisamente para separarlas.
+
+
+---
+
+## 3 · Qué CA concreta se declara — **la existente, NO una nueva**
+
+```
+BENCH_CA_POLICY      = REUSE_EXISTING_DIANA_CA
+NEW_CA               = 0
+CA_ROTATION          = NO
+BROKER_CERT_REISSUE  = ALLOWED / EXPECTED
+PRIMARY_TLS_IDENTITY = mqtt.diana.local
+
+broker_ca.pem    = certificado PUBLICO de esa CA
+broker_ca.sha256 = huella SHA-256 de esa MISMA CA
+ca.key           = NUNCA empotrada · NUNCA versionada · NUNCA al ESP32
+```
+
+**El motivo.** Generar una CA nueva sólo para la sesión validaría el firmware
+contra una raíz que después se descarta: habríamos probado **otra PKI**. Si hace
+falta adaptar el certificado al nombre, se **reemite la hoja**, no la raíz.
+
+```
+CA existente  →  reemitir SÓLO el certificado del broker
+              →  SAN: DNS:mqtt.diana.local, DNS:mosquitto, DNS:localhost,
+                       IP:127.0.0.1, IP:192.168.1.209
+```
+
+`NEW_CA=1` sólo procede si la CA existente es de laboratorio y no se quiere
+conservar, si su clave privada está expuesta o mal custodiada, si no se sabe con
+certeza qué ha firmado, si se decide rotar la PKI deliberadamente, o si es una
+instalación Diana nueva. Eso sería **rotación de PKI**, no una necesidad del
+banco.
+
+### Comprobación ejecutable, no checklist de papel
+
+`infrastructure/mosquitto/preflight-bench-pki.sh` verifica los siete puntos
+**antes de compilar el firmware**, más dos controles de nombre:
+
+```
+CA_DIR=/root/diana-pki CERT_DIR=infrastructure/mosquitto/certs \
+  bash infrastructure/mosquitto/preflight-bench-pki.sh
+```
+
+| # | comprueba |
+|---|---|
+| 1 | el certificado del broker verifica contra la CA declarada |
+| 2 | el **issuer** es esa CA (no basta con que verifique una cadena) |
+| 3 | `DNS:mqtt.diana.local` está en el SAN |
+| 4 | la huella declarada en el firmware es la de esa CA (y **no** `NONE`) |
+| 5 | `broker_ca.pem` **es** esa CA, por huella |
+| 7 | no hay `ca.key` ni `ca.srl` en git ni en `main/certs/` |
+| 8 | `verify_hostname mqtt.diana.local` → **OK** |
+| 9 | `verify_hostname` de un nombre ajeno → **RECHAZADO** |
+
+El punto 9 no es decorativo: sin él, un certificado comodín pasaría el 3 y la
+verificación de nombre seguiría siendo laxa.
+
+**Calibrado con PKI real** (cinco mutantes, cada uno con certificados de openssl
+de verdad, y control verde después):
+
+| mutante | resultado |
+|---|---|
+| huella en `NONE` | rc=1 · «sigue en NONE: es estado de preparación, no de banco» |
+| huella que no es la de la CA | rc=1 · punto 4 |
+| `broker_ca.pem` es **otra CA real** | rc=1 · punto 5 |
+| certificado del broker firmado por otra CA | rc=1 · puntos 1 y 8 |
+| SAN sin el nombre | rc=1 · puntos 3 y 8 |
+| escenario correcto | **rc=0 · 9/9** |
+
+Un defecto propio, corregido y anotado porque ilustra la regla: el centinela
+`NONE` no disparaba su mensaje específico. `tr 'A-F' 'a-f'` —correcto para un
+hexadecimal— deja `"NONE"` como `"NONe"`, así que ni `NONE` ni `none` casaban y
+el caso caía al mensaje genérico de huella distinta. El **veredicto era
+correcto**; el **diagnóstico, inútil**. Y el diagnóstico es justo lo que hace
+falta a las tres de la mañana con la placa delante.
