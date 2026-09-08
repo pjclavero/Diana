@@ -88,6 +88,17 @@ USER diana
 # (dist/health.js) y comprueba que además de vivo esté SIRVIENDO: heartbeat
 # reciente y sin una racha de fallos consecutivos de tarea. Ver
 # src/health.ts (lógica pura, con pruebas) y src/healthcheck.ts (CLI).
+#
+# AMPLIACIÓN: el latido por sí solo tampoco bastaba. `touchHeartbeat` lo
+# refresca en CADA vuelta, también cuando no toca ninguna tarea, así que un
+# worker que arranca sin poder hablar con PostgreSQL giraba con `tasks: {}` y
+# se declaraba sano indefinidamente —para acumular fallos hay que llegar a
+# intentar una tarea, y las tareas sólo se intentan cuando les toca—. Medido:
+# con un latido fresco, arranque hace una hora y cero éxitos, el healthcheck
+# anterior salía 0 y el actual sale 1. Ahora hay (a) una SONDA FUNCIONAL por
+# vuelta contra la base de datos (src/probe.ts, `SELECT 1` real: Prisma
+# conecta en diferido y sólo revienta al consultar) y (b) dos umbrales de
+# actividad, WORKER_HEALTH_MAX_SUCCESS_AGE_MS y WORKER_HEALTH_STARTUP_GRACE_MS.
 HEALTHCHECK --interval=20s --timeout=5s --start-period=15s --retries=5 \
   CMD ["node", "dist/healthcheck.js"]
 
