@@ -1427,7 +1427,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "$ref": "#/components/schemas/CreateModuleDto"
               }
             }
           }
@@ -1493,7 +1493,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "$ref": "#/components/schemas/UpdateModuleDto"
               }
             }
           }
@@ -4960,6 +4960,169 @@
         ]
       }
     },
+    "/api/provisioning/modules/{deviceId}/orders": {
+      "post": {
+        "operationId": "ProvisioningController_issue",
+        "parameters": [
+          {
+            "name": "deviceId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueOrderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Emite una orden FIRMADA del plano DEVICE_MANAGEMENT (QoS 1, retain=false)",
+        "tags": [
+          "provisioning"
+        ]
+      }
+    },
+    "/api/provisioning/modules/{deviceId}/state": {
+      "get": {
+        "description": "Es lo que el módulo DIJO, no una verdad del sistema ni un desired state ejecutable: ninguna acción del backend se dispara desde aquí.",
+        "operationId": "ProvisioningController_state",
+        "parameters": [
+          {
+            "name": "deviceId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Última fotografía OBSERVACIONAL del estado de autoridad reportado por el módulo",
+        "tags": [
+          "provisioning"
+        ]
+      }
+    },
+    "/api/modules/{id}/mqtt-identity": {
+      "post": {
+        "description": "La contraseña se devuelve UNA sola vez y no se puede volver a leer. El módulo NO pasa a ONLINE por esto: sigue en PENDING hasta que el dispositivo publique de verdad.",
+        "operationId": "MqttIdentityController_issue",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueIdentityDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Emite (o rota) la credencial MQTT individual de un módulo",
+        "tags": [
+          "provisioning"
+        ]
+      },
+      "get": {
+        "operationId": "MqttIdentityController_describe",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Metadatos de la credencial MQTT de un módulo (nunca el secreto)",
+        "tags": [
+          "provisioning"
+        ]
+      },
+      "delete": {
+        "operationId": "MqttIdentityController_revoke",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Revoca la credencial MQTT de un módulo",
+        "tags": [
+          "provisioning"
+        ]
+      }
+    },
     "/api/exports/rounds/{roundId}/hits.csv": {
       "get": {
         "operationId": "ExportsController_hits",
@@ -5199,6 +5362,148 @@
         "type": "object",
         "properties": {}
       },
+      "CreateModuleDto": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "description": "Identificador MQTT del módulo (module_id). Inmutable tras la creación: es la identidad del dispositivo (F-02).",
+            "pattern": "^[a-z0-9][a-z0-9-]{2,62}$"
+          },
+          "targetSystemId": {
+            "type": "object"
+          },
+          "friendlyName": {
+            "type": "object"
+          },
+          "serial": {
+            "type": "object"
+          },
+          "mac": {
+            "type": "object",
+            "pattern": "^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"
+          },
+          "ip": {
+            "type": "object"
+          },
+          "hardwareRevision": {
+            "type": "object"
+          },
+          "targetBoard": {
+            "type": "object"
+          },
+          "firmwareVersion": {
+            "type": "object"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "principal",
+              "satellite",
+              "auto"
+            ]
+          },
+          "selector": {
+            "type": "string",
+            "enum": [
+              "SATELITE",
+              "AUTO",
+              "PRINCIPAL"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "boot",
+              "selftest",
+              "network",
+              "registering",
+              "ready",
+              "calibration",
+              "maintenance",
+              "game_prepare",
+              "game_countdown",
+              "game_active",
+              "game_paused",
+              "game_finished",
+              "error"
+            ]
+          },
+          "maintenance": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "slug"
+        ]
+      },
+      "UpdateModuleDto": {
+        "type": "object",
+        "properties": {
+          "targetSystemId": {
+            "type": "object"
+          },
+          "friendlyName": {
+            "type": "object"
+          },
+          "serial": {
+            "type": "object"
+          },
+          "mac": {
+            "type": "object",
+            "pattern": "^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"
+          },
+          "ip": {
+            "type": "object"
+          },
+          "hardwareRevision": {
+            "type": "object"
+          },
+          "targetBoard": {
+            "type": "object"
+          },
+          "firmwareVersion": {
+            "type": "object"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "principal",
+              "satellite",
+              "auto"
+            ]
+          },
+          "selector": {
+            "type": "string",
+            "enum": [
+              "SATELITE",
+              "AUTO",
+              "PRINCIPAL"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "boot",
+              "selftest",
+              "network",
+              "registering",
+              "ready",
+              "calibration",
+              "maintenance",
+              "game_prepare",
+              "game_countdown",
+              "game_active",
+              "game_paused",
+              "game_finished",
+              "error"
+            ]
+          },
+          "maintenance": {
+            "type": "boolean"
+          }
+        }
+      },
       "JoinGuestDto": {
         "type": "object",
         "properties": {}
@@ -5313,6 +5618,14 @@
         "properties": {}
       },
       "DeployFirmwareDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "IssueOrderDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "IssueIdentityDto": {
         "type": "object",
         "properties": {}
       }

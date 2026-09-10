@@ -11,7 +11,8 @@ import {
   Req,
   Type,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiBodyOptions, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { DtoValidationPipe } from './dto-validation.pipe';
 import { AuditService } from '../../modules/audit/audit.service';
 import { AuthenticatedUser } from '../../modules/auth/permissions.guard';
 import { RequirePermissions } from '../../modules/auth/roles.decorator';
@@ -30,6 +31,18 @@ export interface CrudControllerOptions {
   serviceToken: any;
   /** ¿Se audita la escritura? Por defecto sí (dosier 21.2). */
   audit?: boolean;
+  /**
+   * DTO del cuerpo de creación. Si se da, el cuerpo se VALIDA contra él y un
+   * campo no declarado se rechaza con 400. Si no, se acepta cualquier objeto y
+   * la única defensa es la lista blanca del servicio, que DESCARTA en silencio.
+   *
+   * No es obligatorio para no reescribir de golpe los ~20 controladores de
+   * datos de referencia, pero cualquier entidad con identidad o con campos que
+   * sean propiedad del sistema debe declararlo.
+   */
+  createDto?: Type<object>;
+  /** DTO del cuerpo de modificación. Ver `createDto`. */
+  updateDto?: Type<object>;
 }
 
 /**
@@ -40,6 +53,17 @@ export interface CrudControllerOptions {
  */
 export function createCrudController(options: CrudControllerOptions): Type<any> {
   const audited = options.audit ?? true;
+  // Los pipes se construyen AQUÍ, no se deducen del metatipo del parámetro: la
+  // clase se fabrica en tiempo de ejecución y `design:paramtypes` de `create`/
+  // `update` dice `Object`, con lo que el `ValidationPipe` global se abstiene.
+  const createPipes = options.createDto ? [new DtoValidationPipe(options.createDto)] : [];
+  const updatePipes = options.updateDto ? [new DtoValidationPipe(options.updateDto)] : [];
+  const createBody: ApiBodyOptions = options.createDto
+    ? { type: options.createDto }
+    : { schema: { type: 'object' } };
+  const updateBody: ApiBodyOptions = options.updateDto
+    ? { type: options.updateDto }
+    : { schema: { type: 'object' } };
 
   @ApiTags(options.tag)
   @ApiBearerAuth()
@@ -76,9 +100,12 @@ export function createCrudController(options: CrudControllerOptions): Type<any> 
 
     @Post()
     @RequirePermissions(`${options.permission}:write`)
-    @ApiBody({ schema: { type: 'object' } })
+    @ApiBody(createBody)
     @ApiOperation({ summary: `Crea ${options.entity}` })
-    async create(@Body() body: Record<string, unknown>, @Req() req: { user?: AuthenticatedUser }) {
+    async create(
+      @Body(...createPipes) body: Record<string, unknown>,
+      @Req() req: { user?: AuthenticatedUser },
+    ) {
       const created = await this.service.create(body);
       if (audited) {
         await this.auditService.record({
@@ -94,11 +121,11 @@ export function createCrudController(options: CrudControllerOptions): Type<any> 
 
     @Patch(':id')
     @RequirePermissions(`${options.permission}:write`)
-    @ApiBody({ schema: { type: 'object' } })
+    @ApiBody(updateBody)
     @ApiOperation({ summary: `Modifica ${options.entity}` })
     async update(
       @Param('id') id: string,
-      @Body() body: Record<string, unknown>,
+      @Body(...updatePipes) body: Record<string, unknown>,
       @Req() req: { user?: AuthenticatedUser },
     ) {
       const before = await this.service.get(id);

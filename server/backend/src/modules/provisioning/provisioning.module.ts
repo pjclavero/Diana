@@ -20,6 +20,11 @@ import {
   PrismaProvisioningStateRepository,
 } from './provisioning.repository';
 import { ProvisioningStateService } from './provisioning-state.service';
+import { CanonicalIdentitySource } from './canonical-identity.source';
+import { MosquittoPasswdStore } from './mosquitto-passwd.store';
+import { MqttIdentityController } from './mqtt-identity.controller';
+import { MqttIdentityService } from './mqtt-identity.service';
+import { IDENTITY_SOURCE, MQTT_CREDENTIAL_STORE } from './mqtt-identity.ports';
 
 export const DELEGATION_FILE_ENV = 'DIANA_PROVISIONING_DELEGATION_FILE';
 
@@ -79,7 +84,13 @@ export function loadDelegation(path: string): DelegationCredential {
  */
 @Global()
 @Module({
-  controllers: [ProvisioningController],
+  // MqttIdentityController cuelga de `/modules/:id/mqtt-identity`. Está en
+  // este módulo y no en ModulesModule a propósito: emitir credenciales es
+  // aprovisionamiento, usa `provisioning:issue` y su vecindad con el resto del
+  // plano es lo que mantiene visible que es la operación más privilegiada del
+  // sistema. Sus rutas no chocan con el CRUD de módulos: `:id/mqtt-identity`
+  // es más específica que `:id`.
+  controllers: [ProvisioningController, MqttIdentityController],
   providers: [
     { provide: ContractValidator, useFactory: () => getContractValidator() },
     { provide: PROVISIONING_ORDER_REPOSITORY, useClass: PrismaProvisioningOrderRepository },
@@ -129,6 +140,27 @@ export function loadDelegation(path: string): DelegationCredential {
     ProvisioningCommandService,
     ProvisioningStateService,
     { provide: PROVISION_STATE_SINK, useExisting: ProvisioningStateService },
+    // T4 · autoridad de credenciales MQTT.
+    { provide: IDENTITY_SOURCE, useFactory: () => new CanonicalIdentitySource() },
+    {
+      provide: MQTT_CREDENTIAL_STORE,
+      useFactory: (): MosquittoPasswdStore | null => {
+        const logger = new Logger('ProvisioningModule');
+        try {
+          return new MosquittoPasswdStore();
+        } catch (error) {
+          // Igual que con la clave operativa: sin almacén NO se emiten
+          // credenciales, y se dice en voz alta al arrancar. Lo que no puede
+          // pasar es que el backend arranque creyendo que puede emitirlas y
+          // falle en la primera petición con un error que no explica nada.
+          logger.warn(
+            `Autoridad de credenciales MQTT INACTIVA: ${(error as Error).message}`,
+          );
+          return null;
+        }
+      },
+    },
+    MqttIdentityService,
   ],
   exports: [
     ProvisioningCommandService,
@@ -136,6 +168,9 @@ export function loadDelegation(path: string): DelegationCredential {
     PROVISION_STATE_SINK,
     PROVISIONING_ORDER_REPOSITORY,
     PROVISIONING_STATE_REPOSITORY,
+    MqttIdentityService,
+    IDENTITY_SOURCE,
+    MQTT_CREDENTIAL_STORE,
   ],
 })
 export class ProvisioningModule {}
