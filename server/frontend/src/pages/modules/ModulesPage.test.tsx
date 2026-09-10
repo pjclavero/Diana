@@ -164,7 +164,7 @@ describe("ModulesPage · los cinco estados, distinguibles", () => {
     expect(screen.getByText(/Configuración:/)).not.toHaveTextContent(/Configuración:\s*aplicada/);
   });
 
-  it("con `configStatus: pending` del backend, la ficha lo dice", async () => {
+  it("con `configState: pending` del backend, la ficha lo dice", async () => {
     vi.spyOn(modulesApi, "modulesOverview").mockResolvedValue(
       overview([
         item({
@@ -172,9 +172,9 @@ describe("ModulesPage · los cinco estados, distinguibles", () => {
           slug: "diana-01",
           online: true,
           lastSeenAt: hace(1_000),
-          configStatus: "pending",
-          configVersionDesired: 5,
-          configVersionReported: 4,
+          configState: "pending",
+          desiredConfigVersion: 5,
+          reportedConfigVersion: 4,
         }),
       ]),
     );

@@ -175,30 +175,35 @@ export function estadoDeLista<T>(entrada: {
 export type EstadoConfig = "aplicada" | "pendiente" | "fallida" | "desconocida";
 
 export interface ConfigObservada {
-  configStatus?: "pending" | "applied" | "failed" | null;
-  configVersionDesired?: number | string | null;
-  configVersionReported?: number | string | null;
+  /* Nombres EXACTOS de la respuesta del backend (`modules-overview.service.ts`).
+   * Antes el panel leia `configVersionDesired`/`configStatus`, que el backend
+   * no emite: la ficha decia siempre «desconocida». Lo cazó el E2E de
+   * navegador contra el backend real, no las pruebas con dobles -- porque un
+   * doble devuelve los nombres que uno le enseña. */
+  configState?: "pending" | "applied" | "failed" | null;
+  desiredConfigVersion?: number | string | null;
+  reportedConfigVersion?: number | string | null;
 }
 
 export function estadoDeConfiguracion(c: ConfigObservada): { estado: EstadoConfig; motivo: string } {
-  switch (c.configStatus) {
+  switch (c.configState) {
     case "applied":
       return { estado: "aplicada", motivo: "El módulo confirma la configuración vigente." };
     case "pending":
       return {
         estado: "pendiente",
-        motivo: `Configuración enviada (v${c.configVersionDesired ?? "?"}) y aún sin confirmar por el módulo.`,
+        motivo: `Configuración enviada (v${c.desiredConfigVersion ?? "?"}) y aún sin confirmar por el módulo.`,
       };
     case "failed":
       return {
         estado: "fallida",
-        motivo: `El módulo rechazó o no pudo aplicar la configuración v${c.configVersionDesired ?? "?"}.`,
+        motivo: `El módulo rechazó o no pudo aplicar la configuración v${c.desiredConfigVersion ?? "?"}.`,
       };
   }
 
-  // Sin `configStatus`: sólo se puede decir algo si vienen las dos versiones.
-  const deseada = c.configVersionDesired;
-  const reportada = c.configVersionReported;
+  // Sin `configState`: sólo se puede decir algo si vienen las dos versiones.
+  const deseada = c.desiredConfigVersion;
+  const reportada = c.reportedConfigVersion;
   if (deseada === undefined || deseada === null || reportada === undefined || reportada === null) {
     return {
       estado: "desconocida",

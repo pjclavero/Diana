@@ -100,9 +100,9 @@ export interface ModuleOverviewItem {
    * `snake_case`, la traducción va en `backendShapes.ts` y el estado seguirá
    * saliendo «desconocida» entretanto — que es un fallo visible, no silencioso.
    */
-  configStatus?: "pending" | "applied" | "failed" | null;
-  configVersionDesired?: number | string | null;
-  configVersionReported?: number | string | null;
+  configState?: "pending" | "applied" | "failed" | null;
+  desiredConfigVersion?: number | string | null;
+  reportedConfigVersion?: number | string | null;
 }
 
 export interface ModulesOverview {

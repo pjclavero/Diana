@@ -106,32 +106,32 @@ describe("estado de la lista: cargando / error / vacío comprobado", () => {
 describe("estado de la configuración (depende del carril de backend)", () => {
   it("sin ningún dato NO es «aplicada»: es desconocida", () => {
     expect(estadoDeConfiguracion({}).estado).toBe("desconocida");
-    expect(estadoDeConfiguracion({ configVersionDesired: 4 }).estado).toBe("desconocida");
-    expect(estadoDeConfiguracion({ configVersionReported: 4 }).estado).toBe("desconocida");
+    expect(estadoDeConfiguracion({ desiredConfigVersion: 4 }).estado).toBe("desconocida");
+    expect(estadoDeConfiguracion({ reportedConfigVersion: 4 }).estado).toBe("desconocida");
   });
 
   it("`pending|applied|failed` del backend mandan sobre la comparación de versiones", () => {
-    expect(estadoDeConfiguracion({ configStatus: "applied" }).estado).toBe("aplicada");
-    expect(estadoDeConfiguracion({ configStatus: "pending", configVersionDesired: 7 }).estado).toBe(
+    expect(estadoDeConfiguracion({ configState: "applied" }).estado).toBe("aplicada");
+    expect(estadoDeConfiguracion({ configState: "pending", desiredConfigVersion: 7 }).estado).toBe(
       "pendiente",
     );
-    expect(estadoDeConfiguracion({ configStatus: "failed", configVersionDesired: 7 }).estado).toBe("fallida");
+    expect(estadoDeConfiguracion({ configState: "failed", desiredConfigVersion: 7 }).estado).toBe("fallida");
     // Aunque las versiones coincidan, un `failed` explícito no se pinta de verde.
     expect(
-      estadoDeConfiguracion({ configStatus: "failed", configVersionDesired: 7, configVersionReported: 7 })
+      estadoDeConfiguracion({ configState: "failed", desiredConfigVersion: 7, reportedConfigVersion: 7 })
         .estado,
     ).toBe("fallida");
   });
 
   it("con las dos versiones y sin estado, se comparan", () => {
-    expect(estadoDeConfiguracion({ configVersionDesired: 7, configVersionReported: 7 }).estado).toBe(
+    expect(estadoDeConfiguracion({ desiredConfigVersion: 7, reportedConfigVersion: 7 }).estado).toBe(
       "aplicada",
     );
-    expect(estadoDeConfiguracion({ configVersionDesired: 8, configVersionReported: 7 }).estado).toBe(
+    expect(estadoDeConfiguracion({ desiredConfigVersion: 8, reportedConfigVersion: 7 }).estado).toBe(
       "pendiente",
     );
     // Número y cadena con el mismo valor son la misma versión.
-    expect(estadoDeConfiguracion({ configVersionDesired: 7, configVersionReported: "7" }).estado).toBe(
+    expect(estadoDeConfiguracion({ desiredConfigVersion: 7, reportedConfigVersion: "7" }).estado).toBe(
       "aplicada",
     );
   });
