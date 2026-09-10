@@ -17,6 +17,38 @@ npm run test:watch
 npm run e2e           # Playwright contra `vite preview` (requiere navegadores instalados)
 ```
 
+## Modo del panel: `real` es el defecto, `mock` es una herramienta de desarrollo
+
+**Cambio de 2026-09-10.** `mock` era el valor por defecto en TRES sitios a la vez
+(`Dockerfile`, `.env.example` y `compose.yml`) y el código lo remataba con
+`?? "mock"`. Una imagen de producción construida sin pasar nada salía sirviendo
+datos de demostración, con la misma apariencia que la de verdad. Ahora:
+
+- **El defecto es `real`** en los tres sitios y en el código
+  (`src/api/apiMode.ts`).
+- **Una build de producción en `mock` no se produce**: `vite build` aborta con
+  el motivo (complemento `guardaDeModoProductivo` de `vite.config.ts`). Y si
+  alguien fabricase ese bundle por otro camino, `src/api/index.ts` lanza al
+  cargar: el panel no arranca en vez de arrancar mintiendo.
+- **Una errata tampoco cuela**: `REAL`, `prod` o `true` lanzan en vez de caer en
+  la rama de demostración, que es lo que hacía el `as "mock" | "real"` anterior.
+- `mock` sigue disponible para desarrollo (`npm run dev`) y para una build
+  explícita de desarrollo (`vite build --mode development`).
+
+Comprobado ejecutándolo, no por lectura:
+
+| Orden | Resultado |
+|---|---|
+| `npx vite build` | correcto (modo `real` por defecto) |
+| `VITE_API_MODE=mock npx vite build` | **falla**, con «CONFIGURACIÓN PROHIBIDA…» |
+| `VITE_API_MODE=mock npx vite build --mode development` | correcto (salida de emergencia declarada) |
+
+**Residuo honesto**: el adaptador de demostración se sigue empaquetando en el
+bundle (lo importa `src/api/index.ts` de forma estática). Lo que no puede
+ocurrir es que se SELECCIONE en producción. Excluirlo del paquete exigiría
+cargarlo con `import()` dinámico y volver asíncrona la creación de `apiClient`;
+no se ha hecho, y se dice en vez de afirmar una exclusión que no existe.
+
 ## Cómo pasar de mock a API real
 
 Todo pasa por `src/api/index.ts`. Ninguna pantalla importa `fetch`, el mock ni el WebSocket directamente: todas usan `apiClient` (`src/api/client.ts`) y `createGameSocket()` (`src/api/gameSocket.ts`).
@@ -25,12 +57,12 @@ Variables de entorno (`.env`, `.env.production`, o `--build-arg` en el `Dockerfi
 
 | Variable | Por defecto | Efecto |
 |---|---|---|
-| `VITE_API_MODE` | `mock` | `mock` usa `src/api/mockAdapter.ts` + `src/api/mockGameEngine.ts`. `real` usa `src/api/realAdapter.ts` (fetch) + `src/api/realGameSocket.ts` (WebSocket con reconexión). |
+| `VITE_API_MODE` | `real` | `mock` usa `src/api/mockAdapter.ts` + `src/api/mockGameEngine.ts`. `real` usa `src/api/realAdapter.ts` (fetch) + `src/api/realGameSocket.ts` (WebSocket con reconexión). |
 | `VITE_API_BASE_URL` | `/api/v1` | Prefijo de las peticiones REST cuando `VITE_API_MODE=real`. |
 | `VITE_WS_URL` | `/ws` | Base del WebSocket de directo cuando `VITE_API_MODE=real`. Se conecta a `${VITE_WS_URL}/games/{gameId}/live`. |
 | `VITE_DEFAULT_SYSTEM_ID` | `system-a` | `system_id` que muestra el panel mientras no exista un selector de sistemas en la UI. |
 
-Cambiar de mock a real en la Ola 2 es **cuestión de variables de entorno**, no de tocar pantallas.
+Cambiar de real a mock (o al revés) es **cuestión de variables de entorno**, no de tocar pantallas — con el límite de arriba: `mock` + producción está prohibido, no desaconsejado.
 
 ## Contrato de API que se espera del backend (WP-02)
 

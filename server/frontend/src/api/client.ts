@@ -12,6 +12,11 @@ import type {
   Team,
   UserAccount,
 } from "../types/domain";
+import type {
+  EstadoAprovisionamientoObservado,
+  OrdenAprovisionamiento,
+  ResultadoOrden,
+} from "./provisioningApi";
 
 /**
  * Capa de cliente API tipada y AISLADA. Ninguna pantalla debe importar
@@ -143,14 +148,45 @@ export interface DianaApiClient {
 
   // --- Usuarios ---
   listUsers(): Promise<UserAccount[]>;
+
+  /**
+   * --- Aprovisionamiento (T2) ---
+   *
+   * Las formas viven en `./provisioningApi.ts` porque son las del backend tal
+   * cual (`snake_case`), no tipos de dominio del panel: aquí no se traducen a
+   * propósito, para que nadie pueda «suavizar» `denied`/`timed_out` por el
+   * camino.
+   *
+   * `getProvisioningState` devuelve `null` cuando el módulo NUNCA ha reportado
+   * (404 del backend, el caso normal hoy). `null` es un DATO, no un error.
+   */
+  issueProvisioningOrder(deviceId: string, orden: OrdenAprovisionamiento): Promise<ResultadoOrden>;
+  getProvisioningState(deviceId: string): Promise<EstadoAprovisionamientoObservado | null>;
 }
 
 export class ApiError extends Error {
   /** Mensaje ya adaptado para un operador, sin trazas técnicas. */
   readonly userMessage: string;
-  constructor(userMessage: string, cause?: unknown) {
+  /**
+   * Código HTTP que lo produjo, cuando lo hubo (`undefined` si el fallo fue de
+   * RED —no se llegó a hablar con el servidor— o si lo lanzó un adaptador sin
+   * salir a la red).
+   *
+   * NO es decorativo y no está aquí para pintarlo. Existe porque hay UNA clase
+   * de respuesta que el panel tiene que poder distinguir de un error: el 404 de
+   * `GET /api/provisioning/modules/{deviceId}/state`, que significa «ese módulo
+   * todavía no ha reportado nada» y es el caso NORMAL mientras no haya
+   * dispositivos físicos. Sin este dato, ese 404 llega como `ApiError` y es
+   * indistinguible de «el backend está caído»; y confundirlos es exactamente el
+   * defecto que ya se coló una vez en este panel (Inicio decía «Sin alertas
+   * activas» cuando el backend no respondía). Con él, «sin estado observado» y
+   * «no he podido preguntar» se pintan distinto porque SON distintos.
+   */
+  readonly status?: number;
+  constructor(userMessage: string, cause?: unknown, status?: number) {
     super(userMessage);
     this.userMessage = userMessage;
     this.cause = cause;
+    this.status = status;
   }
 }

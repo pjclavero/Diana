@@ -85,6 +85,24 @@ export interface ModuleOverviewItem {
   position: { x: number; y: number } | null;
   updateAvailable: boolean;
   latestSignedVersion: string | null;
+  /**
+   * ESTADO DE LA CONFIGURACIÓN — campos OPCIONALES a propósito.
+   *
+   * El carril de backend está añadiendo `config_version` deseada y reportada
+   * con estado `pending|applied|failed`. Hoy el contrato
+   * (`contracts/api/openapi.json`) no los declara, así que llegan `undefined`.
+   * Se tipan como opcionales para que el panel los pinte EN CUANTO aparezcan
+   * sin tocar una línea, y `undefined` se traduce a «desconocida», nunca a
+   * «aplicada» (ver `utils/estadoModulo.ts`).
+   *
+   * Nombres asumidos en `camelCase`, como el resto de esta respuesta, que ya
+   * lo usa (`firmwareVersion`, `lastSeenAt`). Si el backend los emite en
+   * `snake_case`, la traducción va en `backendShapes.ts` y el estado seguirá
+   * saliendo «desconocida» entretanto — que es un fallo visible, no silencioso.
+   */
+  configState?: "pending" | "applied" | "failed" | null;
+  desiredConfigVersion?: number | string | null;
+  reportedConfigVersion?: number | string | null;
 }
 
 export interface ModulesOverview {

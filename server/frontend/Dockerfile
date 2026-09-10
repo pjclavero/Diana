@@ -13,10 +13,13 @@ RUN npm ci
 
 COPY . .
 # Autenticación SIEMPRE real contra `/api/auth` (VITE_AUTH_BASE_URL).
-# Datos de negocio: en F1 van en modo `mock` (demostración) mientras se conectan
-# por fases al backend real (X-21). Se sobrescribe con --build-arg cuando cada
-# dominio pase a real. El backend usa prefijo `api` SIN versión.
-ARG VITE_API_MODE=mock
+# Datos de negocio: `real` POR DEFECTO. Antes era `mock`, de modo que esta
+# imagen —la de producción— salía sirviendo datos de demostración a quien no
+# pasara `--build-arg`. Además, `npm run build` de abajo ABORTA si alguien
+# fuerza `mock` aquí: el guardián de `vite.config.ts` no deja que exista un
+# bundle de producción con el adaptador de demostración dentro.
+# El backend usa prefijo `api` SIN versión.
+ARG VITE_API_MODE=real
 ARG VITE_API_BASE_URL=/api
 ARG VITE_AUTH_BASE_URL=/api
 ARG VITE_WS_URL=/ws

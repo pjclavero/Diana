@@ -37,19 +37,32 @@ export class CrudService<T = any> {
   constructor(
     protected readonly delegate: PrismaDelegate,
     protected readonly entity: string,
-    /** Campos que el cliente puede escribir. Todo lo demás se descarta. */
+    /** Campos que el cliente puede escribir AL CREAR. Todo lo demás se descarta. */
     protected readonly writableFields: string[],
     protected readonly include?: Record<string, unknown>,
+    /**
+     * Campos que el cliente puede escribir AL MODIFICAR. Por omisión, los
+     * mismos que al crear.
+     *
+     * Existe para las entidades cuya IDENTIDAD se fija en el alta y deja de
+     * ser un dato editable después (`Module.slug` es el `module_id` de MQTT:
+     * invariante F-02). Una única lista obligaba a elegir entre no poder
+     * crearlo o poder parchearlo, y se estaba eligiendo lo segundo.
+     */
+    protected readonly updatableFields: string[] = writableFields,
   ) {}
 
-  protected pick(data: Record<string, unknown>): Record<string, unknown> {
+  protected pick(
+    data: Record<string, unknown>,
+    fields: string[] = this.writableFields,
+  ): Record<string, unknown> {
     const clean: Record<string, unknown> = {};
-    for (const field of this.writableFields) {
+    for (const field of fields) {
       if (data[field] !== undefined) clean[field] = data[field];
     }
     if (Object.keys(clean).length === 0) {
       throw new BadRequestException(
-        `Ningún campo escribible en la petición. Admitidos: ${this.writableFields.join(', ')}`,
+        `Ningún campo escribible en la petición. Admitidos: ${fields.join(', ')}`,
       );
     }
     return clean;
@@ -79,7 +92,11 @@ export class CrudService<T = any> {
 
   async update(id: string, data: Record<string, unknown>): Promise<T> {
     await this.get(id);
-    return this.delegate.update({ where: { id }, data: this.pick(data), include: this.include });
+    return this.delegate.update({
+      where: { id },
+      data: this.pick(data, this.updatableFields),
+      include: this.include,
+    });
   }
 
   async remove(id: string): Promise<{ id: string; deleted: true }> {

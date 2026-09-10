@@ -3,6 +3,13 @@ import { Link } from "react-router-dom";
 import { Card, ErrorState, LoadingState } from "../../components/ui/Feedback";
 import { ApiError } from "../../api/client";
 import { modulesOverview, type ModuleOverviewItem, type ModulesOverview } from "../../api/modulesApi";
+import {
+  diagnosticarModulo,
+  estadoDeConfiguracion,
+  estadoDeLista,
+  recuentoPorEstado,
+  type EstadoModulo,
+} from "../../utils/estadoModulo";
 import "./ModulesPage.css";
 
 const MODULE_STATE_LABEL: Record<string, string> = {
@@ -35,15 +42,22 @@ const PAGE_SIZE = 9;
 export function ModulesPage() {
   const [data, setData] = useState<ModulesOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cargando, setCargando] = useState(true);
   const [page, setPage] = useState(0);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
+    setCargando(true);
     try {
       setData(await modulesOverview());
     } catch (e) {
+      // El dato viejo NO se conserva: si esto falla, la pantalla no puede
+      // seguir enseñando la foto anterior como si fuera la de ahora.
+      setData(null);
       setError(e instanceof ApiError ? e.userMessage : "No se han podido cargar los módulos.");
+    } finally {
+      setCargando(false);
     }
   }, []);
 
@@ -52,38 +66,70 @@ export function ModulesPage() {
   }, [load]);
 
   const items = data?.items ?? [];
+  // El "ahora" se congela por render: si no, dos módulos idénticos podrían
+  // salir con estados distintos por unos milisegundos de diferencia.
+  const ahora = new Date();
+  const recuento = recuentoPorEstado(items, ahora);
+  const estadoLista = estadoDeLista({ cargando, error, datos: data ? items : null });
   const pageCount = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
   const clampedPage = Math.min(page, pageCount - 1);
   const pageItems = items.slice(clampedPage * PAGE_SIZE, clampedPage * PAGE_SIZE + PAGE_SIZE);
 
   return (
     <div>
-      <h1>Módulos conectados</h1>
+      <h1>Módulos</h1>
 
-      {error && <ErrorState message={error} onRetry={load} />}
-      {!data && !error && <LoadingState />}
+      {estadoLista === "error" && (
+        <ErrorState
+          message={`${error} No se puede afirmar cuántos módulos hay ni cuántos están en línea: la consulta no llegó a responder.`}
+          onRetry={load}
+        />
+      )}
+      {estadoLista === "cargando" && <LoadingState label="Consultando módulos…" />}
 
-      {data && (
+      {estadoLista === "vacio" && (
+        <Card title="Sin módulos registrados">
+          <p>
+            <strong>0 módulos registrados</strong> — comprobado ahora mismo contra el backend. No es un fallo
+            de consulta: la respuesta llegó y venía vacía.
+          </p>
+          <p className="hint">
+            Un módulo aparece aquí en cuanto se da de alta, aunque todavía no se haya conectado nunca (saldrá
+            como «pendiente»).
+          </p>
+        </Card>
+      )}
+
+      {estadoLista === "con-datos" && (
         <>
           <div className="module-summary" role="group" aria-label="Resumen de módulos">
             <span className="module-summary__stat">
-              <strong>{data.summary.total}</strong> módulos
+              <strong>{recuento.total}</strong> módulos
             </span>
             <span className="module-summary__stat module-summary__stat--ok">
-              <strong>{data.summary.online}</strong> en línea
+              <strong>{recuento.online}</strong> en línea
+            </span>
+            <span className={`module-summary__stat ${recuento.stale > 0 ? "module-summary__stat--warn" : ""}`}>
+              <strong>{recuento.stale}</strong> sin señal reciente
             </span>
             <span className="module-summary__stat">
-              <strong>{data.summary.offline}</strong> desconectados
+              <strong>{recuento.offline}</strong> desconectados
             </span>
-            <span className={`module-summary__stat ${data.summary.updatesPending > 0 ? "module-summary__stat--warn" : ""}`}>
-              <strong>{data.summary.updatesPending}</strong> con actualización pendiente
+            <span className="module-summary__stat">
+              <strong>{recuento.pendiente}</strong> pendientes de primera conexión
+            </span>
+            <span className={`module-summary__stat ${data!.summary.updatesPending > 0 ? "module-summary__stat--warn" : ""}`}>
+              <strong>{data!.summary.updatesPending}</strong> con actualización pendiente
             </span>
           </div>
-
-          {items.length === 0 && <p>No hay módulos {data.summary.total === 0 ? "registrados" : "para mostrar"}.</p>}
+          <p className="hint">
+            «En línea» se cuenta AQUÍ a partir de la última señal de cada módulo, no de la bandera del
+            backend: un módulo que consta conectado pero lleva más de 90 s callado se cuenta como «sin señal
+            reciente», no como en línea.
+          </p>
 
           {pageItems.map((m) => (
-            <ModuleRow key={m.id} module={m} expanded={expanded === m.id} onToggle={() => setExpanded((id) => (id === m.id ? null : m.id))} />
+            <ModuleRow key={m.id} module={m} ahora={ahora} expanded={expanded === m.id} onToggle={() => setExpanded((id) => (id === m.id ? null : m.id))} />
           ))}
 
           {pageCount > 1 && (
@@ -105,14 +151,26 @@ export function ModulesPage() {
   );
 }
 
-function ModuleRow({ module: m, expanded, onToggle }: { module: ModuleOverviewItem; expanded: boolean; onToggle: () => void }) {
+/** Clase CSS de la insignia por estado. `stale` NO comparte color con `online`. */
+const CLASE_INSIGNIA: Record<EstadoModulo, string> = {
+  online: "badge--ok",
+  stale: "badge--warn",
+  offline: "badge--muted",
+  pendiente: "badge--muted",
+};
+
+function ModuleRow({ module: m, ahora, expanded, onToggle }: { module: ModuleOverviewItem; ahora: Date; expanded: boolean; onToggle: () => void }) {
+  const diag = diagnosticarModulo(m, ahora);
+  const config = estadoDeConfiguracion(m);
   return (
     <Card title={m.friendlyName || m.slug}>
       <div className="module-row__head">
         <button type="button" className="module-row__toggle" aria-expanded={expanded} onClick={onToggle}>
           {expanded ? "▾" : "▸"} <code>{m.slug}</code>
         </button>
-        <span className={`badge ${m.online ? "badge--ok" : "badge--muted"}`}>{m.online ? "en línea" : "desconectado"}</span>
+        <span className={`badge ${CLASE_INSIGNIA[diag.estado]}`} title={diag.motivo}>
+          {diag.etiqueta}
+        </span>
         <span>{MODULE_STATE_LABEL[m.state ?? ""] ?? m.state ?? "—"}</span>
         <span>firmware {m.firmwareVersion ?? "—"}</span>
         {m.updateAvailable && (
@@ -127,6 +185,10 @@ function ModuleRow({ module: m, expanded, onToggle }: { module: ModuleOverviewIt
           <p>
             Rol: {ROLE_LABEL[m.role ?? ""] ?? m.role ?? "—"} · Posición: {m.position ? `(${m.position.x}, ${m.position.y})` : "sin asignar"}
             {m.maintenance ? " · en mantenimiento" : ""}
+          </p>
+          <p>{diag.motivo}</p>
+          <p>
+            Configuración: <strong>{config.estado}</strong> — {config.motivo}
           </p>
           <p>
             Dueño: {m.owner ? <strong>{m.owner.displayName || m.owner.username}</strong> : <em>sin vincular</em>} · Última señal:{" "}

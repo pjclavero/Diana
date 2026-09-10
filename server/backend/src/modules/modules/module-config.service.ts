@@ -28,8 +28,20 @@ export class ModuleConfigService {
     private readonly mqtt: MqttService,
   ) {}
 
-  /** Compone la configuración deseada a partir del estado real en la base. */
-  async build(moduleId: string, network?: NetworkConfigInput) {
+  /**
+   * Compone la configuración deseada a partir del estado real en la base.
+   *
+   * `configVersion` se pasa DESDE FUERA porque componer no es reservar: quien
+   * publica de verdad (`push`) reserva antes la versión de forma atómica y
+   * pasa la que le tocó. Antes se calculaba aquí como `configVersion + 1`, y
+   * eso significaba que dos empujones concurrentes leían el mismo N y
+   * publicaban los dos la N+1 — dos configuraciones DISTINTAS con el mismo
+   * número, que es exactamente lo que la versión existe para impedir.
+   *
+   * Sin `configVersion`, `build` devuelve la SIGUIENTE que se emitiría. Es una
+   * vista previa y no escribe nada, así que llamarla no consume número.
+   */
+  async build(moduleId: string, network?: NetworkConfigInput, configVersion?: number) {
     const module = await this.prisma.module.findUnique({
       where: { id: moduleId },
       include: {
@@ -78,7 +90,7 @@ export class ModuleConfigService {
     return {
       schema_version: 1,
       module_id: module.slug,
-      config_version: module.configVersion + 1,
+      config_version: configVersion ?? module.desiredConfigVersion + 1,
       system_id: module.targetSystem?.slug ?? null,
       // Un satélite sigue al principal que se le indique; null = decide él (AUTO).
       coordinator_module_id: coordinatorSlug === module.slug ? null : coordinatorSlug,
@@ -99,27 +111,80 @@ export class ModuleConfigService {
   }
 
   /**
-   * Publica la configuración deseada (retenida) y sube `configVersion`.
-   * Devuelve lo publicado: el módulo puede tardar en aplicarla o no aplicarla,
-   * y eso se sabrá por `config/reported`, no por esta llamada.
+   * Publica la configuración deseada (retenida) y sube la versión DESEADA
+   * exactamente UNA vez por empujón.
+   *
+   * ── El orden importa y es este ───────────────────────────────────────────
+   *   1. RESERVAR la versión con un incremento atómico (`increment: 1`), y
+   *      quedarse con la que devuelve la propia base.
+   *   2. Componer y publicar CON esa versión.
+   *   3. Anotar el resultado del envío en `config_state`.
+   *
+   * Antes era al revés: se componía leyendo `configVersion + 1`, se publicaba
+   * y sólo después se escribía. Dos empujones a la vez leían el mismo N,
+   * publicaban dos configuraciones distintas numeradas N+1 y la base acababa
+   * en N+1 tras dos incrementos. Reservar primero hace que cada empujón se
+   * lleve un número propio; si algo falla después, ese número queda quemado,
+   * que es el lado correcto del error (un hueco en la secuencia no rompe nada,
+   * un número repetido sí).
+   *
+   * Reservar no afirma nada sobre el módulo: `desiredConfigVersion` es lo que
+   * el sistema QUIERE. Lo que el módulo tenga se sabe por `config/reported`, y
+   * hasta que llegue el estado es `pending` (o `failed` si el broker denegó).
    */
   async push(moduleId: string, network?: NetworkConfigInput) {
     if (network && network.mode === 'static' && !network.ip) {
       throw new BadRequestException('Una configuración de red estática necesita una IP.');
     }
-    const payload = await this.build(moduleId, network);
+
+    // Existencia comprobada ANTES de reservar: si el módulo no existe no se
+    // quema un número (y `update` sobre un id inexistente lanzaría un error de
+    // Prisma que no dice qué pasó).
+    const exists = await this.prisma.module.findUnique({
+      where: { id: moduleId },
+      select: { id: true },
+    });
+    if (!exists) throw new NotFoundException(`Módulo ${moduleId} no encontrado`);
+
+    // (1) Reserva atómica. `increment` lo resuelve PostgreSQL en la fila; dos
+    // llamadas simultáneas obtienen números distintos, no el mismo leído dos
+    // veces. `configState` vuelve a `pending`: hay una deseada nueva que el
+    // módulo no ha confirmado, y eso es cierto desde este instante.
+    const reserved = await this.prisma.module.update({
+      where: { id: moduleId },
+      data: {
+        desiredConfigVersion: { increment: 1 },
+        configState: 'pending',
+        configAppliedAt: null,
+      },
+      select: { desiredConfigVersion: true },
+    });
+    const configVersion = reserved.desiredConfigVersion;
+
+    // (2) Publicar CON el número reservado.
+    const payload = await this.build(moduleId, network, configVersion);
     const result = await this.mqtt.publishModuleConfig(
       payload.module_id,
       payload as unknown as Record<string, unknown>,
     );
-    await this.prisma.module.update({
-      where: { id: moduleId },
-      data: { configVersion: payload.config_version },
-    });
+
+    // (3) Una denegación de ACL es un fallo del empujón, y se deja escrito. El
+    // número NO se devuelve: retroceder la deseada la haría no monotónica, y
+    // un reintento posterior emitiría dos payloads distintos con el mismo
+    // número. El hueco es el precio correcto.
+    if (result.denied) {
+      await this.prisma.module.update({
+        where: { id: moduleId },
+        data: { configState: 'failed' },
+      });
+    }
+
     return {
       published: payload,
       delivered: result.delivered,
       denied: result.denied,
+      desiredConfigVersion: configVersion,
+      configState: result.denied ? 'failed' : 'pending',
       note: result.denied
         ? 'ATENCIÓN: el broker DENEGÓ esta publicación (ACL). El módulo NO tiene esta configuración.'
         : 'Configuración deseada publicada. La aplicación real la confirma el módulo en config/reported.',

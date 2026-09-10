@@ -19,6 +19,7 @@ import { DemoPage } from "./pages/demo/DemoPage";
 import { DueloPage } from "./pages/duelo/DueloPage";
 import { ParticipantsPage } from "./pages/participants/ParticipantsPage";
 import { FirmwarePage } from "./pages/firmware/FirmwarePage";
+import { ProvisioningPage } from "./pages/provisioning/ProvisioningPage";
 import { IncidentsPage } from "./pages/incidents/IncidentsPage";
 import { UsersPage } from "./pages/users/UsersPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
@@ -99,6 +100,7 @@ export function App() {
         <Route path="/invitaciones" element={<InvitationsPage />} />
         <Route path="/acceso-gestor" element={<ManagerActivationPage />} />
         <Route path="/firmware" element={<FirmwarePage />} />
+        <Route path="/aprovisionamiento" element={<ProvisioningPage />} />
         <Route path="/incidencias" element={<IncidentsPage />} />
         <Route path="/usuarios" element={<UsersPage />} />
         <Route path="*" element={<NotFoundPage />} />
