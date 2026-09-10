@@ -194,6 +194,28 @@ export function aGameSummary(fila: FilaPartida): GameSummary {
   };
 }
 
+/**
+ * Campos de `ModuleConfig` que la CONFIGURACIÓN DESEADA del backend
+ * (`GET /api/modules/{id}/config/desired`) NO trae, y que aquí se rellenan con
+ * un cero o una cadena vacía porque el tipo del panel los exige.
+ *
+ * Están enumerados para que una pantalla pueda decir «no servido» en vez de
+ * enseñar un 0 que parece un dato: un brillo máximo de 0 o un intervalo de
+ * telemetría de 0 ms son valores IMPOSIBLES en un módulo vivo, y sin embargo
+ * se pintarían igual que cualquier otro número. Es la misma clase de fallo que
+ * la tabla vacía silenciosa, con la diferencia de que aquí el hueco tiene la
+ * apariencia de una medida.
+ *
+ * Esta lista sólo puede encoger: cuando el backend sirva uno de estos campos,
+ * se quita de aquí y se pinta de verdad.
+ */
+export const CAMPOS_NO_SERVIDOS_POR_CONFIG_DESEADA = [
+  "position",
+  "rotation",
+  "led_brightness_max",
+  "telemetry_interval_ms",
+] as const;
+
 export function aModuleConfig(fila: ConfiguracionDeseada, moduleId: string): ModuleConfig {
   const red = fila.network ?? {};
   return {
