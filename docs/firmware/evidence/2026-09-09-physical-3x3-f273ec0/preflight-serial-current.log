@@ -1,0 +1,125 @@
+vision: v1.3
+I (31) boot.esp32s3: Boot SPI Speed : 80MHz
+I (35) boot.esp32s3: SPI Mode       : DIO
+I (39) boot.esp32s3: SPI Flash Size : 8MB
+I (43) boot: Enabling RNG early entropy source...
+I (47) boot: Partition Table:
+I (50) boot: ## Label            Usage          Type ST Offset   Length
+I (56) boot:  0 nvs              WiFi data        01 02 00009000 00006000
+I (63) boot:  1 otadata          OTA data         01 00 0000f000 00002000
+I (69) boot:  2 phy_init         RF data          01 01 00011000 00001000
+I (76) boot:  3 nvs_key          NVS keys         01 04 00012000 00001000
+I (82) boot:  4 ota_0            OTA app          00 10 00020000 00300000
+I (89) boot:  5 ota_1            OTA app          00 11 00320000 00300000
+I (95) boot:  6 evtqueue         Unknown data     01 81 00620000 00180000
+I (102) boot:  7 coredump         Unknown data     01 03 007a0000 00040000
+I (108) boot: End of partition table
+I (112) esp_image: segment 0: paddr=00020020 vaddr=3c070020 size=1f880h (129152) map
+I (142) esp_image: segment 1: paddr=0003f8a8 vaddr=3fc96500 size=00770h (  1904) load
+I (143) esp_image: segment 2: paddr=00040020 vaddr=42000020 size=61a40h (399936) map
+I (216) esp_image: segment 3: paddr=000a1a68 vaddr=3fc96c70 size=030dch ( 12508) load
+I (219) esp_image: segment 4: paddr=000a4b4c vaddr=40374000 size=12404h ( 74756) load
+I (236) esp_image: segment 5: paddr=000b6f58 vaddr=50000000 size=00020h (    32) load
+I (244) boot: Loaded app from partition at offset 0x20000
+I (244) boot: Disabling RNG early entropy source...
+I (254) octal_psram: vendor id    : 0x0d (AP)
+I (254) octal_psram: dev id       : 0x02 (generation 3)
+I (254) octal_psram: density      : 0x03 (64 Mbit)
+I (256) octal_psram: good-die     : 0x01 (Pass)
+I (261) octal_psram: Latency      : 0x01 (Fixed)
+I (265) octal_psram: VCC          : 0x01 (3V)
+I (269) octal_psram: SRF          : 0x01 (Fast Refresh)
+I (274) octal_psram: BurstType    : 0x01 (Hybrid Wrap)
+I (279) octal_psram: BurstLen     : 0x01 (32 Byte)
+I (283) octal_psram: Readlatency  : 0x02 (10 cycles@Fixed)
+I (289) octal_psram: DriveStrength: 0x00 (1/1)
+I (293) MSPI Timing: Enter psram timing tuning
+I (298) esp_psram: Found 8MB PSRAM device
+I (301) esp_psram: Speed: 80MHz
+I (304) cpu_start: Multicore app
+I (723) esp_psram: SPI SRAM memory test OK
+I (733) cpu_start: GPIO 44 and 43 are used as console UART I/O pins
+I (733) cpu_start: Pro cpu start user code
+I (733) cpu_start: cpu freq: 160000000 Hz
+I (735) app_init: Application information:
+I (739) app_init: Project name:     diana_firmware
+I (743) app_init: App version:      21c09db-dirty
+I (748) app_init: Compile time:     Aug 28 2026 00:48:48
+I (753) app_init: ELF file SHA256:  54885ca26...
+I (757) app_init: ESP-IDF:          v5.5.2
+I (761) efuse_init: Min chip rev:     v0.0
+I (765) efuse_init: Max chip rev:     v0.99 
+I (769) efuse_init: Chip rev:         v0.2
+I (773) heap_init: Initializing. RAM available for dynamic allocation:
+I (779) heap_init: At 3FC9EEB8 len 0004A858 (298 KiB): RAM
+I (784) heap_init: At 3FCE9710 len 00005724 (21 KiB): RAM
+I (789) heap_init: At 3FCF0000 len 00008000 (32 KiB): DRAM
+I (794) heap_init: At 600FE000 len 00001FE8 (7 KiB): RTCRAM
+I (800) esp_psram: Adding pool of 8192K of PSRAM memory to heap allocator
+I (807) spi_flash: detected chip: generic
+I (810) spi_flash: flash io: dio
+W (813) spi_flash: Detected size(16384k) larger than the size in the binary image header(8192k). Using the size in the binary image header.
+I (825) sleep_gpio: Configure to isolate all GPIO pins in sleep state
+I (831) sleep_gpio: Enable automatic switching of GPIO sleep configuration
+I (838) esp_core_dump_flash: Init core dump to flash
+I (843) esp_core_dump_flash: Found partition 'coredump' @ 7a0000 262144 bytes
+I (887) esp_core_dump_flash: Core dump data checksum is correct
+I (887) esp_core_dump_flash: Found core dump 32544 bytes in flash @ 0x7a0000
+I (889) main_task: Started on CPU0
+I (892) esp_psram: Reserving pool of 32K of internal memory for DMA/internal allocations
+I (900) main_task: Calling app_main()
+I (903) diana: Diana firmware 0.1.0 arrancando
+I (1017) diana.evtq: cola recuperada: 0 eventos pendientes de 1536 ranuras
+I (1018) diana.hc165: HC165 DO-only inicializado: DATA=38 LOAD=47 CLK=48
+I (1028) diana.led: 3 cadenas de 72 LED inicializadas
+I (2546) esp_eth.netif.netif_glue: 10:20:ba:4b:b7:07
+I (2547) esp_eth.netif.netif_glue: ethernet attached to netif
+E (2551) diana: modulo SIN aprovisionar: falta module_id en NVS
+I (2552) diana: 
+I (2553) diana: DIANA HARDWARE BRING-UP
+I (2556) diana: board: PROTO_DO_W5500
+I (2560) diana: selector:
+I (2562) diana:   GPIO15=1
+I (2564) diana:   GPIO16=0
+I (2567) diana:   mode=SATELITE
+I (2570) diana: identify: HIGH
+I (2572) diana: HC165 RAW: 0b0000000000000000
+I (2577) diana: D1: 0
+I (2579) diana: D2: 0
+I (2581) diana: D3: 0
+I (2583) diana: D4: 0
+I (2585) diana: D5: 0
+I (2587) diana: D6: 0
+I (2589) diana: D7: 0
+I (2591) diana: D8: 0
+I (2593) diana: D9: 0
+I (2595) diana: Ethernet:
+I (2597) diana:   W5500 SPI=OK
+I (2600) diana:   LINK=DOWN
+I (2602) diana:   IP=0.0.0.0
+I (2605) diana: LED:
+I (2607) diana:   ROW1=NOT_TESTED
+I (2610) diana:   ROW2=NOT_TESTED
+I (2613) diana:   ROW3=NOT_TESTED
+I (2616) diana: LED TEST: rojo
+I (3126) diana: LED TEST: verde
+I (3633) diana: LED TEST: azul
+I (4140) diana: LED TEST: blanco tenue
+I (4647) diana: LED TEST: aro 1
+I (5354) diana: LED TEST: aro 2
+I (6061) diana: LED TEST: aro 3
+I (6775) diana: LED TEST: fin
+I (6775) diana: arranque; causa del reinicio anterior: poweron
+W (6785) diana: MQTT deshabilitado hasta aprovisionar module_id
+I (6785) diana.eth: driver arrancado
+I (6787) diana.task: SENSORES raw=0x0000 bits16=0000000000000000 raw D9..D1=000000000 AH=000000000 AL=111111111 cfg=AH count=0
+I (8787) diana.eth: enlace arriba
+I (10687) esp_netif_handlers: eth ip: 192.168.1.168, mask: 255.255.255.0, gw: 192.168.1.1
+I (10687) diana.eth: IP 192.168.1.168
+E (10688) esp_netif_sntp: sntp_init_api(61): Tried to configure SNTP server from DHCP, while disabled. Please enable CONFIG_LWIP_DHCP_GET_NTP_SRV
+E (10700) esp_netif_sntp: esp_netif_sntp_init(119): Failed initialize SNTP service
+W (10708) diana.eth: SNTP no disponible: la caducidad de comandos no se podra verificar (defensa por nonce persistido)
+I (11787) diana.ota: no se confirma OTA: imagen en estado 2
+I (11787) diana: imagen confirmada: rollback automatico cancelado
+I (11787) main_task: Returned from app_main()
+

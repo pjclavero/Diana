@@ -1,0 +1,68 @@
+# manifest.sha256 - evidencia de validacion fisica 3x3
+# SESSION = physical 3x3 validation   DATE = 2026-09-09
+# BRANCH  = mp0/integration           COMMIT = f273ec0057261010772a5b7379f195086d3a1b40
+#
+# Verificable tal cual desde este directorio:
+#     sha256sum -c manifest.sha256
+# Las lineas con '#' son metadatos y las ignora sha256sum.
+#
+# CLASE A - evidencia textual versionada en Git
+# columnas: bytes | clase | git_versioned | descripcion
+# boot-fase3-canonico.log | 6395 | A | yes | FASE 3 - arranque de f273ec0: App version=f273ec0, W5500 LINK=UP, IP 192.168.1.168, sin panic
+b8e77dab16b81c69a8873564c3d31d7a6d8c2fcc0858ba03550f32ec748915ba  boot-fase3-canonico.log
+# boot-tras-identidad-nvs.log | 6569 | A | yes | Arranque tras escribir identidad LAB: desaparece 'falta module_id', aparece guarda de CA (fallo cerrado P0-2)
+32b6b53ff0ddf02719e75e4bea4fcb176acb0bb4e3edb714a7e26413b1207935  boot-tras-identidad-nvs.log
+# build-fase2.log | 147726 | A | yes | FASE 2 - build limpio: 1118 objetivos, 0 warnings, bin 661584 B
+d861b324b6baf608a941a41ed311b6022c72d093423b6e28cb9085afc16c618b  build-fase2.log
+# build-settarget.log | 12363 | A | yes | FASE 2 - idf.py set-target esp32s3
+5816c8dea37e04368f70eb583ca2d21c0c6d20fc69c4d3a8c0da05bbc328b2cc  build-settarget.log
+# control-doble-impacto.log | 13460 | A | yes | Control de doble impacto: NOT_RUN (0 activaciones). Aporta 120 s adicionales de idle sin falsos positivos
+e646775fa290292ae521a4b89a3a7ff73a70049f9467124c56f947e110a8bd8c  control-doble-impacto.log
+# crosstalk-d5.log | 23651 | A | yes | CROSSTALK D5: 38 golpes suave/normal/fuerte/multipunto, 0 contaminacion a vecinas, ~221 s idle sin falsos positivos
+0daffee094d8dc6ec71b87f9d87f9574f99bae0364bc31376dd8db1570cd5a97  crosstalk-d5.log
+# d6-focalizado.log | 28722 | A | yes | D6 dirigida: 12 activaciones limpias -> D6 HEALTHY. 59 activaciones, 1 suprimida, delta 58 (modelo exacto)
+501c71dfb5392fefb432b554ead9f7a5e66167be8997b8b6f0a9c4fb37e70812  d6-focalizado.log
+# evtqueue-baseline.log | 6602 | A | yes | Diagnostico - cola a 0 con modulo sin identidad: hit_event_check rechazaba por module_id vacio
+9a68df8a22f1be59c66f0c92226bd8e5b89258288a610e4adc73146d452e757f  evtqueue-baseline.log
+# faseA-estado-inicial.log | 7058 | A | yes | FASE A - estado inicial para investigar el incidente de alimentacion de 5 V
+8884abe87fa53d89849af6f08b54b3ad5f3d00034d0e427390263f1dd4306382  faseA-estado-inicial.log
+# flash-fase3.log | 4369 | A | yes | FASE 3 - flash a COM6, Hash of data verified
+6b4ed253c5b454273240fcacf4f81deec59b8ec90d46389d23aff55c5ceefb35  flash-fase3.log
+# hit-unico-d1-b.log | 6366 | A | yes | Impacto unico D1 correlacionado: raw=0x0001, pulso 24 ms, cola 1->2 (exactamente 1 evento)
+d922f311107dfe18794a316b9db88660feff242ba3551118ef11e41e935664be  hit-unico-d1-b.log
+# hit-unico-d1.log | 18063 | A | yes | Impacto unico D1 - primera correlacion, cola 1->2
+1f28688b7e6865ddd09a7abe38c6f5635d9b5137b4441480c5d0531a554bc299  hit-unico-d1.log
+# hit45-bloque1.log | 11062 | A | yes | Ronda 45 bloque 1 (arnes con huecos, NO usado como gate)
+1716b515c1e11e569667b5801df847774856241f76bdfefe6b302ee8dd87ec15  hit45-bloque1.log
+# hit45-bloque2.log | 9477 | A | yes | Ronda 45 bloque 2 (arnes con huecos, NO usado como gate)
+194d8d1ceb4568c98ed144f7d0a84b15cbc1b109770d78b9dc1974a0f86f523d  hit45-bloque2.log
+# hit45-bloque3.log | 17846 | A | yes | Ronda 45 bloque 3 D7-D9 sin huecos: 17 activaciones, delta cola 17 (1:1 exacto)
+ce99c0bda8874751c60f6efb621ac803a5146a26c18f5c17a060bb8667fe9665  hit45-bloque3.log
+# hit45-d1d6-limpio.log | 33370 | A | yes | Ronda 45 intentos D1-D6 (incluye ventanas sin datos; conservado por trazabilidad)
+99031063045a12623b59e5e8f21b6654cacf9f5ec612aeb4025832e97b4a224e  hit45-d1d6-limpio.log
+# hit45-final-d1d9.log | 25330 | A | yes | HIT_TEST_45 AUTORITATIVO: 46 activaciones, 9/9 dianas, delta cola 46, multi=0
+1f3126cbe3ee566203798af643d6fd1ab0e14756129a8b6bc685bffcd9338b83  hit45-final-d1d9.log
+# hit90-final-d1d9.log | 59112 | A | yes | HIT_TEST_90: 115 activaciones, multi=1, 3 suprimidas por refractario, delta cola 111 (modelo exacto)
+517b14981ecb951038cebf367f8f00e2f76a97f2b4deef70cfb0472d712493c1  hit90-final-d1d9.log
+# inputs-fase5-grupo1.log | 1302 | A | yes | FASE 5 - entradas D1 D2 D3 (incluye doble impacto real 0x0006 atribuido por el operador)
+28255ea6ba1e44ff8297ca1157d5c957aef16c129ca78d5d3f5c26519dafa665  inputs-fase5-grupo1.log
+# inputs-fase5-grupo2.log | 782 | A | yes | FASE 5 - entradas D4 D5 D6, one-hot limpio
+cecdd1c420906930ebde3560cbf9faead84e5b408fe3a0f88ac6aa3e15056580  inputs-fase5-grupo2.log
+# inputs-fase5-grupo3.log | 1042 | A | yes | FASE 5 - entradas D7 D8 D9, one-hot limpio
+a497a26160cc2fb0006e048ed4d5855a091fb08f83129c1b701cc3f26c8eeb46  inputs-fase5-grupo3.log
+# led-fase4-5pasadas.log | 32151 | A | yes | FASE 4 - LED D1..D9, cinco pasadas deterministas (confirmacion visual del operador)
+0ad716e12c83def88b092f4cc835dcba8c491a9a0a93481b32fec8b4ac663003  led-fase4-5pasadas.log
+# nvs-lab-identity.csv | 145 | A | yes | Receta NVS de la identidad LAB (module_id/system_id en hex). Sin secretos
+8783aebb6ff8ca47f1773ea07b2eb4efb04fc0a9410fcb747192bccbbfebdbe9  nvs-lab-identity.csv
+# preflight-serial-current.log | 6565 | A | yes | FASE 0 - firmware PREVIO en silicio (21c09db-dirty, IDF 5.5.2); coredump de 32544 B detectado
+3cb6faaf316e8c846195c7c3e0cf1d61a1c13fdfc1efd6b1c231bb25430e30f2  preflight-serial-current.log
+#
+# CLASE B - artefactos binarios NO versionados. Se conservan fuera de Git en:
+#     artifacts/firmware/2026-09-09-physical-3x3-f273ec0/   (ruta ignorada)
+# Su contenido NUNCA entra al historial; aqui solo constan nombre, tamano y hash.
+# coredump-preexisting.bin | 262144 | B | no | sha256=34f0f25bc2ab7de4ebf5dcc896187853a145dc32dad4e419cee8f41d9db22aad | EXCLUIDO: HISTORICAL_PREEXISTING_CRASH - memoria de runtime; NO producido por f273ec0
+# nvs-antes.bin | 24576 | B | no | sha256=551b481aadeccdec497447edf9bc2931aaf427120f7800dc0d589ab13ccc3de4 | EXCLUIDO: LOCAL_SENSITIVE_ARTIFACT - volcado NVS previo (identidad/config, posible material futuro)
+# nvs-lab-identity.bin | 24576 | B | no | sha256=54abc21ad7c109ab34b9a62de1288f043f2475491171cb6a99818290ca28bbd1 | EXCLUIDO: LOCAL_SENSITIVE_ARTIFACT - imagen NVS escrita; formato de particion de identidad
+#
+# EXCLUIDO del manifiesto (no es evidencia): progreso.txt, indicador transitorio
+# de progreso del arnes de captura, sobrescrito en cada ventana.
