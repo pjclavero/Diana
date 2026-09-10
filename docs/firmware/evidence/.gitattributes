@@ -1,0 +1,9 @@
+# La evidencia fisica de banco se versiona BYTE A BYTE.
+#
+# Sin esto, core.autocrlf=true normaliza CRLF->LF al indexar los .log de consola
+# serie, y entonces los SHA-256 de manifest.sha256 NO verifican en un checkout
+# con autocrlf=false (Linux, CI): la evidencia pareceria corrupta estando
+# intacta. Comprobado: 2 de 5 ficheros de muestra ya diferian de su blob.
+#
+# `-text` desactiva toda conversion de fin de linea y de codificacion.
+* -text
