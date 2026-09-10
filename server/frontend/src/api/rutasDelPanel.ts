@@ -75,9 +75,9 @@ export const OPERACIONES: Record<string, OperacionClasificada> = {
     veredicto: "PORT_FRONTEND",
     rutaReal: "/api/provisioning/modules/{deviceId}/orders",
     implementadaEn: "server/backend/src/modules/provisioning/provisioning.controller.ts",
-    consumidores: [],
+    consumidores: ["pages/provisioning/ProvisioningPage.tsx"],
     motivo:
-      "Emite la orden FIRMADA del plano DEVICE_MANAGEMENT, con permiso `provisioning:issue` " +
+      "CABLEADA. Emite la orden FIRMADA del plano DEVICE_MANAGEMENT, con permiso `provisioning:issue` " +
       "(hoy sólo el rol administrador). Estuvo en PENDING_CONTRACT mientras el contrato no la " +
       "declaraba; al integrarse el carril de backend se regeneró y YA está en " +
       "`contracts/api/openapi.json`. La prueba que afirmaba su ausencia se puso roja al " +
@@ -88,11 +88,12 @@ export const OPERACIONES: Record<string, OperacionClasificada> = {
     veredicto: "PORT_FRONTEND",
     rutaReal: "/api/provisioning/modules/{deviceId}/state",
     implementadaEn: "server/backend/src/modules/provisioning/provisioning.controller.ts",
-    consumidores: [],
+    consumidores: ["pages/provisioning/ProvisioningPage.tsx"],
     motivo:
-      "Última fotografía OBSERVACIONAL del estado de autoridad que reportó el módulo (el propio " +
-      "backend la marca `observational_only: true`). Cuando se pinte, la pantalla tiene que decir " +
-      "que es lo que el módulo DIJO, no lo que el sistema sabe. Falta regenerar el contrato.",
+      "CABLEADA. Última fotografía OBSERVACIONAL del estado de autoridad que reportó el módulo (el " +
+      "propio backend la marca `observational_only: true`). La pantalla lo dice con esas palabras y " +
+      "no cuelga ninguna acción de ese dato. Su 404 —«nunca ha reportado», el caso normal hoy sin " +
+      "dispositivos físicos— se pinta como «sin estado observado», no como error.",
   },
   getModuleTelemetry: {
     rutaPedida: "/api/modules/{id}/telemetry",

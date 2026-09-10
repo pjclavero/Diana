@@ -53,6 +53,10 @@ const NAV_SECTIONS: { title: string; links: NavLinkDef[] }[] = [
     title: "Sistema",
     links: [
       { to: "/firmware", label: "Firmware", perm: "firmware:read" },
+      // `provisioning:read` NO lo tiene ningún rol salvo el administrador (`*`), y no
+      // se hereda de `commands:publish`: el enlace sólo le aparece a él, y eso es lo
+      // correcto, no un olvido.
+      { to: "/aprovisionamiento", label: "Aprovisionamiento", perm: "provisioning:read" },
       { to: "/incidencias", label: "Incidencias", perm: "incidents:read" },
       { to: "/usuarios", label: "Usuarios y permisos", perm: "users:read" },
     ],

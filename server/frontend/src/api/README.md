@@ -132,22 +132,35 @@ con su veredicto y su evidencia, y las que el backend sí sirve están portadas:
 
 | Veredicto | Nº | Operaciones |
 | --- | --- | --- |
-| `PORT_FRONTEND` (portadas) | 6 | `listModules`, `getModuleConfig`, `getGameState`, `getGameResult`, `listIncidents`, `resolveIncident` |
+| `PORT_FRONTEND` (portadas) | 8 | `listModules`, `getModuleConfig`, `getGameState`, `getGameResult`, `listIncidents`, `resolveIncident`, `issueProvisioningOrder`, `getProvisioningState` |
 | `DUPLICATE` (portada a la ruta que ya usaba otro cliente) | 1 | `listPresets` |
 | `IMPLEMENT_BACKEND` | 3 | `getModuleTelemetry`, `updateModuleConfig`, `startGame` |
 | `OBSOLETE` | 2 | `getTopology`, `saveTopology` |
 | `NOT_NEEDED` | 1 | `listDiagnostics` (el global, sin módulo) |
-| `PENDING_CONTRACT` | 2 | `issueProvisioningOrder`, `getProvisioningState` |
+| `PENDING_CONTRACT` | 0 | — (el veredicto se conserva: volverá a hacer falta) |
 
-**Añadido 2026-09-10: el veredicto `PENDING_CONTRACT` (las dos rutas de
+**Cerrado 2026-09-10 (carril PROVISIONING-UI): las dos rutas de
+aprovisionamiento pasan de `PENDING_CONTRACT` a `PORT_FRONTEND` y están
+CABLEADAS.** Al integrarse el carril de backend se regeneró
+`contracts/api/openapi.json` y las dos rutas aparecieron en él: la prueba que
+afirmaba su ausencia se puso roja, que era exactamente su función. El panel las
+consume desde `provisioningApi.ts` (por la puerta tipada, como `firmwareApi.ts`)
+y las pinta en `pages/provisioning/ProvisioningPage.tsx`, que es lo que ahora
+declaran sus `consumidores`. Tres detalles NO cosméticos de ese cableado: el POST
+no dice «aceptado» sino que enseña `delivered`/`denied`/`timed_out` con su
+`reason_code` (una denegación de ACL del broker sólo se delata por ahí); el 404
+del GET es «sin estado observado todavía», no un error; y `observational_only`
+se dice con esas palabras, sin colgar ninguna acción de ese dato.
+
+**Historia del veredicto `PENDING_CONTRACT` (las dos rutas de
 aprovisionamiento).** No se descubrió pidiéndolas desde una pantalla, sino
 auditando el backend contra el contrato: `ProvisioningController` implementa
 `POST /api/provisioning/modules/{deviceId}/orders` y
 `GET /api/provisioning/modules/{deviceId}/state`, y el contrato del árbol tiene
 **0 apariciones de «provisioning»**. No es «falta escribirla» ni «se porta y
-listo»: lo que falta es regenerar el contrato (`make api-contract`), y hasta
-entonces el panel NO las cablea — cablear a ciegas contra una ruta no declarada
-significa inventarse la forma de la respuesta. La prueba comprueba las dos
+listo»: lo que faltaba era regenerar el contrato (`make api-contract`), y hasta
+que ocurrió el panel NO las cableó — cablear a ciegas contra una ruta no
+declarada significa inventarse la forma de la respuesta. La prueba comprueba las dos
 mitades de la afirmación: que el fichero del backend existe y declara esos
 métodos, y que el contrato no los tiene.
 

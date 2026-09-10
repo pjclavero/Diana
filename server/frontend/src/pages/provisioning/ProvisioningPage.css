@@ -1,0 +1,51 @@
+/* Aprovisionamiento (T2). El color acompaña al texto; NUNCA lo sustituye:
+   un veredicto se lee entero aunque el usuario no distinga los colores. */
+.provisioning__form {
+  display: grid;
+  gap: 0.5rem;
+  max-width: 40rem;
+}
+
+.provisioning__campos {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0.5rem 0 0;
+}
+
+.provisioning__campos dt {
+  font-weight: 600;
+}
+
+.provisioning__campos dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.provisioning__aviso {
+  border-left: 4px solid #b8860b;
+  padding: 0.5rem 0.75rem;
+  background: rgba(184, 134, 11, 0.08);
+}
+
+.provisioning__resultado {
+  border-left: 4px solid #888;
+  padding: 0.5rem 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.provisioning__resultado--entregada {
+  border-left-color: #2e7d32;
+  background: rgba(46, 125, 50, 0.08);
+}
+
+.provisioning__resultado--denegada,
+.provisioning__resultado--no-entregada {
+  border-left-color: #c62828;
+  background: rgba(198, 40, 40, 0.08);
+}
+
+.provisioning__resultado--sin-acuse {
+  border-left-color: #b8860b;
+  background: rgba(184, 134, 11, 0.08);
+}

@@ -1,6 +1,7 @@
 import type { CommandAck, DiagnosticResults, DianaApiClient } from "./client";
 import { ApiError } from "./client";
 import { apiRequestAs } from "./typedRequest";
+import { getProvisioningState, issueProvisioningOrder } from "./provisioningApi";
 import { OPERACIONES, SIN_ATENDER } from "./rutasDelPanel";
 import {
   aGamePreset,
@@ -287,5 +288,12 @@ export function createRealApiClient(): DianaApiClient {
       const page = await apiRequestAs<{ items: UserAccount[] }>()("/api/users", "/api/users?take=500");
       return page.items;
     },
+
+    // --- Aprovisionamiento (T2) ---
+    // Delegado en `./provisioningApi.ts` (mismo patrón que `firmwareApi.ts`):
+    // el adaptador no reinterpreta la respuesta, la pasa tal cual. Cualquier
+    // traducción aquí sería una oportunidad de perder `denied`/`reason_code`.
+    issueProvisioningOrder,
+    getProvisioningState,
   };
 }
