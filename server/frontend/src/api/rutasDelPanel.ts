@@ -72,18 +72,21 @@ export const OPERACIONES: Record<string, OperacionClasificada> = {
    */
   issueProvisioningOrder: {
     rutaPedida: "POST /api/provisioning/modules/{deviceId}/orders",
-    veredicto: "PENDING_CONTRACT",
+    veredicto: "PORT_FRONTEND",
+    rutaReal: "/api/provisioning/modules/{deviceId}/orders",
     implementadaEn: "server/backend/src/modules/provisioning/provisioning.controller.ts",
     consumidores: [],
     motivo:
-      "Emite la orden FIRMADA del plano DEVICE_MANAGEMENT. Existe en el backend con permiso " +
-      "`provisioning:issue` (hoy sólo el rol administrador). Falta regenerar el contrato " +
-      "(`make api-contract`) para poder llamarla desde el panel. Emitirla es la operación más " +
-      "privilegiada del sistema: no se cablea a ciegas contra una ruta no declarada.",
+      "Emite la orden FIRMADA del plano DEVICE_MANAGEMENT, con permiso `provisioning:issue` " +
+      "(hoy sólo el rol administrador). Estuvo en PENDING_CONTRACT mientras el contrato no la " +
+      "declaraba; al integrarse el carril de backend se regeneró y YA está en " +
+      "`contracts/api/openapi.json`. La prueba que afirmaba su ausencia se puso roja al " +
+      "integrar, que es exactamente para lo que existía.",
   },
   getProvisioningState: {
     rutaPedida: "GET /api/provisioning/modules/{deviceId}/state",
-    veredicto: "PENDING_CONTRACT",
+    veredicto: "PORT_FRONTEND",
+    rutaReal: "/api/provisioning/modules/{deviceId}/state",
     implementadaEn: "server/backend/src/modules/provisioning/provisioning.controller.ts",
     consumidores: [],
     motivo:

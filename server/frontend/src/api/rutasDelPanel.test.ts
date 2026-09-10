@@ -63,6 +63,11 @@ describe("clasificación de las rutas que el panel pedía y el backend no expone
         "listIncidents",
         "listModules",
         "resolveIncident",
+        // Las dos de provisioning entraron aquí al integrar el carril de
+        // backend, que regeneró `openapi.json`: dejaron de estar pendientes de
+        // contrato y pasaron a ser sólo cableado de panel.
+        "getProvisioningState",
+        "issueProvisioningOrder",
       ].sort(),
     );
     expect(r.IMPLEMENT_BACKEND.sort()).toEqual(
@@ -71,15 +76,26 @@ describe("clasificación de las rutas que el panel pedía y el backend no expone
     expect(r.OBSOLETE.sort()).toEqual(["getTopology", "saveTopology"].sort());
     expect(r.DUPLICATE).toEqual(["listPresets"]);
     expect(r.NOT_NEEDED).toEqual(["listDiagnostics"]);
-    expect(r.PENDING_CONTRACT.sort()).toEqual(
-      ["getProvisioningState", "issueProvisioningOrder"].sort(),
-    );
+    // Vacío a propósito: el veredicto se conserva en el tipo porque volverá a
+    // hacer falta la próxima vez que el backend implemente algo antes de que el
+    // contrato lo declare. Que hoy no lo use nadie es el estado correcto.
+    expect(r.PENDING_CONTRACT).toEqual([]);
 
     const total = (Object.keys(r) as Veredicto[]).reduce((acc, k) => acc + r[k].length, 0);
     expect(total).toBe(Object.keys(OPERACIONES).length);
   });
 
-  it.each(Object.entries(OPERACIONES))(
+  // Se excluyen las operaciones cuya ruta PEDIDA coincide con la REAL: ahí el
+  // panel pedía la ruta correcta desde el principio y lo que faltaba era que el
+  // contrato la declarase. Ocurrió con provisioning: estas dos pruebas se
+  // pusieron ROJAS al integrar el carril de backend, que regeneró
+  // `openapi.json`. Era justo su función — detectar que el estado cambió —, así
+  // que la corrección es reclasificar, no relajar la comprobación.
+  const pedidaDistintaDeLaReal = Object.entries(OPERACIONES).filter(
+    ([, o]) => !o.rutaReal || partir(o.rutaPedida).ruta !== partir(o.rutaReal).ruta,
+  );
+
+  it.each(pedidaDistintaDeLaReal)(
     "%s · la ruta que el panel pedía NO existe en el contrato",
     (_nombre, op) => {
       const { ruta } = partir(op.rutaPedida);
@@ -149,8 +165,10 @@ describe("clasificación de las rutas que el panel pedía y el backend no expone
         "saveTopology",
         "startGame",
         "listDiagnostics",
-        "issueProvisioningOrder",
-        "getProvisioningState",
+        // provisioning sale de esta lista: SIN_ATENDER significa "no se PUEDE
+        // atender" (la ruta no existe, es obsoleta o falta backend). Desde que
+        // el contrato las declara, sí se pueden llamar. Que estén CABLEADAS es
+        // otra cosa distinta y la vigila `consumidores`.
       ].sort(),
     );
   });
