@@ -37,7 +37,14 @@ Accion: verificar fisicamente cada entrada libre y SER_IN.
 
 ### H12 - Fallo real de sensores no reproducido (SENSOR_POWER_RELIABILITY)
 
-Estado: **fallo real confirmado, causa raiz NO identificada, no reproducido**.
+Estado formal:
+
+```text
+SENSOR_POWER_RELIABILITY = REAL_FAULT_CONFIRMED
+ROOT_CAUSE               = UNKNOWN
+REPRODUCED               = NO
+RESIDUAL_RISK            = MONITORED
+```
 
 Evidencia: el 2026-09-09, antes de la prueba de crosstalk, los nueve sensores
 dejaron de responder. El operador lo detecto por el indicador correcto --- el LED
@@ -52,10 +59,17 @@ congelado (devolvia lecturas validas), ESP32 (sin reset ni panic), dominio de
 (los aros estaban apagados: la carga era de ~200 mA, un buck de 3 A no protege
 ahi). Son cuatro ramas eliminadas, no descartadas por correlacion.
 
-Candidata principal, sin confirmar: **contacto intermitente**, sea en el conector
-entre la fuente y el Mini-560 o en el ramal de 5 V de los sensores. Encaja con
-que ocurriera a carga baja y con que se resolviera reasentando conectores, que es
-la firma clasica de un mal contacto.
+**La causa raiz es DESCONOCIDA.** Lo que sigue son hipotesis no confirmadas, y
+no deben citarse como causa en ningun informe posterior:
+
+- contacto intermitente en el conector entre la fuente y el Mini-560;
+- contacto intermitente en el ramal de 5 V de los sensores;
+- fallo propio del Mini-560.
+
+Las tres encajan con que el fallo ocurriera a carga baja y se resolviera
+reasentando conectores, que es la firma clasica de un mal contacto. Encajar no
+es demostrar: ninguna se ha reproducido ni medido. Cerrar este punto exige
+reproduccion o medida en el estado de fallo, no plausibilidad.
 
 No reproducido en ~9 min de pruebas posteriores (37 activaciones registradas el
 2026-09-10 sin tocar nada). **Riesgo residual vigente.**
@@ -96,9 +110,37 @@ Mini-560 #2 -> +5V_LOG  -> 9 sensores (y VIN del ESP32 en producto)
 GND comun entre ambos y con el ESP32 (el dato WS2812B se referencia a esa masa)
 ```
 
-Accion: montar la separacion, mantener el tope de brillo (216 LED en blanco
-pleno seguirian pasandose de 3 A en la rama de LED), y repetir despues
-INPUT_D1_D9, sanity de impactos D1-D9 y sanity de crosstalk.
+**La separacion NO cierra este pendiente.** Dos Mini-560 en railes separados son
+una **solucion de banco**: reducen el acoplamiento entre la carga conmutada de
+los LED y la alimentacion de los sensores, y permiten seguir validando. No
+sustituyen el requisito de potencia del producto:
+
+```text
+H13 = OPEN / BLOCKING para producto, tambien despues del cambio
+BENCH_MITIGATION = dos Mini-560 en railes separados (+5V_LED / +5V_LOG)
+FINAL_REQUIREMENT = sin satisfacer: BOM exige buck 12->5 V >= 6 A, eff >= 0.93
+```
+
+Motivo tecnico, no formalismo: la rama de LED por si sola puede acercarse o
+superar los 3 A. El presupuesto de potencia atribuye **4,320 A solo a los LED**;
+cuanto de eso se ve realmente depende de la politica de brillo y del estado de
+partida, y **no esta medido**. Un Mini-560 de 3 A alimentando los 216 WS2812B
+puede quedarse corto igual que antes, solo que ahora sin arrastrar consigo a los
+sensores.
+
+Accion: montar la separacion con GND comun, mantener el tope de brillo, y
+**medir la corriente real de la rama +5V_LED** con los nueve aros en el estado
+mas exigente que permita el firmware, antes de dimensionar la fuente definitiva.
+
+Gate corto obligatorio tras el cambio, antes de tocar VERSIONR o iniciar
+ENDURANCE:
+
+```text
+1. alimentacion  : tension en +5V_LED y en +5V_LOG, en reposo y con LED activos
+2. INPUT_D1_D9   : las nueve entradas, bit unico
+3. impactos      : sanity D1-D9 con correlacion activaciones/cola
+4. crosstalk     : sanity corto sobre una diana central
+```
 
 ## P1 - Bring-up
 
