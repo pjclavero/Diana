@@ -14,12 +14,18 @@ Accion: verificar temperatura de ambos 74HC165 con todos los canales conectados.
 
 ### H2 - Nivel DO y divisores
 
-Estado: D1-D3 medidos y validados; D4-D9 pendientes.
+Estado: SUPERADO el 2026-09-09 --- las nueve dianas responden con bit unico
+(`0x001`..`0x100`, active-high) y 220 activaciones analizadas sin atribucion
+cruzada. Falta unicamente confirmar con voltimetro los valores de divisor
+montados en D4-D9. Evidencia: `docs/firmware/evidence/`
+`2026-09-09-physical-3x3-f273ec0/`.
 
 Evidencia D1-D3: DO reposo 0 V, impacto hasta 5 V, divisor instalado y lectura
 HC165 correcta.
 
-Accion: repetir medida en D4-D9 antes de conectarlos al 74HC165.
+Accion residual: confirmar con voltimetro los valores de divisor realmente
+montados en D4-D9. Ya estan conectadas y validadas por lectura; lo que falta
+es cerrar la documentacion de fabricacion, no habilitarlas.
 
 ### H3 - Entradas HC165 libres
 
@@ -28,6 +34,71 @@ Estado: documentadas como no flotantes.
 Evidencia: D4-D9 se indicaron a GND en banco parcial.
 
 Accion: verificar fisicamente cada entrada libre y SER_IN.
+
+### H12 - Fallo real de sensores no reproducido (SENSOR_POWER_RELIABILITY)
+
+Estado: **fallo real confirmado, causa raiz NO identificada, no reproducido**.
+
+Evidencia: el 2026-09-09, antes de la prueba de crosstalk, los nueve sensores
+dejaron de responder. El operador lo detecto por el indicador correcto --- el LED
+del propio modulo sensor NO se encendia al golpear ---, de modo que no fue un
+diagnostico erroneo del sintoma. Se recupero desconectando y reconectando la
+alimentacion de 5 V. El log muestra que el ESP32 no se reinicio y que el HC165
+siguio leyendo, luego el fallo vivio enteramente en el dominio de 5 V.
+
+Descartado con evidencia: software (uptime continuo y tarea registrando), HC165
+congelado (devolvia lecturas validas), ESP32 (sin reset ni panic), dominio de
+3,3 V (3,27 V medidos en ambos registros), e infradimensionado del convertidor
+(los aros estaban apagados: la carga era de ~200 mA, un buck de 3 A no protege
+ahi). Son cuatro ramas eliminadas, no descartadas por correlacion.
+
+Candidata principal, sin confirmar: **contacto intermitente**, sea en el conector
+entre la fuente y el Mini-560 o en el ramal de 5 V de los sensores. Encaja con
+que ocurriera a carga baja y con que se resolviera reasentando conectores, que es
+la firma clasica de un mal contacto.
+
+No reproducido en ~9 min de pruebas posteriores (37 activaciones registradas el
+2026-09-10 sin tocar nada). **Riesgo residual vigente.**
+
+Accion: al reaparecer, NO reciclar la alimentacion. Capturar antes tension en el
+conector del sensor, tension a la salida del Mini-560, tension de entrada de
+12 V, y estado de LEDs y Ethernet. Revisar ademas el Mini-560 por fallo propio.
+
+### H13 - Convertidor 12->5 V infradimensionado
+
+Estado: **abierto, bloqueante para partida real**.
+
+Evidencia: el banco monta un **Mini-560 declarado de 3 A** alimentando un rail de
+5 V unico compartido por 216 WS2812B y 9 sensores.
+`hardware/electronics/calculations/01-presupuesto-potencia-led.md` calcula
+`I_total_pico = 4,320 A (LED) + 0,550 A (logica) = 4,870 A` y concluye
+literalmente «Se exige 6 A como minimo».
+`hardware/electronics/bom/bom-modulo-3x3-preliminar.csv:4` especifica «Buck
+sincrono 12V->5V >=6 A» con «eff >= 0.93 OBLIGATORIO». En pico de diseno el
+convertidor montado iria al 162 % de su regimen nominal.
+
+Con el tope de brillo por defecto (`DIANA_DEFAULT_BRIGHTNESS_MAX = 120`), el
+estado `safe` --- los nueve aros en azul a la vez --- ya estima ~2,7 A, al borde
+de los 3 A. Es el riesgo `riesgos.md:21` («Sobreconsumo LED -> reset o calor»,
+ALTO, marcado MITIGADO EN DISENO con la validacion C1 nunca ejecutada).
+
+Este hallazgo es independiente de H12: no explica aquel fallo.
+
+Decision del operador (2026-09-10): **partir cargas, no sumarlas**. Dos
+convertidores de tension fija en paralelo no reparten corriente --- sin droop ni
+current sharing, el de salida ligeramente mas alta se lleva toda la carga hasta
+entrar en proteccion --- y anaden un modo de fallo nuevo. Se implementa en su
+lugar la separacion que ya exige `riesgos.md` R-09:
+
+```text
+Mini-560 #1 -> +5V_LED  -> 216 WS2812B
+Mini-560 #2 -> +5V_LOG  -> 9 sensores (y VIN del ESP32 en producto)
+GND comun entre ambos y con el ESP32 (el dato WS2812B se referencia a esa masa)
+```
+
+Accion: montar la separacion, mantener el tope de brillo (216 LED en blanco
+pleno seguirian pasandose de 3 A en la rama de LED), y repetir despues
+INPUT_D1_D9, sanity de impactos D1-D9 y sanity de crosstalk.
 
 ## P1 - Bring-up
 
@@ -95,7 +166,27 @@ actualizar firmware/documentacion.
 
 ### H11 - Completar D4-D9
 
-Estado: abierto.
+Estado: SUPERADO el 2026-09-09 --- D4-D9 instaladas y validadas fisicamente
+(bit unico y sin falsos positivos en ~341 s de reposo acumulado). Se conserva
+la entrada por trazabilidad.
 
-Accion: instalar divisores/sensores D4-D9, comprobar bit unico y ausencia de
-falsos positivos.
+Accion: ninguna. Cumplido y verificado; ver H2 para el residual de
+documentacion de valores de divisor.
+
+### H14 - La topologia de alimentacion del banco no es representativa
+
+Estado: abierto, no bloqueante para la validacion fisica en curso.
+
+Evidencia: en banco el ESP32 se alimenta por USB, de modo que su LDO mantiene
+vivos ESP32, HC165 y W5500 aunque el rail de 5 V se hunda. Demostrado el
+2026-09-09: se reciclo el 5 V con el firmware corriendo y no hubo reinicio
+(uptime continuo en `crosstalk-d5.log`). En el producto no hay USB y el ESP32
+colgara del rail de 5 V por VIN.
+
+Consecuencia: el banco es **mas tolerante que el producto**, y una ENDURANCE
+ejecutada asi no ejercita el modo de fallo mas probable en campo --- colapso del
+5 V arrastrando tambien la logica. Cualquier resultado de estabilidad obtenido
+con USB conectado debe declarar este sesgo.
+
+Accion: repetir la prueba de estabilidad con el ESP32 alimentado desde el rail,
+sin USB, antes de declarar validacion representativa del producto.
