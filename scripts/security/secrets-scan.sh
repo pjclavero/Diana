@@ -304,6 +304,22 @@ scan_generic() {
       # que es lo que de verdad abriria un agujero.
       *test*|*TEST*|*prueba*|*PRUEBA*|*no-productivo*|*not-a-production*|*e2e*) continue ;;
     esac
+
+    # El valor es el NOMBRE de una variable de entorno, no un secreto.
+    #
+    # `export const MOSQUITTO_PASSWD_FILE_ENV = 'DIANA_MOSQUITTO_PASSWD_FILE';`
+    # casaba la regla porque el identificador lleva PASSWD y el valor es un
+    # literal largo. Marcarlo es un FALSO POSITIVO, y un escaner que da rojos
+    # falsos acaba desactivado -- que es peor que no tenerlo.
+    #
+    # Un nombre de variable de entorno es MAYUSCULAS, digitos y guiones bajos,
+    # nada mas. Una contrasena real que tuviera EXACTAMENTE esa forma seria
+    # pesima y ademas la cazarian las otras reglas (fichero de credenciales,
+    # PEM, artefacto de CI). No se exceptua ninguna ruta ni ningun fichero: se
+    # afina la regla, que es donde estaba el error.
+    if [[ "$val" =~ ^[A-Z][A-Z0-9_]*$ ]]; then
+      continue
+    fi
     report HARDCODED-CREDENTIAL "$f" "$ln" "asignación de credencial con un valor literal de ${#val} caracteres"
   done < <(grep -nE '^[^#]*\b[A-Za-z0-9_]*(PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY)[A-Za-z0-9_]*\s*[:=]\s*["'"'"']?[^"'"'"'[:space:]]{12,}' "$f" 2>/dev/null || true)
 }
