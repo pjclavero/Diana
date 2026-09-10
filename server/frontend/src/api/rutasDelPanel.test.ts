@@ -43,10 +43,14 @@ function paginas(): string[] {
 }
 
 describe("clasificación de las rutas que el panel pedía y el backend no expone", () => {
-  it("son 13, contadas sobre el registro", () => {
+  it("son 15, contadas sobre el registro", () => {
     // El recuento sale del fichero, no de un informe. Si alguien añade o cierra
     // una operación, esta prueba obliga a actualizar el número a conciencia.
-    expect(Object.keys(OPERACIONES)).toHaveLength(13);
+    //
+    // Eran 13. Las dos nuevas son las del plano de aprovisionamiento, que NO
+    // se descubrieron pidiéndolas desde una pantalla sino auditando el backend
+    // contra el contrato: están implementadas allí y ausentes de éste.
+    expect(Object.keys(OPERACIONES)).toHaveLength(15);
   });
 
   it("el reparto por veredicto es el declarado y suma el total", () => {
@@ -67,6 +71,9 @@ describe("clasificación de las rutas que el panel pedía y el backend no expone
     expect(r.OBSOLETE.sort()).toEqual(["getTopology", "saveTopology"].sort());
     expect(r.DUPLICATE).toEqual(["listPresets"]);
     expect(r.NOT_NEEDED).toEqual(["listDiagnostics"]);
+    expect(r.PENDING_CONTRACT.sort()).toEqual(
+      ["getProvisioningState", "issueProvisioningOrder"].sort(),
+    );
 
     const total = (Object.keys(r) as Veredicto[]).reduce((acc, k) => acc + r[k].length, 0);
     expect(total).toBe(Object.keys(OPERACIONES).length);
@@ -86,6 +93,28 @@ describe("clasificación de las rutas que el panel pedía y el backend no expone
       const { metodo, ruta } = partir(op.rutaReal!);
       expect(Object.keys(contrato.paths)).toContain(ruta);
       if (metodo) expect(Object.keys(contrato.paths[ruta])).toContain(metodo);
+    },
+  );
+
+  /**
+   * `PENDING_CONTRACT` afirma dos cosas a la vez y las dos se comprueban: que
+   * el backend SÍ la tiene (fichero y ruta presentes en el árbol) y que el
+   * contrato NO la declara. El día que se regenere el contrato, la primera
+   * prueba de arriba («la ruta que el panel pedía NO existe») se pondrá roja y
+   * obligará a portarla, que es justo lo que se quiere.
+   */
+  it.each(Object.entries(OPERACIONES).filter(([, o]) => o.veredicto === "PENDING_CONTRACT"))(
+    "%s · está implementada en el backend, en el fichero declarado",
+    (_nombre, op) => {
+      expect(op.implementadaEn, "PENDING_CONTRACT exige señalar dónde está implementada").toBeTruthy();
+      const fichero = path.join(RAIZ, op.implementadaEn!);
+      expect(fs.existsSync(fichero), `${op.implementadaEn} no existe`).toBe(true);
+      const fuente = fs.readFileSync(fichero, "utf8");
+      // El último segmento estable de la ruta ("orders", "state") tiene que
+      // aparecer como decorador de método en ese controlador.
+      const { ruta } = partir(op.rutaPedida);
+      const ultimo = ruta.split("/").filter((t) => !t.startsWith("{")).pop()!;
+      expect(fuente).toMatch(new RegExp(`@(Get|Post|Patch|Put|Delete)\\([^)]*${ultimo}`));
     },
   );
 
@@ -120,6 +149,8 @@ describe("clasificación de las rutas que el panel pedía y el backend no expone
         "saveTopology",
         "startGame",
         "listDiagnostics",
+        "issueProvisioningOrder",
+        "getProvisioningState",
       ].sort(),
     );
   });

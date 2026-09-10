@@ -137,6 +137,21 @@ con su veredicto y su evidencia, y las que el backend sí sirve están portadas:
 | `IMPLEMENT_BACKEND` | 3 | `getModuleTelemetry`, `updateModuleConfig`, `startGame` |
 | `OBSOLETE` | 2 | `getTopology`, `saveTopology` |
 | `NOT_NEEDED` | 1 | `listDiagnostics` (el global, sin módulo) |
+| `PENDING_CONTRACT` | 2 | `issueProvisioningOrder`, `getProvisioningState` |
+
+**Añadido 2026-09-10: el veredicto `PENDING_CONTRACT` (las dos rutas de
+aprovisionamiento).** No se descubrió pidiéndolas desde una pantalla, sino
+auditando el backend contra el contrato: `ProvisioningController` implementa
+`POST /api/provisioning/modules/{deviceId}/orders` y
+`GET /api/provisioning/modules/{deviceId}/state`, y el contrato del árbol tiene
+**0 apariciones de «provisioning»**. No es «falta escribirla» ni «se porta y
+listo»: lo que falta es regenerar el contrato (`make api-contract`), y hasta
+entonces el panel NO las cablea — cablear a ciegas contra una ruta no declarada
+significa inventarse la forma de la respuesta. La prueba comprueba las dos
+mitades de la afirmación: que el fichero del backend existe y declara esos
+métodos, y que el contrato no los tiene.
+
+Con eso, el registro pasa de 13 a **15** operaciones.
 
 Cada veredicto se verifica contra `contracts/api/openapi.json`: la ruta que el
 panel pedía NO debe existir y la ruta real con la que se resuelve SÍ, con su
