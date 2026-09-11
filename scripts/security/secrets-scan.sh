@@ -320,6 +320,23 @@ scan_generic() {
     if [[ "$val" =~ ^[A-Z][A-Z0-9_]*$ ]]; then
       continue
     fi
+
+    # El valor es una RUTA del sistema de ficheros, no un secreto.
+    #
+    # `DIANA_MOSQUITTO_PASSWD_FILE=/app/mqtt-credentials/passwd` casaba por lo
+    # mismo que el caso anterior: el identificador lleva PASSWD y el valor es
+    # largo. Pero lo que dice es DONDE vive el fichero de credenciales, y eso
+    # no es material sensible -- la ruta de un fichero de secretos aparece por
+    # fuerza en la configuracion del despliegue.
+    #
+    # La forma se acota a proposito: empieza por `/`, y ni un solo caracter
+    # fuera de los que puede llevar una ruta. Una contrasena que fuera una ruta
+    # absoluta valida de principio a fin seria pesima, y el resto de reglas
+    # (fichero de credenciales, PEM, artefacto de CI) siguen mirando el
+    # CONTENIDO de lo que haya en esa ruta.
+    if [[ "$val" =~ ^/[A-Za-z0-9._/-]*$ ]]; then
+      continue
+    fi
     report HARDCODED-CREDENTIAL "$f" "$ln" "asignación de credencial con un valor literal de ${#val} caracteres"
   done < <(grep -nE '^[^#]*\b[A-Za-z0-9_]*(PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY)[A-Za-z0-9_]*\s*[:=]\s*["'"'"']?[^"'"'"'[:space:]]{12,}' "$f" 2>/dev/null || true)
 }
