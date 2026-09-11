@@ -2,6 +2,13 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { MqttService } from '../mqtt/mqtt.service';
 
+/**
+ * Dianas por modulo. El contrato lo fija: `module-config.schema.json` declara
+ * `calibration` con `minItems: 9` Y `maxItems: 9`. No es una preferencia de
+ * este servicio, es la forma del mensaje.
+ */
+export const DIANAS_POR_MODULO = 9;
+
 export interface NetworkConfigInput {
   mode: 'dhcp' | 'static';
   ip?: string | null;
@@ -96,7 +103,14 @@ export class ModuleConfigService {
       coordinator_module_id: coordinatorSlug === module.slug ? null : coordinatorSlug,
       position: module.position ? { x: module.position.x, y: module.position.y } : null,
       rotation: module.position?.rotation ?? 0,
-      friendly_name: module.friendlyName,
+      // `friendly_name` es OPCIONAL en el esquema y, cuando está, tiene que ser
+      // `string` — no admite null. Emitir `friendly_name: null` para un módulo
+      // sin nombre amistoso (la columna es nullable) producía un payload fuera
+      // de contrato y, con él, otro 500 en `config/push`. La ausencia se
+      // expresa OMITIENDO la clave, que es lo que el contrato define.
+      ...(module.friendlyName === null || module.friendlyName === undefined
+        ? {}
+        : { friendly_name: module.friendlyName }),
       led_brightness_max: 120,
       telemetry_interval_ms: 1000,
       // DECISIÓN 2: DHCP salvo que el operador fije una IP.
@@ -145,6 +159,29 @@ export class ModuleConfigService {
       select: { id: true },
     });
     if (!exists) throw new NotFoundException(`Módulo ${moduleId} no encontrado`);
+
+    // ── El módulo tiene que estar calibrado. Esto es 400, no 500 ─────────────
+    // Un módulo recién dado de alta no tiene dianas, así que `build` compone
+    // `calibration: []` y el contrato lo rechaza por `minItems: 9`. Eso salía
+    // como un `Error` genérico desde `MqttService.publish` y llegaba al
+    // operador como un 500: «el servidor ha fallado», cuando lo que pasa es
+    // que falta un paso previo que sólo él puede dar. Es un error de entrada
+    // del dominio y se responde como tal, con el número que falta.
+    //
+    // Va ANTES de la reserva a propósito: quemar una versión deseada por una
+    // petición que no podía prosperar deja un hueco en la secuencia sin haber
+    // publicado nada.
+    const dianasCalibradas = await this.prisma.target.count({
+      where: { moduleId, calibrations: { some: {} } },
+    });
+    if (dianasCalibradas !== DIANAS_POR_MODULO) {
+      throw new BadRequestException(
+        `El módulo tiene ${dianasCalibradas} de ${DIANAS_POR_MODULO} dianas con calibración. ` +
+          'El contrato exige las nueve para poder publicar la configuración deseada: ' +
+          'crear las dianas y calibrarlas es requisito previo a este empujón. ' +
+          'No se ha reservado ninguna versión.',
+      );
+    }
 
     // (1) Reserva atómica. `increment` lo resuelve PostgreSQL en la fila; dos
     // llamadas simultáneas obtienen números distintos, no el mismo leído dos

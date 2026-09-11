@@ -272,6 +272,19 @@ suite('BACKEND-REAL · PostgreSQL y Mosquitto de verdad', () => {
 
   /** Arranca el broker con el passwd tal y como esté AHORA. */
   function arrancarBroker(): void {
+    // ── Permisos del fixture, y por qué divergen de producción ──────────────
+    // `MosquittoPasswdStore` deja el passwd en 0640 a propósito: el broker lo
+    // lee por GRUPO. En producción eso funciona porque backend y broker
+    // comparten el gid 1883 sobre un volumen (ver `compose.yml` y
+    // `server/backend/Dockerfile`). Aquí el fichero vive en un directorio
+    // temporal del HOST, propiedad del usuario que ejecuta la suite, y no hay
+    // forma de meter al uid 1883 del contenedor en ese grupo sin privilegios.
+    // Con 0640, mosquitto arranca y muere con `Unable to open pwfile`.
+    //
+    // Se abre a 0644 SÓLO para este fixture efímero, y se deja dicho: la
+    // invariante «0640, ni más ni menos» se mide donde el montaje es el de
+    // verdad, en `tests/e2e/modules-ui` (paso 8, `modoPasswd`).
+    chmodSync(passwdFile, 0o644);
     spawnSync('docker', ['rm', '-f', mqContainer], { stdio: 'ignore' });
     execFileSync('docker', [
       'run', '-d', '--rm',
@@ -487,8 +500,53 @@ suite('BACKEND-REAL · PostgreSQL y Mosquitto de verdad', () => {
       }),
     } as never;
 
+    /**
+     * Un módulo LISTO para recibir configuración: nueve dianas, cada una con
+     * su calibración, creadas en PostgreSQL de verdad.
+     *
+     * Antes estas pruebas creaban el módulo pelado y empujaban. Funcionaba
+     * porque el doble de MQTT no mira el mensaje — pero el contrato exige
+     * `calibration` con nueve elementos, así que en el despliegue real ese
+     * mismo empujón era un 500. Ahora `push` rechaza el módulo sin calibrar
+     * con un 400, y estas pruebas tienen que partir del estado que de verdad
+     * permite empujar.
+     */
+    async function moduloCalibrado(slug: string): Promise<{ id: string }> {
+      const m = await prisma.module.create({ data: { slug } });
+      for (let i = 1; i <= 9; i += 1) {
+        const t = await prisma.target.create({ data: { moduleId: m.id, targetIndex: i } });
+        await prisma.sensorCalibration.create({
+          data: {
+            targetId: t.id,
+            threshold: 1200,
+            hysteresis: 80,
+            noiseFloor: 40,
+            blankingUs: 5000,
+            groupWindowUs: 2000,
+            neighbourRatio: 0.35,
+          },
+        });
+      }
+      return m;
+    }
+
+    it('un módulo SIN las nueve dianas calibradas se rechaza con 400 y sin efectos', async () => {
+      // El caso del módulo recién dado de alta, contra PostgreSQL real: es lo
+      // que le pasa al primer ESP32 que alguien intente configurar antes de
+      // calibrarlo, y tiene que ser un error de entrada, no un 500.
+      const m = await prisma.module.create({ data: { slug: 'module-05' } });
+      const svc = new ModuleConfigService(prisma as never, mqttFalso);
+
+      await expect(svc.push(m.id)).rejects.toMatchObject({ status: 400 });
+
+      // Y no ha consumido versión: comprobado EN LA FILA, no en la excepción.
+      const fila = await prisma.module.findUnique({ where: { id: m.id } });
+      expect(fila!.desiredConfigVersion).toBe(0);
+      expect(fila!.configState).toBe('pending');
+    });
+
     it('un empujón sube la deseada EXACTAMENTE en 1', async () => {
-      const m = await prisma.module.create({ data: { slug: 'module-03' } });
+      const m = await moduloCalibrado('module-03');
       const svc = new ModuleConfigService(prisma as never, mqttFalso);
 
       const r = await svc.push(m.id);
@@ -502,7 +560,7 @@ suite('BACKEND-REAL · PostgreSQL y Mosquitto de verdad', () => {
     it('CINCO empujones concurrentes NO repiten número (reserva atómica)', async () => {
       // Esto es lo que un doble no puede demostrar: la atomicidad la da
       // PostgreSQL, no el código de Node.
-      const m = await prisma.module.create({ data: { slug: 'module-04' } });
+      const m = await moduloCalibrado('module-04');
       const svc = new ModuleConfigService(prisma as never, mqttFalso);
 
       const resultados = await Promise.all([
