@@ -1,0 +1,35 @@
+/* Formularios de alta/edición de módulo: una columna, etiqueta sobre campo. */
+.modulo-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-width: 32rem;
+}
+
+.modulo-form input {
+  padding: 0.4rem 0.5rem;
+}
+
+.modulo-form button[type="submit"] {
+  margin-top: 0.6rem;
+  align-self: flex-start;
+}
+
+.modulo-edicion {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.8rem;
+}
+
+/* El secreto emitido se ve UNA vez: se distingue del resto de la ficha. */
+.credencial-secreto {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
+  padding: 0.4rem 0.5rem;
+  border: 1px dashed currentColor;
+}
+
+.credencial-aviso {
+  font-weight: 600;
+}

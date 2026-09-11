@@ -10,6 +10,7 @@ import {
   recuentoPorEstado,
   type EstadoModulo,
 } from "../../utils/estadoModulo";
+import { AltaModuloCard, EdicionModuloCard } from "../../components/modules/ModuleFormCard";
 import "./ModulesPage.css";
 
 const MODULE_STATE_LABEL: Record<string, string> = {
@@ -79,6 +80,11 @@ export function ModulesPage() {
     <div>
       <h1>Módulos</h1>
 
+      {/* El alta va SIEMPRE visible, también con la lista vacía o en error: dar de
+          alta el primer módulo es justo lo que hay que poder hacer cuando no hay
+          ninguno. Al crear se recarga el resumen. */}
+      <AltaModuloCard onCreado={load} />
+
       {estadoLista === "error" && (
         <ErrorState
           message={`${error} No se puede afirmar cuántos módulos hay ni cuántos están en línea: la consulta no llegó a responder.`}
@@ -129,7 +135,7 @@ export function ModulesPage() {
           </p>
 
           {pageItems.map((m) => (
-            <ModuleRow key={m.id} module={m} ahora={ahora} expanded={expanded === m.id} onToggle={() => setExpanded((id) => (id === m.id ? null : m.id))} />
+            <ModuleRow key={m.id} module={m} ahora={ahora} expanded={expanded === m.id} onToggle={() => setExpanded((id) => (id === m.id ? null : m.id))} onCambiado={load} />
           ))}
 
           {pageCount > 1 && (
@@ -159,7 +165,7 @@ const CLASE_INSIGNIA: Record<EstadoModulo, string> = {
   pendiente: "badge--muted",
 };
 
-function ModuleRow({ module: m, ahora, expanded, onToggle }: { module: ModuleOverviewItem; ahora: Date; expanded: boolean; onToggle: () => void }) {
+function ModuleRow({ module: m, ahora, expanded, onToggle, onCambiado }: { module: ModuleOverviewItem; ahora: Date; expanded: boolean; onToggle: () => void; onCambiado: () => void }) {
   const diag = diagnosticarModulo(m, ahora);
   const config = estadoDeConfiguracion(m);
   return (
@@ -205,6 +211,12 @@ function ModuleRow({ module: m, ahora, expanded, onToggle }: { module: ModuleOve
               </Link>
             )}
           </nav>
+          <EdicionModuloCard
+            moduleId={m.id}
+            slug={m.slug}
+            friendlyName={m.friendlyName}
+            onCambiado={onCambiado}
+          />
         </div>
       )}
     </Card>
