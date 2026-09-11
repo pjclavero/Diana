@@ -7,6 +7,7 @@ import { useAsync } from "../../hooks/useAsync";
 import { Card, ErrorState, LoadingState } from "../../components/ui/Feedback";
 import { BackButton } from "../../components/ui/BackButton";
 import { TargetLight } from "../../components/target/TargetLight";
+import { CredencialMqttCard } from "../../components/modules/CredencialMqttCard";
 import { rotatedTargetIndices } from "../../utils/gridRotation";
 import "./ModuleDetailPage.css";
 
@@ -156,6 +157,11 @@ export function ModuleDetailPage() {
               </>
             )}
           </Card>
+
+          {/* Credencial MQTT del módulo: emisión, metadatos, rotación y
+              revocación. El secreto sólo existe aquí en memoria y sólo hasta
+              que el operador cierra el aviso o abandona la ficha. */}
+          <CredencialMqttCard moduleId={moduleId} slug={module.module_id} />
 
           <Card title="Enlaces">
             <nav aria-label={`Más acciones sobre ${moduleId}`}>
