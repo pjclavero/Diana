@@ -161,6 +161,18 @@ services:
       # si falta. Antes no se pasaba: el backend no arrancaba (fix de contrato
       # de entorno, WP-10).
       JWT_SECRET: ${BACKEND_JWT_SECRET}
+      # --- Cuenta inicial del operador ---------------------------------------
+      # MEDIDO en el primer despliegue de este compose: sin estas variables,
+      # `ensureInitialAdmin` genera una contrasena aleatoria y la escribe UNA
+      # vez en el log de arranque. Si ese mensaje no se captura --- y no se
+      # capturo --- la cuenta queda creada y sin forma de entrar: el unico
+      # camino es borrar la fila de `users` y reiniciar. Pasarlas es lo que
+      # convierte el primer acceso en una operacion repetible.
+      #
+      # Sigue naciendo con `must_change_password`: esto es la credencial de
+      # ENTREGA, no la definitiva.
+      DIANA_ADMIN_USERNAME: ${DIANA_ADMIN_USERNAME:-admin}
+      DIANA_ADMIN_PASSWORD: ${DIANA_ADMIN_PASSWORD}
       # El código lee CORS_ORIGINS (plural, separado por comas), no CORS_ORIGIN.
       # Con el nombre equivocado el panel se quedaba sin CORS (origin:false).
       CORS_ORIGINS: ${BACKEND_CORS_ORIGIN:-http://localhost:8080}
