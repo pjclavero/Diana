@@ -33,13 +33,36 @@ RUN npx prisma generate && npm run build
 FROM node:20.19-bookworm-slim AS runtime
 # openssl: requerido por los engines de Prisma en Debian.
 # wget: lo usa el healthcheck de compose.yml (imagen slim no lo trae).
+# mosquitto: trae `mosquitto_passwd`, que es lo que escribe el fichero de
+#   credenciales del broker cuando el backend emite la identidad MQTT de un
+#   módulo. Sin este binario la emisión falla CERRADA: el backend arranca, dice
+#   «autoridad de credenciales INACTIVA» y ningún ESP32 puede darse de alta.
+#   Instala también el demonio; no se arranca nunca (el CMD es node) y es el
+#   único paquete de Debian que trae la herramienta.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends openssl wget \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends openssl wget mosquitto \
+    && rm -rf /var/lib/apt/lists/* \
+    # El paquete deja un servicio y un passwd propios del broker que este
+    # contenedor no debe tener ni arrancar.
+    && rm -rf /etc/mosquitto /var/lib/mosquitto \
+    # Comprobación de construcción: si un cambio de base o de paquete se lleva
+    # el binario por delante, la imagen NO se construye. La alternativa es
+    # descubrirlo dando de alta el primer módulo físico.
+    && mosquitto_passwd -c -b /tmp/comprobacion usuario clave-de-comprobacion \
+    && grep -q '^usuario:\$7\$' /tmp/comprobacion \
+    && rm -f /tmp/comprobacion
 
 # Usuario NO root explícito (no reutilizamos el usuario 'node' de la imagen base).
+#
+# El grupo `mosquitto` se crea con el GID 1883, que es el del usuario con el que
+# corre `eclipse-mosquitto`. Backend y broker comparten el volumen de
+# credenciales: el backend escribe el `passwd` y el broker lo lee. Compartir el
+# grupo permite dejar el fichero en 0640 —dueño escribe, broker lee, nadie
+# más— en vez de abrirlo a todo el mundo con 0644.
 RUN groupadd --system diana \
-    && useradd --system --gid diana --home-dir /app --shell /usr/sbin/nologin diana
+    && groupadd --system --gid 1883 mosquitto-broker \
+    && useradd --system --gid diana --home-dir /app --shell /usr/sbin/nologin diana \
+    && usermod --append --groups mosquitto-broker diana
 
 WORKDIR /app
 ENV NODE_ENV=production \
@@ -60,8 +83,27 @@ RUN npx prisma generate
 COPY --from=build /app/dist ./dist
 COPY contracts ./contracts
 
+# Fuente ÚNICA de identidades + su generador canónico.
+#
+# `CanonicalIdentitySource` no parsea `identities.json`: invoca
+# `generate-identities.mjs`, que es quien valida la fuente y quien genera la
+# ACL. Los dos tienen que estar DENTRO de la imagen o no hay forma de
+# comprobar que una identidad está declarada antes de emitirle credencial —y
+# una credencial sin regla de ACL autentica y no queda confinada.
+COPY infrastructure/mosquitto/generate-identities.mjs infrastructure/mosquitto/identities.json ./infrastructure/mosquitto/
+
 # Volúmenes montados por compose (diana_exports, diana_firmware).
 RUN mkdir -p /app/exports /app/firmware && chown -R diana:diana /app
+
+# Punto de montaje del volumen de credenciales del broker.
+#
+# Docker inicializa un volumen con nombre copiando el contenido Y los permisos
+# del directorio de la imagen: creándolo aquí con dueño/grupo/modo correctos,
+# el volumen nace así y no hace falta ningún `chown` en tiempo de arranque.
+# El bit setgid (2) hace que lo que se cree dentro herede el grupo del broker.
+RUN mkdir -p /app/mqtt-credentials \
+    && chown diana:mosquitto-broker /app/mqtt-credentials \
+    && chmod 2770 /app/mqtt-credentials
 
 USER diana
 EXPOSE 3000

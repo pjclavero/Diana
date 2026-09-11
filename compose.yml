@@ -169,10 +169,24 @@ services:
       # debe ser la dirección del backend en la RED LOCAL (la usa el módulo en la OTA).
       FIRMWARE_DIR: ${FIRMWARE_DIR:-/app/firmware}
       FIRMWARE_PUBLIC_BASE_URL: ${FIRMWARE_PUBLIC_BASE_URL:-http://localhost:8080}
+      # --- Autoridad de credenciales MQTT (T4) --------------------------------
+      # Sin estas dos, `MosquittoPasswdStore` no se construye y el backend
+      # arranca diciendo «autoridad de credenciales MQTT INACTIVA»: falla
+      # CERRADO, que es correcto, pero ningun ESP32 puede darse de alta.
+      # La ruta es la del volumen compartido con el broker.
+      DIANA_MOSQUITTO_PASSWD_FILE: /app/mqtt-credentials/passwd
+      # Fuente UNICA de identidades. Se consulta invocando el generador
+      # canonico, que es el mismo que produce la ACL: asi no puede existir una
+      # credencial que ninguna regla de autorizacion respalde.
+      DIANA_IDENTITY_GENERATOR: /app/infrastructure/mosquitto/generate-identities.mjs
+      DIANA_IDENTITIES_FILE: /app/infrastructure/mosquitto/identities.json
       TZ: UTC
     volumes:
       - diana_exports:/app/exports
       - diana_firmware:/app/firmware
+      # ESCRITURA: este es el unico contenedor que escribe credenciales, y esta
+      # es la unica ruta por la que puede hacerlo.
+      - mqtt_credentials:/app/mqtt-credentials
       # Solo el certificado PUBLICO de la CA (ca.key jamas sale de su carpeta).
       - ./infrastructure/mosquitto/certs/ca.crt:/app/certs/mqtt-ca.crt:ro
     networks:
@@ -258,6 +272,50 @@ services:
   # ----------------------------------------------------------------------------
   # Migraciones (Prisma) — job de arranque, no un servicio persistente
   # ----------------------------------------------------------------------------
+  # ----------------------------------------------------------------------------
+  # Siembra del `passwd` del broker (una sola vez, antes de que arranque nadie)
+  # ----------------------------------------------------------------------------
+  # El volumen de credenciales nace vacio. Las credenciales de ARRANQUE --el
+  # propio backend, el healthcheck, el operador-- las genera el operador fuera,
+  # con `infrastructure/mosquitto/generate-users.sh`, y viven en
+  # `infrastructure/mosquitto/passwd`. Este paso las copia dentro del volumen la
+  # primera vez.
+  #
+  # COPIA, no sobreescribe: a partir del segundo arranque el fichero del volumen
+  # es la version buena --lleva las credenciales que el backend ha emitido a los
+  # modulos-- y el del host es el sembrado original. Pisarlo en cada `up`
+  # dejaria sin credencial a todos los modulos ya dados de alta.
+  mqtt-credentials-init:
+    build:
+      context: .
+      dockerfile: server/backend/Dockerfile
+    image: diana/backend:local
+    restart: "no"
+    user: root
+    volumes:
+      - mqtt_credentials:/app/mqtt-credentials
+      - ./infrastructure/mosquitto/passwd:/siembra/passwd:ro
+    command:
+      - sh
+      - -c
+      - |
+        set -eu
+        destino=/app/mqtt-credentials/passwd
+        if [ -s "$$destino" ]; then
+          echo "[siembra] $$destino ya tiene $$(wc -l < "$$destino") identidades: no se toca."
+        else
+          echo "[siembra] copiando credenciales de arranque"
+          cp /siembra/passwd "$$destino"
+        fi
+        # Dueno y modo explicitos: el backend (uid diana) escribe, el broker
+        # (gid 1883) lee, nadie mas. No se deja al umask.
+        chown diana:1883 "$$destino"
+        chmod 0640 "$$destino"
+        echo "[siembra] $$(ls -l "$$destino")"
+    networks:
+      - internal
+    logging: *default-logging
+
   migrate:
     build:
       context: .
@@ -327,6 +385,14 @@ services:
   mosquitto:
     image: eclipse-mosquitto:2.0.18
     restart: unless-stopped
+    # El entrypoint oficial sigue delante (prepara permisos y baja privilegios
+    # al usuario mosquitto); solo se sustituye el comando, que normalmente es
+    # `mosquitto -c ...`. El script arranca ese mismo broker y anade el
+    # vigilante del fichero de credenciales.
+    command: ["/usr/local/bin/reload-on-passwd-change.sh"]
+    depends_on:
+      mqtt-credentials-init:
+        condition: service_completed_successfully
     ports:
       # Camino recomendado: MQTT sobre TLS.
       - "${MQTT_TLS_PORT:-8883}:8883"
@@ -341,7 +407,16 @@ services:
     volumes:
       - ./infrastructure/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - ./infrastructure/mosquitto/acl:/mosquitto/config/acl:ro
-      - ./infrastructure/mosquitto/passwd:/mosquitto/config/passwd:ro
+      # El `passwd` YA NO se monta como fichero suelto: `mosquitto_passwd`
+      # reescribe y renombra, y un bind de fichero ata el contenedor al inodo
+      # viejo -- el broker no veria ni una credencial nueva, sin error alguno.
+      # Va en un volumen compartido, montado como DIRECTORIO y en solo lectura:
+      # el broker lo lee, no lo escribe.
+      - mqtt_credentials:/mosquitto/credentials:ro
+      # Vigilante de recarga: manda SIGHUP al broker cuando el backend escribe
+      # una credencial nueva. Sin el, la credencial existe en disco y no existe
+      # para quien tiene que aceptarla.
+      - ./infrastructure/mosquitto/reload-on-passwd-change.sh:/usr/local/bin/reload-on-passwd-change.sh:ro
       # Material TLS generado por infrastructure/mosquitto/generate-certs.sh.
       # Se montan los TRES ficheros uno a uno, NO el directorio: montar la
       # carpeta entera meteria tambien `ca.key` dentro del contenedor si alguien
@@ -633,3 +708,11 @@ volumes:
     name: diana_exports
   diana_firmware:
     name: diana_firmware
+  # Fichero `passwd` del broker. Volumen COMPARTIDO backend (rw) / broker (ro):
+  # el backend es la autoridad que emite credenciales y el broker quien las
+  # acepta. Volumen con nombre y no un bind del host a proposito -- Docker lo
+  # inicializa con el dueno, grupo y modo del directorio de la imagen del
+  # backend (diana:1883, 2770), asi que no depende del uid del operador ni hace
+  # falta ningun chown al arrancar.
+  mqtt_credentials:
+    name: diana_mqtt_credentials
