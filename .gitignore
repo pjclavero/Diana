@@ -66,3 +66,15 @@ infrastructure/mosquitto/passwd
 # patron sin anclar dejaria en silencio fuera de control cualquier fichero
 # nuevo de ese otro directorio. Comprobado con `ls-files`.
 infrastructure/mosquitto/certs/
+
+# Artefactos binarios locales de banco: NUNCA al historial.
+# Volcados de NVS (identidad/configuracion del modulo) y coredumps (memoria de
+# runtime). Se conservan en disco para analisis, pero fuera de Git. La ruta se
+# ancla a la raiz para no capturar ningun otro `artifacts/` anidado.
+/artifacts/
+
+# Excepcion acotada a la regla `*.log` de arriba: la evidencia fisica de banco
+# SI se versiona. Sin esta linea los logs se copiarian y Git los ignoraria en
+# silencio, dando por preservada una evidencia que no estaria en el historial.
+# Se ancla a esta ruta exacta: no reactiva ningun otro `.log` del arbol.
+!docs/firmware/evidence/**/*.log

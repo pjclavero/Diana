@@ -85,3 +85,68 @@ ESP32 3.3 V -> 74AHCT125 alimentado a 5 V -> WS2812B data 5 V
 ```
 
 Estado: pendiente de instalar.
+
+## Arquitectura de alimentacion MEDIDA en banco (2026-09-10)
+
+Hasta esta fecha este documento y `componentes.md:19` decian «Separar railes;
+pendientes de medicion». Esto es la medicion.
+
+```text
+transformador 12 V / 12 A
+        |
+        +--> Mini-560 (declarado 3 A) --> RAIL 5 V UNICO --+--> 9 aros WS2812B (216 LED)
+                                                           +--> 9 sensores piezo DO
+        (dominio ELECTRICAMENTE INDEPENDIENTE durante el banco)
+USB del portatil --> ESP32-S3 --> LDO 3V3 --+--> 74HC165 #1 y #2
+                                            +--> W5500
+```
+
+Medido con multimetro, modulo alimentado y en reposo:
+
+| Punto | Esperado | Medido | Resultado |
+|---|---|---|---|
+| 74HC165 #1, VCC-GND | 3,20-3,40 V | **3,27 V** | OK |
+| 74HC165 #2, VCC-GND | 3,20-3,40 V | **3,27 V** | OK |
+
+Ambos registros comparten alimentacion desde el pin 3V3 de la placa ESP32, sin
+caida apreciable entre uno y otro.
+
+### Los dos dominios son independientes: demostrado, no supuesto
+
+Durante la sesion del 2026-09-09 se reciclo la alimentacion de 5 V con el
+firmware corriendo. El log de consola (`docs/firmware/evidence/`
+`2026-09-09-physical-3x3-f273ec0/crosstalk-d5.log`) no contiene ningun reinicio
+en ese momento: el uptime es continuo `8977 -> 52448 -> 55140 ms` y el HC165
+siguio leyendo. El ESP32, el HC165 y el W5500 no se enteraron.
+
+Efecto secundario util: al devolver el 5 V, los nueve comparadores arrancan y
+sus salidas DO pasan brevemente a alto. Eso produce `raw=0x01ff` (nueve canales)
+seguido de `raw=0x019f`. **No es diafonia**: un impacto doble real produce DOS
+bits (`raw=0x0003` = D1+D2, observado el 2026-09-10). El firmware rechaza ambos
+por MULTI_TRIGGER y no genera ningun evento, de modo que un transitorio de
+alimentacion no inventa puntuaciones.
+
+### Esta independencia es un artefacto del banco, NO del producto
+
+En banco el ESP32 va por USB, asi que su LDO mantiene vivos ESP32, HC165 y W5500
+pase lo que pase en el rail de 5 V. **En el producto no hay USB**: el ESP32 se
+alimentara del rail de 5 V por VIN y su LDO colgara de ahi. Con esa topologia un
+hundimiento del 5 V arrastra tambien la logica, y el sintoma deja de ser «los
+sensores no responden» para pasar a «el modulo se reinicia».
+
+Consecuencia directa: toda evidencia de estabilidad obtenida con USB conectado
+--- incluida una futura ENDURANCE --- **no ejercita el modo de fallo mas probable
+en campo**. Debe declararse al usarla. Ver `pendientes.md` H14.
+
+### Punto ciego de diagnostico: `raw=0x0000` es ambiguo
+
+Si el 74HC165 pierde alimentacion o muere, la linea DATA queda a nivel bajo y el
+firmware lee `0x0000`, que es **identico** a «ninguna diana golpeada». No existe
+bit canario: el `SER_IN` del primer HC165 esta a nivel fijo bajo
+(`conexionado.md`), asi que no delata nada.
+
+El indicador fiable en banco es el **LED del propio modulo sensor**: se alimenta
+del VCC del sensor, de modo que encenderse demuestra a la vez que el sensor tiene
+5 V y que ha disparado. Es el observable que hay que mirar, no los aros: golpear
+NO enciende ningun aro en la imagen de operacion (requiere
+`CONFIG_DIANA_BENCH_HIT_LED_TEST`, desactivado).

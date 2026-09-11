@@ -1,0 +1,4 @@
+key,type,encoding,value
+diana_id,namespace,,
+module_id,data,hex2bin,6c61622d6d6f64756c652d3031
+system_id,data,hex2bin,6c61622d62656e63682d337833

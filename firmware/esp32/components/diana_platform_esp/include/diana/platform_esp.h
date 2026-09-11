@@ -106,6 +106,49 @@ int diana_platform_eth_start(diana_platform *p, bool use_static,
 
 bool diana_platform_eth_available(diana_platform *p);
 
+/**
+ * Clasificacion de la lectura de VERSIONR (registro 0x0039 del W5500).
+ *
+ * VERSIONR es un observable DISTINTO de la disponibilidad del driver: que
+ * `diana_platform_eth_available()` devuelva true solo dice que el driver se
+ * instalo, no que el SPI hable de verdad con el chip.
+ */
+typedef enum {
+    DIANA_W5500_VERSION_OK = 0,     /* 0x04: el unico valor valido */
+    DIANA_W5500_VERSION_INVALID,    /* 0x00: la incidencia historica */
+    DIANA_W5500_VERSION_UNEXPECTED, /* cualquier otro valor */
+    DIANA_W5500_VERSION_READ_ERROR, /* la transaccion SPI no se completo */
+} diana_w5500_version_class;
+
+const char *diana_w5500_version_class_str(diana_w5500_version_class c);
+
+/**
+ * Lee VERSIONR UNA vez, por el mismo camino SPI que usa el driver Ethernet y
+ * bajo su mismo mutex.
+ *
+ * NO reintenta: si el chip devuelve 0x00, esta funcion devuelve 0x00. Envolver
+ * esto en un bucle hasta obtener 0x04 destruiria su unico proposito.
+ *
+ * @return 0 si la transaccion SPI se completo, aunque el valor no sea 0x04.
+ */
+int diana_platform_eth_versionr(diana_platform *p, uint8_t *out_value,
+                                diana_w5500_version_class *out_class);
+
+/**
+ * PRIMERA lectura de VERSIONR, tomada durante la inicializacion del SPI y
+ * ANTES de que ESP-IDF ejecute su `w5500_verify_id()`.
+ *
+ * Esa funcion de ESP-IDF sondea VERSIONR en bucle hasta obtener 0x04 --- su
+ * propio comentario dice que algunos W5500 devuelven 0 justo tras el reset ---
+ * y solo registra el valor si agota el timeout. Es decir: el 0x00 historico
+ * puede estar ocurriendo en cada arranque sin dejar rastro. Esta lectura es la
+ * que lo delata, y se conserva aunque despues el chip responda 0x04.
+ *
+ * @return false si aun no se ha tomado.
+ */
+bool diana_platform_eth_versionr_first(diana_platform *p, uint8_t *out_value,
+                                       diana_w5500_version_class *out_class);
+
 #ifdef __cplusplus
 }
 #endif
