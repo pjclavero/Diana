@@ -1,0 +1,18 @@
+# Perfil de BANCO · modulo fisico contra VM109 (192.168.1.209).
+#
+# SE VERSIONA A PROPOSITO. No es una conveniencia local: sin el, cualquiera que
+# compile para el banco tiene que recordar dos valores de memoria, y el binario
+# sale `-dirty` por una configuracion perfectamente legitima --- lo que impide
+# atar una imagen en silicio a un commit identificable.
+#
+# Aqui NO hay ninguna credencial y no puede haberla: la contrasena MQTT vive en
+# NVS (namespace diana_id, clave mqtt_pass) y no toca el binario. Comprobado:
+# `grep` de la contrasena sobre diana_firmware.bin da 0 apariciones.
+#
+# Uso:
+#   SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.banco" idf.py build
+
+CONFIG_DIANA_BROKER_HOST="192.168.1.209"
+CONFIG_DIANA_BROKER_PORT=8883
+CONFIG_DIANA_MQTT_INSECURE_LAB=n
+CONFIG_DIANA_NTP_HOST="192.168.1.209"
