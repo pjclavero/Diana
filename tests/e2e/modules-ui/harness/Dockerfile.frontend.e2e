@@ -1,0 +1,62 @@
+# syntax=docker/dockerfile:1
+# ==============================================================================
+# Diana · E2E MODULES-UI — imagen del PANEL para el arnés
+# ==============================================================================
+# Es `server/frontend/Dockerfile` con **CERO divergencias de sustancia**: mismo
+# `FROM`, mismo `npm ci`, mismo `npm run build` (`tsc -b && vite build`), mismo
+# runtime `nginxinc/nginx-unprivileged`, mismo `nginx.conf` del repositorio y
+# mismo puerto 8080. Lo único que cambia es el CONTEXTO de build (aquí es
+# `server/frontend/`, igual que el original) y que los `ARG` se rellenan desde
+# `up.sh` para apuntar al backend efímero de este carril.
+#
+# EL GUARDIÁN NO SE TOCA. `vite.config.ts` aborta la build si alguien pide
+# `VITE_API_MODE=mock` en una compilación de producción («CONFIGURACIÓN
+# PROHIBIDA»). Aquí se construye en `real` — que además es ya el defecto del
+# árbol — y por eso la build pasa. Si algún día fallara con ese mensaje, la
+# corrección es pasar el modo correcto, nunca desactivar el complemento.
+#
+# SOBRE EL `chown -R` DE ROOTLESS: el aviso del encargo apunta al
+# `chown -R diana:diana /app` del Dockerfile del BACKEND, que con docker
+# rootless sobre fuse-overlayfs no termina. **El Dockerfile del frontend no
+# tiene ese patrón**: sólo hace `COPY --chown=nginx:nginx` de `nginx.conf` y de
+# `/app/dist` (unos pocos ficheros ya construidos), no un recursivo sobre
+# `node_modules`. Comprobado leyendo `server/frontend/Dockerfile`. Por tanto
+# **este carril NO necesita ninguna divergencia** por ese motivo y no la
+# introduce.
+#
+# CONTEXTO DE BUILD: server/frontend
+#   docker build -f tests/e2e/modules-ui/harness/Dockerfile.frontend.e2e \
+#     -t diana/frontend:e2emodules server/frontend
+# ==============================================================================
+
+FROM node:20.19-bookworm-slim AS build
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . .
+
+# `real` explícito, no heredado. El backend usa prefijo `api` SIN versión, y
+# `typedRequest.baseOrigin()` le quita el sufijo `/api` a esta variable porque
+# las rutas del contrato ya lo traen: por eso se pasa `http://host:puerto/api`
+# y no `http://host:puerto`.
+ARG VITE_API_MODE=real
+ARG VITE_API_BASE_URL
+ARG VITE_AUTH_BASE_URL
+ARG VITE_WS_URL
+ENV VITE_API_MODE=${VITE_API_MODE} \
+    VITE_API_BASE_URL=${VITE_API_BASE_URL} \
+    VITE_AUTH_BASE_URL=${VITE_AUTH_BASE_URL} \
+    VITE_WS_URL=${VITE_WS_URL}
+RUN npm run build
+
+FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
+USER nginx
+COPY --chown=nginx:nginx nginx.conf /etc/nginx/conf.d/default.conf
+COPY --chown=nginx:nginx --from=build /app/dist /usr/share/nginx/html
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1

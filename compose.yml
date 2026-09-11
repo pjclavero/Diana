@@ -76,11 +76,12 @@ services:
       context: ./server/frontend
       dockerfile: Dockerfile
       args:
-        # `mock` por defecto A PROPÓSITO, y hay que saberlo: con este valor el
-        # panel NO habla con el backend, sirve datos de demostración. Pasar a
-        # `real` exige antes cerrar X-21 (las pantallas heredadas siguen en
-        # datos de demostración y fallarían contra el backend real).
-        VITE_API_MODE: ${VITE_API_MODE:-mock}
+        # `real` por defecto: este compose construye la imagen que se despliega,
+        # y una imagen de despliegue no puede salir con datos de demostración
+        # por omisión (era el caso, y no se notaba desde la pantalla). Poner
+        # `mock` aquí NO produce un panel de demostración silencioso: la build
+        # de producción falla con el motivo (src/api/apiMode.ts).
+        VITE_API_MODE: ${VITE_API_MODE:-real}
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
         VITE_WS_URL: ${VITE_WS_URL:-/ws}
     image: diana/frontend:local

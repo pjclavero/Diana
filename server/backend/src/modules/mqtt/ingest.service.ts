@@ -15,6 +15,7 @@ import {
   HitAttributorPort,
 } from '../hits/ports';
 import { PROVISION_STATE_SINK, ProvisionStateSinkPort } from '../provisioning/provisioning.ports';
+import { CONFIG_REPORTED_SINK, ConfigReportedSinkPort } from '../modules/module-config.ports';
 
 export type IngestStatus = 'accepted' | 'duplicate' | 'rejected' | 'ignored';
 
@@ -97,6 +98,12 @@ export class IngestService {
      * servicio a mano. El sumidero lo aporta ProvisioningModule; sin él la
      * ingesta sigue validando y contando el mensaje, sólo que no lo persiste. */
     @Optional() @Inject(PROVISION_STATE_SINK) private readonly provisionState?: ProvisionStateSinkPort,
+    /* T2 · `config/reported`. Opcional y AL FINAL por el mismo motivo que el
+     * anterior: las pruebas que construyen este servicio a mano no deben tener
+     * que cambiar de firma. Sin sumidero la ingesta valida y cuenta el mensaje
+     * pero no persiste la versión reportada, que es exactamente lo que hacía
+     * antes de existir este puerto. */
+    @Optional() @Inject(CONFIG_REPORTED_SINK) private readonly configReported?: ConfigReportedSinkPort,
   ) {
     this.options = { ...DEFAULT_OPTIONS, ...(options ?? {}) };
   }
@@ -270,6 +277,42 @@ export class IngestService {
         .catch((error: unknown) => {
           this.logger.error(
             `provision/state aceptado pero no persistido (${parsed.id}): ` +
+              `${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
+    }
+
+    // T2 · versión de configuración REPORTADA. Este mensaje se validaba y se
+    // tiraba, así que `config_version` en la base era sólo lo que el backend
+    // había PUBLICADO: la columna afirmaba que el módulo corría una versión
+    // que nadie había confirmado. Aquí, y sólo aquí, cambia la reportada.
+    //
+    // No cuenta como señal de vida: `config/reported` es RETENIDO (contrato
+    // §2), así que al reconectar el broker lo reentrega y dar por vivo a
+    // alguien por haberlo recibido resucitaría módulos apagados. Ese es el
+    // mismo motivo por el que `module-status` tampoco cuenta.
+    if (parsed.kind === 'module-config-reported' && this.configReported) {
+      const c = payload as unknown as {
+        module_id: string;
+        config_version: number;
+        applied_at?: string | null;
+      };
+      const appliedAt = c.applied_at ? new Date(c.applied_at) : null;
+      await this.configReported
+        .record(
+          parsed.id,
+          c.config_version,
+          appliedAt !== null && !Number.isNaN(appliedAt.getTime()) ? appliedAt : null,
+          receivedAt,
+        )
+        .then((r) => {
+          if (r.outcome === 'rejected' || r.outcome === 'unknown_module') {
+            this.logger.warn(`config/reported de ${parsed.id} no aplicado: ${r.reason}`);
+          }
+        })
+        .catch((error: unknown) => {
+          this.logger.error(
+            `config/reported aceptado pero no persistido (${parsed.id}): ` +
               `${error instanceof Error ? error.message : String(error)}`,
           );
         });

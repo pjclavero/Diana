@@ -24,7 +24,16 @@ export type Veredicto =
   /** Ya hay otro cliente del panel que hace exactamente esto. */
   | "DUPLICATE"
   /** Nadie la llama y no cubre ninguna necesidad viva. */
-  | "NOT_NEEDED";
+  | "NOT_NEEDED"
+  /**
+   * El backend YA la implementa, pero el contrato generado NO la declara, así
+   * que el panel no puede llamarla por la puerta de tipos. No es «falta
+   * escribirla» (`IMPLEMENT_BACKEND`) ni «se porta y listo» (`PORT_FRONTEND`):
+   * lo que falta es REGENERAR `contracts/api/openapi.json` desde el backend
+   * (`make api-contract`). Se distingue porque la acción correctora es otra y
+   * la ejecuta otro carril.
+   */
+  | "PENDING_CONTRACT";
 
 export interface OperacionClasificada {
   /** Ruta que el panel pedía y el backend no expone con ese nombre. */
@@ -32,6 +41,11 @@ export interface OperacionClasificada {
   veredicto: Veredicto;
   /** Ruta real del contrato con la que se resuelve, si la hay. */
   rutaReal?: string;
+  /**
+   * Para `PENDING_CONTRACT`: fichero del backend donde la ruta ya está
+   * implementada. Es la evidencia de que existe pese a no estar en el contrato.
+   */
+  implementadaEn?: string;
   /** Quién la llamaba. Vacío = nadie: dato, no opinión (se comprueba en la prueba). */
   consumidores: string[];
   motivo: string;
@@ -47,6 +61,40 @@ export const OPERACIONES: Record<string, OperacionClasificada> = {
       "El contrato lista módulos globalmente y la fila trae `targetSystemId`: " +
       "el filtro por sistema se hace aquí. No hay nada que implementar en el backend.",
   },
+  /* ── Aprovisionamiento (T2) ──────────────────────────────────────────────
+   * Las dos rutas del plano de aprovisionamiento están escritas y montadas en
+   * el backend (`ProvisioningController`, `@Controller('provisioning')`), y
+   * NINGUNA de las dos aparece en `contracts/api/openapi.json`: el contrato
+   * del árbol es anterior a ese controlador (0 apariciones de «provisioning»
+   * en el JSON, comprobado por la prueba). Mientras eso siga así, el panel no
+   * puede llamarlas por la puerta de tipos, y esta pantalla NO se dibuja con
+   * datos inventados: se declara el hueco.
+   */
+  issueProvisioningOrder: {
+    rutaPedida: "POST /api/provisioning/modules/{deviceId}/orders",
+    veredicto: "PORT_FRONTEND",
+    rutaReal: "/api/provisioning/modules/{deviceId}/orders",
+    implementadaEn: "server/backend/src/modules/provisioning/provisioning.controller.ts",
+    consumidores: ["pages/provisioning/ProvisioningPage.tsx"],
+    motivo:
+      "CABLEADA. Emite la orden FIRMADA del plano DEVICE_MANAGEMENT, con permiso `provisioning:issue` " +
+      "(hoy sólo el rol administrador). Estuvo en PENDING_CONTRACT mientras el contrato no la " +
+      "declaraba; al integrarse el carril de backend se regeneró y YA está en " +
+      "`contracts/api/openapi.json`. La prueba que afirmaba su ausencia se puso roja al " +
+      "integrar, que es exactamente para lo que existía.",
+  },
+  getProvisioningState: {
+    rutaPedida: "GET /api/provisioning/modules/{deviceId}/state",
+    veredicto: "PORT_FRONTEND",
+    rutaReal: "/api/provisioning/modules/{deviceId}/state",
+    implementadaEn: "server/backend/src/modules/provisioning/provisioning.controller.ts",
+    consumidores: ["pages/provisioning/ProvisioningPage.tsx"],
+    motivo:
+      "CABLEADA. Última fotografía OBSERVACIONAL del estado de autoridad que reportó el módulo (el " +
+      "propio backend la marca `observational_only: true`). La pantalla lo dice con esas palabras y " +
+      "no cuelga ninguna acción de ese dato. Su 404 —«nunca ha reportado», el caso normal hoy sin " +
+      "dispositivos físicos— se pinta como «sin estado observado», no como error.",
+  },
   getModuleTelemetry: {
     rutaPedida: "/api/modules/{id}/telemetry",
     veredicto: "IMPLEMENT_BACKEND",
@@ -60,7 +108,7 @@ export const OPERACIONES: Record<string, OperacionClasificada> = {
     rutaPedida: "/api/modules/{id}/config",
     veredicto: "PORT_FRONTEND",
     rutaReal: "/api/modules/{id}/config/desired",
-    consumidores: [],
+    consumidores: ["pages/module-detail/ModuleDetailPage.tsx"],
     motivo: "Existe como «configuración deseada». Se porta con su traducción de forma.",
   },
   updateModuleConfig: {
@@ -166,6 +214,7 @@ export function resumen(): Record<Veredicto, string[]> {
     OBSOLETE: [] as string[],
     DUPLICATE: [] as string[],
     NOT_NEEDED: [] as string[],
+    PENDING_CONTRACT: [] as string[],
   };
   for (const [nombre, op] of Object.entries(OPERACIONES)) salida[op.veredicto].push(nombre);
   return salida;

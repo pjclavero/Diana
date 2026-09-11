@@ -237,7 +237,22 @@ describe("realAdapter · lo que sigue sin poder atenderse", () => {
     );
   });
 
-  it.each(sinAtender)("%s falla diciendo el veredicto y SIN salir a la red", async (nombre, op) => {
+  /**
+   * `PENDING_CONTRACT` no es un método del cliente y NO debe serlo: son rutas
+   * que el backend ya implementa pero el contrato no declara, así que el panel
+   * no puede tipar la llamada. Se comprueba que efectivamente NO están
+   * cableadas (cablearlas a ciegas sería inventar la forma de la respuesta) y
+   * se excluyen del banco de huecos ejecutables de abajo.
+   */
+  const pendientesDeContrato = sinAtender.filter(([, o]) => o.veredicto === "PENDING_CONTRACT");
+
+  it.each(pendientesDeContrato)("%s NO está cableada en el cliente, a propósito", (nombre) => {
+    expect(Object.keys(api)).not.toContain(nombre);
+  });
+
+  const huecosEjecutables = sinAtender.filter(([, o]) => o.veredicto !== "PENDING_CONTRACT");
+
+  it.each(huecosEjecutables)("%s falla diciendo el veredicto y SIN salir a la red", async (nombre, op) => {
     const cliente = api as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>;
     // `listDiagnostics` SÍ está portada cuando se le da un módulo: el hueco es
     // el diagnóstico GLOBAL, sin módulo. Se la llama como la llamaría quien

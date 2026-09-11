@@ -219,4 +219,31 @@ export const mockApiClient: DianaApiClient = {
   async listUsers(): Promise<UserAccount[]> {
     return delay(clone(MOCK_USERS));
   },
+
+  /**
+   * --- Aprovisionamiento (T2): SIN DATOS DE DEMOSTRACIÓN, a propósito ---
+   *
+   * Aquí NO hay órdenes falsas ni estados observados inventados, y no es un
+   * hueco por hacer: es la decisión. Fabricar un `delivered: true` significaría
+   * enseñar «orden entregada al broker» sin que exista broker, y fabricar un
+   * estado observado significaría enseñar lo que un módulo «dijo» sin que
+   * exista módulo. En el plano que establece la AUTORIDAD CRIPTOGRÁFICA de un
+   * dispositivo, ésas son justo las dos mentiras que no se pueden permitir.
+   *
+   * En modo demostración, la pantalla dice que no puede operar. No parece que
+   * funcione.
+   */
+  async issueProvisioningOrder(): Promise<never> {
+    throw new ApiError(
+      "El modo demostración no emite órdenes de aprovisionamiento: no hay broker al que publicar " +
+        "ni clave con la que firmar. Use el panel contra el backend real.",
+    );
+  },
+
+  async getProvisioningState(): Promise<never> {
+    throw new ApiError(
+      "El modo demostración no tiene estados de aprovisionamiento observados: sólo un módulo real " +
+        "puede reportarlos. Use el panel contra el backend real.",
+    );
+  },
 };

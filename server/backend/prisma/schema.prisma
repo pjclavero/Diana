@@ -288,7 +288,22 @@ model Module {
   /// UUID de arranque vigente. Cambia en cada reinicio (ADR-0003).
   bootId           String?           @map("boot_id") @db.Uuid
   queueDepth       Int               @default(0) @map("queue_depth")
-  configVersion    Int               @default(0) @map("config_version")
+  /// Versión de configuración DESEADA por el sistema. Monotónica y propiedad
+  /// EXCLUSIVA del backend: sólo la avanza `config/push`, exactamente una vez
+  /// por empujón (reserva atómica en `ModuleConfigService.push`). No figura en
+  /// ningún DTO de escritura ni en la lista blanca del CRUD.
+  desiredConfigVersion   Int       @default(0) @map("desired_config_version")
+  /// Versión que el módulo dice tener APLICADA (`config/reported`). `null` =
+  /// nunca lo ha reportado. Es observacional: no manda sobre la deseada.
+  reportedConfigVersion  Int?      @map("reported_config_version")
+  /// pending | applied | failed. `pending` mientras la reportada no alcance a
+  /// la deseada; `applied` cuando coinciden; `failed` cuando el empujón no
+  /// llegó (ACL denegada) o el módulo reportó un rechazo.
+  configState            String    @default("pending") @map("config_state") @db.VarChar(8)
+  /// Instante OBSERVACIONAL en que se confirmó la aplicación. Lo pone el
+  /// backend al recibir `config/reported` con reportada == deseada; NO ordena
+  /// nada: el reloj no decide la precedencia de versiones, la decide el entero.
+  configAppliedAt        DateTime? @map("config_applied_at") @db.Timestamptz(6)
   lastSeenAt       DateTime?         @map("last_seen_at") @db.Timestamptz(6)
   /// Instante en que el módulo se dio por caído (transición a offline). Es el
   /// origen de la cuenta atrás de reconexión: `lastSeenAt` no sirve, porque un
@@ -306,6 +321,7 @@ model Module {
   deployments  Deployment[]
   incidents    Incident[]
   managerActivations ManagerActivation[]
+  mqttCredential ModuleMqttCredential?
 
   @@index([targetSystemId])
   @@index([ownerId])
@@ -1107,4 +1123,47 @@ model ProvisioningStateObservation {
 
   @@index([requestId])
   @@map("provisioning_state_observations")
+}
+
+/// Credencial MQTT INDIVIDUAL de un módulo (T4 · el servidor es la autoridad).
+///
+/// NO_SECRET_AT_REST: esta tabla no tiene ni puede tener una columna con la
+/// contraseña. Guarda un hash bcrypt —para poder VERIFICAR una credencial sin
+/// poder reconstruirla— y una huella pública corta para logs y panel. El
+/// secreto en claro existe una sola vez, en la respuesta HTTP de la emisión, y
+/// después no hay ningún camino en el sistema que lo devuelva.
+///
+/// Una fila por módulo (`moduleId` único) y un usuario por fila (`username`
+/// único): jamás se comparte `module_id`, `client_id` ni contraseña entre
+/// dispositivos. `username == module.slug == module_id` es la invariante F-02,
+/// y con `use_username_as_clientid true` el broker impone también el
+/// `client_id`, así que los tres son el mismo valor y ninguno lo elige el
+/// cliente.
+model ModuleMqttCredential {
+  id           String    @id @default(uuid()) @db.Uuid
+  moduleId     String    @unique @map("module_id") @db.Uuid
+  /// Usuario de Mosquitto. Igual al `slug` del módulo (F-02).
+  username     String    @unique @db.VarChar(63)
+  /// Hash bcrypt de la contraseña entregada. Verificable, no reversible.
+  secretHash   String    @map("secret_hash") @db.VarChar(255)
+  /// Huella PÚBLICA: primeros 16 hex de sha256(secreto). Sirve para casar la
+  /// credencial que corre en un dispositivo con la que emitió el servidor sin
+  /// exponer nada útil para autenticarse.
+  fingerprint  String    @db.VarChar(16)
+  /// Nº de rotación. Empieza en 1 y sube con cada reemisión.
+  generation   Int       @default(1)
+  issuedAt     DateTime  @default(now()) @map("issued_at") @db.Timestamptz(6)
+  /// Instante en que el secreto se mostró. Se fija en la MISMA operación que la
+  /// emisión: la entrega ya ocurrió cuando la fila existe, y por eso no hay
+  /// «segunda entrega» posible.
+  deliveredAt  DateTime  @map("delivered_at") @db.Timestamptz(6)
+  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz(6)
+  issuedByUserId   String? @map("issued_by_user_id") @db.Uuid
+  issuedByUsername String? @map("issued_by_username") @db.VarChar(64)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  module Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@map("module_mqtt_credentials")
 }

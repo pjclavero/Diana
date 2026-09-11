@@ -83,3 +83,105 @@ describe("ModulesPage (G-C dashboard)", () => {
     expect(screen.getByRole("heading", { name: "diana-9" })).toBeInTheDocument();
   });
 });
+
+/**
+ * LOS CINCO ESTADOS EN PANTALLA (T3). Lo que se comprueba aquí no es que la
+ * función `diagnosticarModulo` acierte —eso está en `utils/estadoModulo.test.ts`—
+ * sino que la PANTALLA los distingue: que un fallo de consulta no se parece a
+ * «no hay módulos», y que un módulo callado no se pinta «en línea».
+ */
+describe("ModulesPage · los cinco estados, distinguibles", () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  const hace = (ms: number) => new Date(Date.now() - ms).toISOString();
+
+  it("con 0 módulos dice 0 y dice que lo ha comprobado (no «cargando» ni «error»)", async () => {
+    vi.spyOn(modulesApi, "modulesOverview").mockResolvedValue(overview([]));
+    renderPage();
+
+    expect(await screen.findByText(/0 módulos registrados/)).toBeInTheDocument();
+    expect(screen.getByText(/comprobado ahora mismo/i)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("si la consulta FALLA no dice «no hay módulos»: dice que no ha podido preguntar", async () => {
+    vi.spyOn(modulesApi, "modulesOverview").mockRejectedValue(new Error("boom"));
+    renderPage();
+
+    const alerta = await screen.findByRole("alert");
+    expect(alerta).toHaveTextContent(/No se puede afirmar cuántos módulos hay/i);
+    expect(screen.queryByText(/0 módulos registrados/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Resumen de módulos" })).not.toBeInTheDocument();
+  });
+
+  it("un módulo que consta en línea pero lleva 10 min callado sale «sin señal reciente», no «en línea»", async () => {
+    vi.spyOn(modulesApi, "modulesOverview").mockResolvedValue(
+      overview([item({ id: "m1", slug: "diana-01", online: true, lastSeenAt: hace(10 * 60_000) })]),
+    );
+    renderPage();
+
+    // La insignia de la fila (no el recuento del resumen, que también lo dice).
+    expect(await screen.findByText("sin señal reciente", { selector: "span.badge" })).toBeInTheDocument();
+    expect(screen.queryByText("en línea", { selector: "span.badge" })).not.toBeInTheDocument();
+    const resumen = screen.getByRole("group", { name: "Resumen de módulos" });
+    expect(resumen).toHaveTextContent(/0\s*en línea/);
+    expect(resumen).toHaveTextContent(/1\s*sin señal reciente/);
+  });
+
+  it("un módulo nunca conectado sale «pendiente», no «desconectado»", async () => {
+    vi.spyOn(modulesApi, "modulesOverview").mockResolvedValue(
+      overview([item({ id: "m1", slug: "diana-01", online: false, lastSeenAt: null })]),
+    );
+    renderPage();
+
+    expect(await screen.findByText("pendiente", { selector: "span.badge" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Resumen de módulos" })).toHaveTextContent(
+      /1\s*pendientes de primera conexión/,
+    );
+  });
+
+  it("un módulo con señal fresca sí sale «en línea»", async () => {
+    vi.spyOn(modulesApi, "modulesOverview").mockResolvedValue(
+      overview([item({ id: "m1", slug: "diana-01", online: true, lastSeenAt: hace(3_000) })]),
+    );
+    renderPage();
+
+    expect(await screen.findByText("en línea", { selector: "span.badge" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Resumen de módulos" })).toHaveTextContent(/1\s*en línea/);
+  });
+
+  it("sin dato de configuración, la ficha dice «desconocida» y no «aplicada»", async () => {
+    vi.spyOn(modulesApi, "modulesOverview").mockResolvedValue(
+      overview([item({ id: "m1", slug: "diana-01", online: true, lastSeenAt: hace(1_000) })]),
+    );
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: /diana-01/ }));
+
+    // El veredicto es «desconocida». La palabra «aplicada» sólo puede
+    // aparecer NEGADA («no se puede afirmar que esté aplicada»), nunca como
+    // veredicto.
+    expect(screen.getByText(/Configuración:/)).toHaveTextContent(/Configuración:\s*desconocida/);
+    expect(screen.getByText(/Configuración:/)).not.toHaveTextContent(/Configuración:\s*aplicada/);
+  });
+
+  it("con `configState: pending` del backend, la ficha lo dice", async () => {
+    vi.spyOn(modulesApi, "modulesOverview").mockResolvedValue(
+      overview([
+        item({
+          id: "m1",
+          slug: "diana-01",
+          online: true,
+          lastSeenAt: hace(1_000),
+          configState: "pending",
+          desiredConfigVersion: 5,
+          reportedConfigVersion: 4,
+        }),
+      ]),
+    );
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: /diana-01/ }));
+
+    expect(screen.getByText(/Configuración:/)).toHaveTextContent(/pendiente/);
+    expect(screen.getByText(/Configuración:/)).toHaveTextContent(/v5/);
+  });
+});

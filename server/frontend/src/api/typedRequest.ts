@@ -142,10 +142,14 @@ async function ejecutar(url: string, init: ApiRequestInit | undefined): Promise<
     } catch {
       /* sin cuerpo interpretable */
     }
-    if (preferServerDetail && detail) throw new ApiError(detail);
-    if (res.status === 401 || res.status === 403) throw new ApiError("No tiene permiso para esta acción.");
-    if (res.status === 404 && notFoundMessage) throw new ApiError(notFoundMessage);
-    throw new ApiError(detail || "El servidor no ha podido completar la operación.");
+    // El CÓDIGO viaja en el error. Sin él, un 404 con significado propio
+    // («todavía no hay nada que observar») llega al panel indistinguible de
+    // «el backend no responde». Ver la nota de `ApiError.status`.
+    if (preferServerDetail && detail) throw new ApiError(detail, undefined, res.status);
+    if (res.status === 401 || res.status === 403)
+      throw new ApiError("No tiene permiso para esta acción.", undefined, res.status);
+    if (res.status === 404 && notFoundMessage) throw new ApiError(notFoundMessage, undefined, res.status);
+    throw new ApiError(detail || "El servidor no ha podido completar la operación.", undefined, res.status);
   }
   if (res.status === 204) return undefined;
   return await res.json();

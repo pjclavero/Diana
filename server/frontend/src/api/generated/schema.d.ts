@@ -1885,6 +1885,65 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/provisioning/modules/{deviceId}/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Emite una orden FIRMADA del plano DEVICE_MANAGEMENT (QoS 1, retain=false) */
+        post: operations["ProvisioningController_issue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/provisioning/modules/{deviceId}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Última fotografía OBSERVACIONAL del estado de autoridad reportado por el módulo
+         * @description Es lo que el módulo DIJO, no una verdad del sistema ni un desired state ejecutable: ninguna acción del backend se dispara desde aquí.
+         */
+        get: operations["ProvisioningController_state"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/modules/{id}/mqtt-identity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Metadatos de la credencial MQTT de un módulo (nunca el secreto) */
+        get: operations["MqttIdentityController_describe"];
+        put?: never;
+        /**
+         * Emite (o rota) la credencial MQTT individual de un módulo
+         * @description La contraseña se devuelve UNA sola vez y no se puede volver a leer. El módulo NO pasa a ONLINE por esto: sigue en PENDING hasta que el dispositivo publique de verdad.
+         */
+        post: operations["MqttIdentityController_issue"];
+        /** Revoca la credencial MQTT de un módulo */
+        delete: operations["MqttIdentityController_revoke"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/exports/rounds/{roundId}/hits.csv": {
         parameters: {
             query?: never;
@@ -1974,6 +2033,42 @@ export interface components {
         IdentifyDto: Record<string, never>;
         LedTestDto: Record<string, never>;
         RequestIdDto: Record<string, never>;
+        CreateModuleDto: {
+            /** @description Identificador MQTT del módulo (module_id). Inmutable tras la creación: es la identidad del dispositivo (F-02). */
+            slug: string;
+            targetSystemId?: Record<string, never>;
+            friendlyName?: Record<string, never>;
+            serial?: Record<string, never>;
+            mac?: Record<string, never>;
+            ip?: Record<string, never>;
+            hardwareRevision?: Record<string, never>;
+            targetBoard?: Record<string, never>;
+            firmwareVersion?: Record<string, never>;
+            /** @enum {string} */
+            role?: "principal" | "satellite" | "auto";
+            /** @enum {string} */
+            selector?: "SATELITE" | "AUTO" | "PRINCIPAL";
+            /** @enum {string} */
+            state?: "boot" | "selftest" | "network" | "registering" | "ready" | "calibration" | "maintenance" | "game_prepare" | "game_countdown" | "game_active" | "game_paused" | "game_finished" | "error";
+            maintenance?: boolean;
+        };
+        UpdateModuleDto: {
+            targetSystemId?: Record<string, never>;
+            friendlyName?: Record<string, never>;
+            serial?: Record<string, never>;
+            mac?: Record<string, never>;
+            ip?: Record<string, never>;
+            hardwareRevision?: Record<string, never>;
+            targetBoard?: Record<string, never>;
+            firmwareVersion?: Record<string, never>;
+            /** @enum {string} */
+            role?: "principal" | "satellite" | "auto";
+            /** @enum {string} */
+            selector?: "SATELITE" | "AUTO" | "PRINCIPAL";
+            /** @enum {string} */
+            state?: "boot" | "selftest" | "network" | "registering" | "ready" | "calibration" | "maintenance" | "game_prepare" | "game_countdown" | "game_active" | "game_paused" | "game_finished" | "error";
+            maintenance?: boolean;
+        };
         JoinGuestDto: Record<string, never>;
         AddParticipantDto: Record<string, never>;
         SetParticipantPanelDto: Record<string, never>;
@@ -2012,6 +2107,8 @@ export interface components {
         DecisionDto: Record<string, never>;
         UploadFirmwareDto: Record<string, never>;
         DeployFirmwareDto: Record<string, never>;
+        IssueOrderDto: Record<string, never>;
+        IssueIdentityDto: Record<string, never>;
     };
     responses: never;
     parameters: never;
@@ -2940,7 +3037,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": components["schemas"]["CreateModuleDto"];
             };
         };
         responses: {
@@ -3001,7 +3098,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": components["schemas"]["UpdateModuleDto"];
             };
         };
         responses: {
@@ -5211,6 +5308,109 @@ export interface operations {
         requestBody?: never;
         responses: {
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ProvisioningController_issue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IssueOrderDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ProvisioningController_state: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MqttIdentityController_describe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MqttIdentityController_issue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IssueIdentityDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MqttIdentityController_revoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

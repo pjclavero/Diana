@@ -31,16 +31,29 @@ export interface SystemStatus {
  * conflicto vive en `detectSystemConflicts` (dominio puro); aquí sólo se leen
  * los datos y se llama a esa función.
  */
+const ES_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 @Injectable()
 export class SystemStatusService {
   constructor(private readonly prisma: PrismaService) {}
 
   async status(systemId: string): Promise<SystemStatus> {
-    const system = await this.prisma.targetSystem.findUnique({ where: { id: systemId } });
+    // Se admite UUID o slug. Antes esto hacia `findUnique({ where: { id } })`
+    // siempre, asi que un slug -- que es lo que usa el panel: `system-a` --
+    // llegaba a Prisma como UUID invalido y salia un 500 «Internal server
+    // error» en la pantalla de Inicio. Lo cazo el E2E de navegador contra el
+    // backend real. Un identificador que no existe debe dar 404, no 500: lo
+    // primero es un dato del cliente, lo segundo dice que el servidor se rompio.
+    const system = ES_UUID.test(systemId)
+      ? await this.prisma.targetSystem.findUnique({ where: { id: systemId } })
+      : await this.prisma.targetSystem.findUnique({ where: { slug: systemId } });
     if (!system) throw new NotFoundException(`Sistema ${systemId} no encontrado`);
 
+    // A partir de aqui SIEMPRE el id real: si se filtrase por `systemId` y
+    // hubiera llegado un slug, la consulta devolveria cero modulos en silencio
+    // y el sistema se veria vacio en vez de dar error.
     const modules = await this.prisma.module.findMany({
-      where: { targetSystemId: systemId },
+      where: { targetSystemId: system.id },
       include: { position: true },
     });
 
@@ -56,7 +69,9 @@ export class SystemStatusService {
     const activeGame = await this.prisma.game.findFirst({
       where: {
         status: { in: ACTIVE_GAME_STATUSES },
-        OR: [{ targetSystemId: systemId }, { view: { panels: { some: { targetSystemId: systemId } } } }],
+        // El id REAL, no el parametro: con un slug esto no habria encontrado
+        // ninguna partida activa y el sistema se veria libre estandolo.
+        OR: [{ targetSystemId: system.id }, { view: { panels: { some: { targetSystemId: system.id } } } }],
       },
       select: { id: true },
     });
