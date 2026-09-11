@@ -68,7 +68,20 @@ void diana_prov_app_init(diana_app *a)
     if (!diana_prov_factory_read(&a->hal, PROV_NVS_FP, fp, sizeof(fp) - 1u, &len))
         fp[0] = '\0';
 
-    diana_prov_init(&a->prov, &a->hal, a->id.module_id, a->cfg.system_id, fp);
+    /* El system_id sale de la IDENTIDAD, no de la configuracion.
+     *
+     * Estaba tomandose de `a->cfg.system_id`, que en el arranque esta vacio
+     * porque el modulo todavia no ha aplicado ningun config/desired. El
+     * resultado era un `provision/state` con `system_id: ""` que el backend
+     * rechazaba --- correctamente --- contra el patron `identifier` del
+     * contrato. MEDIDO contra VM109: nueve incidencias por arranque.
+     *
+     * Y no era un descuido de valor, sino de diseno: el plano de
+     * aprovisionamiento tiene que ser valido ESTANDO UNPROVISIONED y ANTES de
+     * que exista configuracion --- es el plano con el que se aprovisiona un
+     * dispositivo. Hacerlo depender de la config lo deja inservible justo
+     * cuando hace falta. La identidad NVS ya trae el system_id. */
+    diana_prov_init(&a->prov, &a->hal, a->id.module_id, a->id.system_id, fp);
 
     uint8_t root[DIANA_P256_PUBKEY_LEN];
     len = sizeof(root);

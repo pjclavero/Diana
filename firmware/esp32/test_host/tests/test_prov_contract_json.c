@@ -28,6 +28,8 @@
 #include <string.h>
 
 #include "diana/provisioning.h"
+#include "diana/config.h"
+#include "diana/identity.h"
 #include "hal_host.h"
 #include "test_util.h"
 
@@ -128,6 +130,60 @@ int run_prov_contract_json(void)
                   "el ejemplo del contrato NO es malformed para el firmware");
             free(json);
         }
+    }
+
+    /* =====================================================================
+     * El system_id de provision/state sale de la IDENTIDAD, no de la config
+     * =====================================================================
+     * MEDIDO contra VM109: el firmware publicaba `"system_id": ""` y el
+     * backend lo rechazaba contra el patron `identifier` del contrato, nueve
+     * veces por arranque. La causa no era el valor sino el ORIGEN:
+     * `diana_prov_init` recibia `a->cfg.system_id`, que en el arranque esta
+     * vacio porque todavia no se ha aplicado ningun config/desired.
+     *
+     * El plano de aprovisionamiento tiene que ser valido ESTANDO
+     * UNPROVISIONED y ANTES de que exista configuracion: es el plano con el
+     * que se aprovisiona un dispositivo.
+     *
+     * Esta prueba reproduce exactamente ese escenario: identidad con
+     * system_id, configuracion SIN el, y el mensaje tiene que salir con el de
+     * la identidad.
+     */
+    SECTION("provision/state toma el system_id de la identidad");
+    {
+        host_persistent nv;
+        host_hal_ctx hctx;
+        diana_hal hal2;
+        host_persistent_reset(&nv, 8);
+        host_hal_init(&hctx, &nv, &hal2, 500);
+
+        diana_identity id;
+        diana_identity_load(&id, &hal2, "0.1.0");
+        diana_identity_provision(&id, &hal2, "module-01", "banco-01", "S-01",
+                                 "do-only-v1", "module-01", "x");
+
+        /* La configuracion esta VACIA, como en el arranque real. */
+        diana_config cfg;
+        diana_config_defaults(&cfg);
+        CHECK(cfg.system_id[0] == '\0', "la config arranca SIN system_id");
+        CHECK(id.system_id[0] != '\0', "la identidad SI lo tiene");
+
+        diana_prov_ctx pctx;
+        diana_prov_init(&pctx, &hal2, id.module_id, id.system_id, "");
+
+        diana_prov_outcome out;
+        diana_prov_connect_declaration(&pctx, &out);
+        CHECK(out.publish, "estando UNPROVISIONED hay algo que declarar");
+
+        char buf[1024];
+        size_t n = diana_prov_state_json(&pctx, NULL, &out, buf, sizeof(buf));
+        CHECK(n > 0, "el estado se serializa");
+        CHECK(strstr(buf, "\"system_id\":\"banco-01\"") != NULL,
+              "system_id = el de la IDENTIDAD, no el de la config");
+        CHECK(strstr(buf, "\"system_id\":\"\"") == NULL,
+              "CONTROL NEGATIVO: jamas un system_id vacio");
+        CHECK(strstr(buf, "\"device_id\":\"module-01\"") != NULL,
+              "device_id tambien de la identidad");
     }
 
     return g_tests_failed - before;

@@ -205,6 +205,27 @@ def main() -> int:
     check("targets/v1" not in ap,
           "app_provision.c no cablea ningun topico a mano")
 
+    # ------------------------------------- IDENTITY_IS_THE_SOURCE_OF_SYSTEM --
+    print("\n[3b] el system_id del plano sale de la IDENTIDAD, no de la config")
+    # Por que aqui y no en la suite en C: `main/app_provision.c` NO se compila
+    # en el host, asi que ninguna prueba puede EJECUTAR esta linea. Se
+    # comprobo: devolver `a->cfg.system_id` dejaba la suite en 1051/1051, en
+    # verde, con el defecto puesto. La prueba en C demuestra que el
+    # serializador hace lo correcto con la entrada correcta; esto demuestra
+    # que se le da la entrada correcta.
+    init = re.search(r"diana_prov_init\s*\([^;]*;", ap, re.S)
+    check(init is not None, "app_provision.c inicializa el plano")
+    if init:
+        texto = init.group(0)
+        check("a->id.system_id" in texto,
+              "el system_id del plano viene de la identidad persistente")
+        check("a->cfg.system_id" not in texto,
+              "REGRESION: el system_id NO puede venir de la configuracion "
+              "(esta vacia hasta que se aplica un config/desired, y el plano "
+              "debe ser valido estando UNPROVISIONED)")
+        check("a->id.module_id" in texto,
+              "el device_id del plano tambien viene de la identidad")
+
     # --------------------------------------------------- NO_SECRET_IN_STATE --
     print("\n[4] NO_SECRET_IN_STATE en el camino de publicacion")
     for prohibido in ("root_key", "operational_key", "mqtt_password", "password"):
