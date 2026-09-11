@@ -37,11 +37,16 @@
 import { test, expect, type Page } from "@playwright/test";
 import {
   api,
+  comprobarAcl,
+  conectarMqtt,
   docker,
   esperarBackend,
   leerEntorno,
+  leerPasswdDelBroker,
   login,
+  modoPasswd,
   psql,
+  senalarVigilante,
   psqlUno,
   type Entorno,
 } from "./harness/lib";
@@ -69,6 +74,8 @@ const NOMBRE_EDITADO = "Módulo de banco E2E (reconfigurado)";
 
 let adminToken = "";
 let moduleId = "";
+/** La credencial del paso 8, que usan los pasos 11 y 12 contra el broker real. */
+let credencialEmitida: { username: string; secret: string; fingerprint: string } | null = null;
 
 test.describe.configure({ mode: "serial" });
 
@@ -253,26 +260,26 @@ test("4 · el módulo sobrevive a `docker restart` del backend", async ({ page }
 // 5 · Editar configuración → `config_version` avanza EXACTAMENTE una vez
 // ============================================================================
 test("5 · un empujón de configuración sube desired_config_version en EXACTAMENTE 1", async () => {
-  // ── HALLAZGO, y por qué hay una preparación aquí ─────────────────────────
-  // Un módulo recién dado de alta NO tiene dianas, y el contrato congelado
+  // ── El módulo VIRGEN se rechaza con 400, y sin efectos ───────────────────
+  // Un módulo recién dado de alta no tiene dianas, y el contrato congelado
   // `contracts/mqtt/module-config.schema.json` exige `calibration` con 9
-  // elementos. MEDIDO: el primer `config/push` sobre el módulo virgen devolvió
-  // **500** con «El payload no cumple module-config.schema.json /calibration
-  // must NOT have fewer than 9 items». Es un rechazo legítimo (el backend se
-  // niega a publicar un mensaje inválido) con el CÓDIGO equivocado: una
-  // precondición del recurso es un 4xx, no un 500. Queda anotado en el README
-  // de este carril como hallazgo; aquí no se disfraza: se comprueba tal cual.
+  // elementos. Este carril MIDIÓ antes un **500** aquí: el backend se negaba a
+  // publicar un mensaje inválido (bien) con el código equivocado (mal), y
+  // además quemaba una versión deseada por el camino. Una precondición del
+  // recurso es un 4xx y no debe dejar rastro.
   const virgen = filaEnBd(SLUG);
   const sinDianas = await api(env, "POST", `/api/modules/${moduleId}/config/push`, {
     token: adminToken,
     body: { network: { mode: "dhcp" } },
   });
-  expect(sinDianas.status, "un módulo sin 9 dianas calibradas no puede recibir configuración").toBeGreaterThanOrEqual(400);
-  // Y AUN ASÍ el número avanza: la reserva es atómica y ocurre ANTES de
-  // publicar, a propósito (`ModuleConfigService.push`). Un hueco en la
-  // secuencia no rompe nada; un número repetido sí. Se comprueba el
-  // invariante que el producto declara, no el que sería más cómodo.
-  expect(filaEnBd(SLUG).desiredConfigVersion - virgen.desiredConfigVersion).toBe(1);
+  expect(sinDianas.status, "un módulo sin 9 dianas calibradas: error de ENTRADA, no del servidor").toBe(400);
+  expect(JSON.stringify(sinDianas.body)).toContain("0 de 9 dianas");
+  // Y no se reserva número: rechazar antes de tocar nada es lo que hace que
+  // reintentarlo tras calibrar sea una operación limpia.
+  expect(
+    filaEnBd(SLUG).desiredConfigVersion,
+    "un rechazo de entrada NO puede consumir versión deseada",
+  ).toBe(virgen.desiredConfigVersion);
 
   // ── preparación: las 9 dianas y su calibración, por la API REAL ──────────
   for (let i = 1; i <= 9; i += 1) {
@@ -428,47 +435,78 @@ test("7 · un módulo que nunca ha conectado NO aparece ONLINE: se ve como pendi
 // ============================================================================
 // 8 · Revocar / deshabilitar
 // ============================================================================
-test("8 · emitir credencial FALLA CERRADO en este despliegue; deshabilitar SÍ funciona y queda en la BD", async ({ page }) => {
-  // ── HALLAZGO (ver README §Hallazgos) ─────────────────────────────────────
-  // La emisión de credencial MQTT NO es ejecutable en el despliegue tal y como
-  // se entrega, y le faltan TRES piezas, las tres MEDIDAS aquí:
+test("8 · emitir credencial MQTT escribe en el broker REAL y sólo enseña la contraseña una vez", async ({ page }) => {
+  // Antes este paso medía un FALLO CERRADO: la emisión no era ejecutable en el
+  // despliegue porque a la imagen del backend le faltaban tres piezas —la
+  // fuente única de identidades, `DIANA_MOSQUITTO_PASSWD_FILE` y el binario
+  // `mosquitto_passwd`— y `compose.yml` no montaba ninguna. Ya están las tres,
+  // y lo que se comprueba ahora es la emisión de verdad.
   //
-  //   1. La fuente única de identidades. `CanonicalIdentitySource` invoca
-  //      `infrastructure/mosquitto/generate-identities.mjs` con `cwd=/app`, y
-  //      ese fichero NO está en la imagen del backend (su Dockerfile copia
-  //      `dist`, `prisma` y `contracts`, nada más).
-  //   2. `DIANA_MOSQUITTO_PASSWD_FILE`. Al arrancar, el backend lo dice en voz
-  //      alta: «Autoridad de credenciales MQTT INACTIVA: No hay fichero passwd
-  //      de Mosquitto configurado».
-  //   3. El binario `mosquitto_passwd`, que `MosquittoPasswdStore` ejecuta y
-  //      que no existe en `node:20.19-bookworm-slim`.
-  //
-  // Y `compose.yml` —el despliegue documentado— tampoco monta ninguna de las
-  // dos primeras al servicio `backend` (sí monta la ACL y el `passwd` al
-  // broker, líneas 342-344, pero al backend sólo el `ca.crt`, línea 177).
-  //
-  // NO se parchea la imagen para que esto se ponga verde: eso convertiría un
-  // defecto de despliegue en una prueba que pasa. Se mide lo que hace de
-  // verdad, que es FALLAR CERRADO — el lado correcto del error.
+  // El `passwd` del broker se lee DEL DISCO, no de la respuesta de la API:
+  // que el backend conteste 201 no demuestra que haya escrito nada.
+  const passwdAntes = leerPasswdDelBroker(env);
+  expect(passwdAntes, "el broker NO debe conocer a module-01 todavía").not.toContain(`${SLUG}:`);
+  expect(psqlUno(env, `select count(*) from module_mqtt_credentials where module_id='${moduleId}';`)[0]).toBe("0");
+
   const emit = await api(env, "POST", `/api/modules/${moduleId}/mqtt-identity`, {
     token: adminToken,
     body: {},
   });
-  expect(emit.status).toBe(400);
-  expect(JSON.stringify(emit.body)).toContain("no está declarado en la fuente única de identidades");
+  expect(emit.status, `emisión rechazada: ${JSON.stringify(emit.body)}`).toBe(201);
+  const credencial = emit.body as {
+    username: string;
+    clientId: string;
+    secret: string;
+    fingerprint: string;
+    generation: number;
+  };
 
-  // Fallar cerrado significa NO dejar nada a medias: ni fila de credencial, ni
-  // usuario en el broker sin ACL que lo acote. Comprobado EN LA BASE.
-  expect(psqlUno(env, `select count(*) from module_mqtt_credentials where module_id='${moduleId}';`)[0]).toBe("0");
+  // F-02, medida y no supuesta: usuario == module_id == client_id, sin prefijo.
+  expect(credencial.username).toBe(SLUG);
+  expect(credencial.clientId).toBe(SLUG);
+  expect(credencial.generation).toBe(1);
+  expect(credencial.secret.length).toBeGreaterThanOrEqual(24);
 
-  // Revocar lo que no existe tampoco inventa nada.
-  const rev = await api(env, "DELETE", `/api/modules/${moduleId}/mqtt-identity`, { token: adminToken });
-  expect(rev.status).toBeGreaterThanOrEqual(400);
-  expect(psqlUno(env, `select count(*) from module_mqtt_credentials where module_id='${moduleId}';`)[0]).toBe("0");
+  // ── El secreto llegó AL BROKER, y llegó cifrado ──────────────────────────
+  const passwdDespues = leerPasswdDelBroker(env);
+  expect(passwdDespues).toMatch(new RegExp(`^${SLUG}:\\$7\\$`, "m"));
+  expect(
+    passwdDespues,
+    "la contraseña EN CLARO no puede aparecer en el fichero de credenciales",
+  ).not.toContain(credencial.secret);
+  // Y no se ha llevado por delante al usuario que ya estaba.
+  expect(passwdDespues, "emitir una credencial no puede borrar las demás").toContain("backend:");
 
-  // Y ninguno de esos intentos puso al módulo en línea.
+  // Permisos: dueño lee/escribe, grupo del broker lee, nadie más.
+  expect(modoPasswd(env), "el passwd no puede quedar legible por todo el mundo").toBe("640");
+
+  // ── La contraseña NO se puede volver a leer ──────────────────────────────
+  const consulta = await api(env, "GET", `/api/modules/${moduleId}/mqtt-identity`, { token: adminToken });
+  expect(consulta.status).toBe(200);
+  expect(JSON.stringify(consulta.body), "el secreto no puede volver por ninguna lectura").not.toContain(
+    credencial.secret,
+  );
+  expect((consulta.body as { fingerprint: string }).fingerprint).toBe(credencial.fingerprint);
+
+  // Reemitir sin pedir rotación es un CONFLICTO, no una segunda contraseña.
+  const otra = await api(env, "POST", `/api/modules/${moduleId}/mqtt-identity`, {
+    token: adminToken,
+    body: {},
+  });
+  expect(otra.status).toBe(409);
+
+  // ── Y el secreto no está en los registros del backend ────────────────────
+  const registros = docker(["logs", env.containers.backend]);
+  expect(registros, "ningún secreto puede aparecer en los logs").not.toContain(credencial.secret);
+  expect(registros, "la huella pública SÍ, para poder auditar").toContain(credencial.fingerprint);
+
+  // ── Emitir credencial NO conecta nada ────────────────────────────────────
+  // Es la comprobación que impide que este paso se lea como «el módulo ya
+  // está». No hay ESP32: el módulo sigue sin haberse visto nunca.
   expect(filaEnBd(SLUG).online).toBe(false);
   expect(filaEnBd(SLUG).lastSeenAt).toBe("NULL");
+
+  credencialEmitida = credencial;
 
   // ── DESHABILITAR, que SÍ funciona, y se comprueba por efecto en la BD ────
   const antes = filaEnBd(SLUG);
@@ -601,4 +639,141 @@ test.afterAll(() => {
     expect(online, `${slug} acabó marcado como en línea sin haber conectado nunca`).toBe("f");
     expect(visto, `${slug} acabó con una señal de vida que nadie envió`).toBe("NULL");
   }
+});
+
+// ============================================================================
+// 11 · La credencial emitida SIRVE contra el broker real (TLS 8883)
+// ============================================================================
+test("11 · un cliente MQTT REAL se autentica con la credencial emitida por el servidor", async () => {
+  const cred = credencialEmitida;
+  expect(cred, "el paso 8 tiene que haber emitido la credencial").not.toBeNull();
+  if (!cred) return;
+
+  // TLS de verdad contra el 8883, validando la CA. No hay 1883 en este arnés:
+  // `harness/mosquitto.conf` no declara el listener en claro.
+  expect(env.mqttUrl.startsWith("mqtts://"), "el camino es TLS, no texto en claro").toBe(true);
+
+  const r = await conectarMqtt(env, cred.username, cred.secret);
+  expect(r.conectado, `el broker rechazó la credencial recién emitida: ${r.mensaje}`).toBe(true);
+
+  // Autenticarse NO es estar operativo: el módulo sigue sin haberse visto
+  // nunca, porque nadie ha publicado presencia — y este carril no la publica.
+  expect(filaEnBd(SLUG).online).toBe(false);
+  expect(filaEnBd(SLUG).lastSeenAt).toBe("NULL");
+});
+
+test("11b · CONTROL NEGATIVO: con la contraseña equivocada el broker NIEGA la conexión", async () => {
+  const cred = credencialEmitida;
+  expect(cred).not.toBeNull();
+  if (!cred) return;
+
+  // Sin este control, el paso 11 sólo demostraría que el broker acepta
+  // conexiones — no que comprueba la contraseña. Se altera un carácter del
+  // secreto bueno: mismo usuario, misma longitud, misma forma.
+  const mala = `${cred.secret.slice(0, -1)}${cred.secret.endsWith("Z") ? "Y" : "Z"}`;
+  expect(mala).not.toBe(cred.secret);
+
+  const r = await conectarMqtt(env, cred.username, mala);
+  expect(r.conectado, "una contraseña equivocada NO puede autenticar").toBe(false);
+  // 135 = "Not authorized" (MQTT 5). Se comprueba el código y no sólo el
+  // veredicto: un fallo de red también daría `conectado=false`, y eso pondría
+  // la prueba en verde por la razón equivocada.
+  expect(r.codigo, `motivo del rechazo: ${r.mensaje}`).toBe(135);
+});
+
+// ============================================================================
+// 12 · La ACL confina la credencial a su propio subárbol
+// ============================================================================
+test("12 · la credencial lee lo suyo y NO puede escribir en el subárbol de otro módulo", async () => {
+  const cred = credencialEmitida;
+  expect(cred).not.toBeNull();
+  if (!cred) return;
+
+  const r = await comprobarAcl(
+    env,
+    cred.username,
+    cred.secret,
+    `targets/v1/module/${SLUG}/config/desired`,
+    // module-02 existe en la ACL y NO es este módulo: es el caso que de verdad
+    // importa, la suplantación de un vecino con credencial propia válida.
+    "targets/v1/module/module-02/presence",
+  );
+
+  // POSITIVO, por EFECTO: llega el mensaje RETENIDO que el backend publicó en
+  // el paso 5. No se mira el SUBACK — mosquitto concede QoS 1 a una
+  // suscripción denegada y simplemente no entrega nada, así que un SUBACK
+  // correcto no prueba que la lectura esté permitida. Que el mensaje llegue,
+  // sí.
+  expect(r.recibido, "el módulo tiene que poder LEER su propia config/desired").not.toBeNull();
+  expect(JSON.parse(r.recibido as string).module_id).toBe(SLUG);
+
+  // NEGATIVO: escribir en el subárbol de module-02 se rechaza.
+  expect(r.publicacionAceptada, "module-01 NO puede publicar como module-02").toBe(false);
+  expect(r.publicacionDenegada, "la denegación tiene que ser explícita").not.toBeNull();
+  expect(r.publicacionDenegada?.codigo, `motivo: ${r.publicacionDenegada?.mensaje}`).toBe(135);
+
+  // Nada de esto ha creado presencia de ningún dispositivo.
+  expect(filaEnBd(SLUG).online).toBe(false);
+  expect(psqlUno(env, "select count(*) from modules where online = true;")[0]).toBe("0");
+});
+
+// ============================================================================
+// 13 · CALIBRACIÓN: el vigilante de recarga es indispensable
+// ============================================================================
+test("13 · sin el SIGHUP del vigilante, la credencial recién emitida NO autentica", async () => {
+  // ── Por qué existe este paso ─────────────────────────────────────────────
+  // Mosquitto lee `password_file` al arrancar y sólo vuelve a leerlo con
+  // SIGHUP. El vigilante que vive en el contenedor del broker se lo manda
+  // cuando el backend escribe. Si algún día ese vigilante desaparece —un
+  // `command:` que se pierde en un merge, un refactor del compose— TODO lo
+  // demás de este carril seguiría en verde: la API devolvería 201, el `passwd`
+  // tendría la línea, la BD tendría la fila… y el primer ESP32 real recibiría
+  // «not authorised» con la contraseña correcta.
+  //
+  // Los pasos 11 y 12 no pueden detectar eso, porque para cuando se ejecutan
+  // el SIGHUP ya ocurrió. Así que aquí se congela el vigilante a propósito y
+  // se comprueba que SIN él la credencial no vale. Es la prueba de que los
+  // pasos anteriores miden algo que puede ponerse rojo.
+  const SLUG_2 = "module-02";
+  const alta = await api(env, "POST", "/api/modules", {
+    token: adminToken,
+    body: { slug: SLUG_2, friendlyName: "Módulo de calibración" },
+  });
+  expect(alta.status, `alta de ${SLUG_2}: ${JSON.stringify(alta.body)}`).toBe(201);
+  const id2 = (alta.body as { id: string }).id;
+
+  let secreto = "";
+  try {
+    senalarVigilante(env, "STOP");
+
+    const emit = await api(env, "POST", `/api/modules/${id2}/mqtt-identity`, {
+      token: adminToken,
+      body: {},
+    });
+    expect(emit.status).toBe(201);
+    secreto = (emit.body as { secret: string }).secret;
+
+    // Margen holgado sobre el intervalo de sondeo (2 s): si el vigilante
+    // estuviera vivo, ya habría recargado.
+    await new Promise((r) => setTimeout(r, 5000));
+
+    const sinRecarga = await conectarMqtt(env, SLUG_2, secreto);
+    expect(
+      sinRecarga.conectado,
+      "con el vigilante congelado el broker NO puede conocer la credencial nueva",
+    ).toBe(false);
+    expect(sinRecarga.codigo).toBe(135);
+  } finally {
+    // Pase lo que pase, el vigilante se reanuda: dejarlo congelado rompería
+    // cualquier ejecución posterior contra este mismo escenario.
+    senalarVigilante(env, "CONT");
+  }
+
+  // Y en cuanto vuelve, la MISMA credencial —sin reemitir nada— sí vale.
+  await new Promise((r) => setTimeout(r, 5000));
+  const conRecarga = await conectarMqtt(env, SLUG_2, secreto);
+  expect(conRecarga.conectado, `el broker sigue rechazando: ${conRecarga.mensaje}`).toBe(true);
+
+  // Nada de esto ha puesto en línea a ningún módulo.
+  expect(psqlUno(env, "select count(*) from modules where online = true;")[0]).toBe("0");
 });

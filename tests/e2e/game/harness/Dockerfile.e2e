@@ -43,12 +43,21 @@ RUN npx prisma generate && npm run build
 
 # ---------------------------------------------------------------- runtime
 FROM node:20.19-bookworm-slim AS runtime
+# `mosquitto` trae `mosquitto_passwd`: la emisión de credenciales MQTT tiene
+# que ser EJECUTABLE en el arnés, o la prueba de aceptación estaría midiendo un
+# camino que en la imagen no existe. Igual que en producción.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends openssl wget \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends openssl wget mosquitto \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /etc/mosquitto /var/lib/mosquitto \
+    && mosquitto_passwd -c -b /tmp/comprobacion usuario clave-de-comprobacion \
+    && grep -q '^usuario:\$7\$' /tmp/comprobacion \
+    && rm -f /tmp/comprobacion
 
 RUN groupadd --system diana \
-    && useradd --system --gid diana --home-dir /app --shell /usr/sbin/nologin diana
+    && groupadd --system --gid 1883 mosquitto-broker \
+    && useradd --system --gid diana --home-dir /app --shell /usr/sbin/nologin diana \
+    && usermod --append --groups mosquitto-broker diana
 
 WORKDIR /app
 ENV NODE_ENV=production \
@@ -64,11 +73,16 @@ RUN npx prisma generate
 
 COPY --from=build /app/dist ./dist
 COPY contracts ./contracts
+COPY infrastructure/mosquitto/generate-identities.mjs infrastructure/mosquitto/identities.json ./infrastructure/mosquitto/
 
 # ÚNICA diferencia con producción (ver cabecera): chown ACOTADO a los dos
 # directorios en los que el proceso escribe, en vez de recursivo sobre /app.
 RUN mkdir -p /app/exports /app/firmware \
     && chown diana:diana /app/exports /app/firmware
+
+RUN mkdir -p /app/mqtt-credentials \
+    && chown diana:mosquitto-broker /app/mqtt-credentials \
+    && chmod 2770 /app/mqtt-credentials
 
 USER diana
 EXPOSE 3000

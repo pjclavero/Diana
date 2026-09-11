@@ -37,6 +37,8 @@ REPO_ROOT="$(cd "${LANE_DIR}/../../.." && pwd)"
 TMP="${LANE_DIR}/.tmp"
 
 NET=diana-e2emodui-net
+# Volumen de credenciales, igual que en produccion: backend escribe, broker lee.
+CRED_VOL=diana-e2emodui-credentials
 PG=diana-e2emodui-postgres
 MQ=diana-e2emodui-mosquitto
 BE=diana-e2emodui-backend
@@ -87,6 +89,22 @@ if ! docker run --rm --entrypoint sh "${FE_IMAGE}" -c \
 fi
 log "panel: URL del backend (${EXPECTED_API}) verificada dentro de la imagen"
 
+# La emisión de credenciales MQTT necesita DOS cosas DENTRO de la imagen del
+# backend: el binario `mosquitto_passwd` y el generador canónico de
+# identidades. Sin ellas el backend arranca igual y falla cerrado en la primera
+# emisión — es decir, el paso 8 mediría el fallo cerrado y no la emisión, y lo
+# haría pareciendo que mide otra cosa. Se comprueba aquí, POR EFECTO, sobre la
+# imagen que se va a desplegar.
+if ! docker run --rm --entrypoint sh "${BE_IMAGE}" -c \
+     'command -v mosquitto_passwd >/dev/null && test -f /app/infrastructure/mosquitto/generate-identities.mjs' \
+     >/dev/null 2>&1; then
+  echo "ERROR: la imagen ${BE_IMAGE} no puede emitir credenciales MQTT." >&2
+  echo "  Le falta mosquitto_passwd y/o /app/infrastructure/mosquitto/generate-identities.mjs." >&2
+  echo "  Reconstruye: docker build -f tests/e2e/game/harness/Dockerfile.e2e -t ${BE_IMAGE} ." >&2
+  exit 1
+fi
+log "backend: mosquitto_passwd y fuente de identidades verificados dentro de la imagen"
+
 docker network create "${NET}" >/dev/null
 log "red ${NET} creada"
 
@@ -124,20 +142,41 @@ chmod 600 "${TMP}/certs/ca.key"
 chmod 644 "${TMP}/certs/server.key"
 
 # ----------------------------------------------- 3. usuarios y ACL del broker
-# SÓLO `backend`. Este escenario no tiene dispositivos: que el broker no
-# conozca a ningún módulo es parte de lo que se está comprobando.
+# De ARRANQUE, sólo `backend`. NINGÚN módulo: que el broker no conozca a ningún
+# dispositivo al empezar es parte de lo que se comprueba, y es también lo que
+# hace significativa la prueba de emisión — la credencial de `module-01` no
+# está aquí, tiene que escribirla el backend en caliente.
 cat > "${TMP}/mosquitto/passwd" <<EOF
 backend:${MQTT_BACKEND_PASSWORD}
 EOF
 chmod 600 "${TMP}/mosquitto/passwd"
 docker run --rm -v "${TMP}/mosquitto:/w" eclipse-mosquitto:2.0.18 \
   mosquitto_passwd -U /w/passwd
-chmod 644 "${TMP}/mosquitto/passwd"
 if grep -qF "backend:${MQTT_BACKEND_PASSWORD}" "${TMP}/mosquitto/passwd"; then
   echo "ERROR: mosquitto_passwd no cifró el fichero; hay claves en claro." >&2
   exit 1
 fi
 log "usuario MQTT cifrado (sólo backend: no hay dispositivos en este escenario)"
+
+# ── El passwd va en un VOLUMEN, exactamente igual que en producción ─────────
+# Montarlo desde el host obligaría a inventar permisos aquí (el fichero sería
+# del operador y el backend corre como `diana`), y entonces el arnés estaría
+# probando un montaje que no existe en ninguna parte. Con un volumen con
+# nombre, Docker hereda dueño y modo del directorio de la imagen del backend
+# —diana:1883, 2770— y el escenario mide el camino real.
+#
+# La siembra es la misma que hace el servicio `mqtt-credentials-init` de
+# `compose.yml`: copiar las credenciales de ARRANQUE y fijar dueño y modo.
+docker volume rm -f "${CRED_VOL}" >/dev/null 2>&1 || true
+docker volume create "${CRED_VOL}" >/dev/null
+docker run --rm --user root \
+  -v "${CRED_VOL}:/app/mqtt-credentials" \
+  -v "${TMP}/mosquitto/passwd:/siembra/passwd:ro" \
+  "${BE_IMAGE}" sh -c \
+  'cp /siembra/passwd /app/mqtt-credentials/passwd \
+   && chown diana:1883 /app/mqtt-credentials/passwd \
+   && chmod 0640 /app/mqtt-credentials/passwd' >/dev/null
+log "volumen de credenciales ${CRED_VOL} sembrado (0640, diana:1883)"
 
 ACL_FILE="${REPO_ROOT}/infrastructure/mosquitto/acl"
 [[ -f "${ACL_FILE}" ]] || { echo "ERROR: no existe ${ACL_FILE}" >&2; exit 1; }
@@ -157,13 +196,14 @@ log "postgres arrancando (host 127.0.0.1:${PG_PORT})"
 docker run -d --name "${MQ}" --network "${NET}" --network-alias mosquitto \
   -p "127.0.0.1:${MQ_PORT}:8883" \
   -v "${HERE}/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro" \
-  -v "${TMP}/mosquitto/passwd:/mosquitto/config/passwd:ro" \
+  -v "${CRED_VOL}:/mosquitto/credentials:ro" \
+  -v "${REPO_ROOT}/infrastructure/mosquitto/reload-on-passwd-change.sh:/usr/local/bin/reload-on-passwd-change.sh:ro" \
   -v "${ACL_FILE}:/mosquitto/config/acl:ro" \
   -v "${TMP}/certs/ca.crt:/mosquitto/certs/ca.crt:ro" \
   -v "${TMP}/certs/server.crt:/mosquitto/certs/server.crt:ro" \
   -v "${TMP}/certs/server.key:/mosquitto/certs/server.key:ro" \
-  eclipse-mosquitto:2.0.18 >/dev/null
-log "mosquitto arrancando (TLS, host 127.0.0.1:${MQ_PORT})"
+  eclipse-mosquitto:2.0.18 /usr/local/bin/reload-on-passwd-change.sh >/dev/null
+log "mosquitto arrancando (TLS, host 127.0.0.1:${MQ_PORT}, con vigilante de recarga)"
 
 for i in $(seq 1 60); do
   if docker exec "${PG}" pg_isready -U diana_e2e -d diana_e2e >/dev/null 2>&1; then break; fi
@@ -224,6 +264,12 @@ MQTT_URL=mqtts://mosquitto:8883
 MQTT_CA_FILE=/app/certs/mqtt-ca.crt
 MQTT_USERNAME=backend
 MQTT_PASSWORD=${MQTT_BACKEND_PASSWORD}
+# Autoridad de credenciales MQTT: mismas variables que compose.yml. Sin ellas
+# el backend arranca con la autoridad INACTIVA y el paso de emisión mediría el
+# fallo cerrado, no la emisión.
+DIANA_MOSQUITTO_PASSWD_FILE=/app/mqtt-credentials/passwd
+DIANA_IDENTITY_GENERATOR=/app/infrastructure/mosquitto/generate-identities.mjs
+DIANA_IDENTITIES_FILE=/app/infrastructure/mosquitto/identities.json
 JWT_SECRET=${JWT_SECRET}
 CORS_ORIGINS=http://127.0.0.1:${FE_PORT},http://localhost:${FE_PORT}
 DIANA_ADMIN_USERNAME=admin
@@ -239,6 +285,7 @@ docker run -d --name "${BE}" --network "${NET}" --network-alias backend \
   --env-file "${TMP}/backend.env" \
   -p "127.0.0.1:${BE_PORT}:3000" \
   -v "${TMP}/certs/ca.crt:/app/certs/mqtt-ca.crt:ro" \
+  -v "${CRED_VOL}:/app/mqtt-credentials" \
   "${BE_IMAGE}" >/dev/null
 log "backend arrancando (host 127.0.0.1:${BE_PORT})"
 
@@ -357,6 +404,7 @@ cat > "${TMP}/env.json" <<EOF
     "database": "diana_e2e",
     "hostPort": ${PG_PORT}
   },
+  "mqttCredentialsVolume": "${CRED_VOL}",
   "containers": {
     "postgres": "${PG}",
     "mosquitto": "${MQ}",
