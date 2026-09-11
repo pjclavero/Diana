@@ -17,6 +17,7 @@ import { ModuleConfigReportedService } from '../../src/modules/modules/module-co
 import { MqttIdentityService } from '../../src/modules/provisioning/mqtt-identity.service';
 import { CanonicalIdentitySource } from '../../src/modules/provisioning/canonical-identity.source';
 import { MosquittoPasswdStore } from '../../src/modules/provisioning/mosquitto-passwd.store';
+import { PrismaHitRepository } from '../../src/modules/hits/prisma-hit.repository';
 import {
   classifyConnectivityAll,
   summarizeConnectivity,
@@ -917,6 +918,124 @@ suite('BACKEND-REAL · PostgreSQL y Mosquitto de verdad', () => {
       });
       const [v] = classifyConnectivityAll([fila!], new Date());
       expect(v.connectivity).toBe('PENDING');
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // T5 · un impacto se ENLAZA con las entidades reales del servidor
+  // ═══════════════════════════════════════════════════════════════════════════
+  describe('T5 · resolucion de entidades del impacto contra PostgreSQL real', () => {
+    // Esto lo encontro el PRIMER impacto fisico, no una prueba: la fila se
+    // creaba con module_slug/system_slug/target_index correctos y las TRES
+    // claves ajenas en NULL. El impacto existia y era idempotente, pero no
+    // habia nada que unir con su modulo, su sistema ni su diana --- y de ahi
+    // cuelgan estadisticas, resultados y la puntuacion de una partida.
+    //
+    // Se prueba contra PostgreSQL de verdad a proposito: con un doble, la
+    // resolucion devuelve lo que uno le ensene y la ausencia de las claves
+    // ajenas no se ve.
+    const SLUG_SIS = 'sistema-t5';
+    const SLUG_MOD = 'module-09';   // libre: 01-05, 07 y 08 los usan otros bloques
+    let sisId = '';
+    let modId = '';
+    let dianaId = '';
+
+    beforeAll(async () => {
+      const sis = await prisma.targetSystem.create({
+        data: { slug: SLUG_SIS, name: 'Sistema T5' },
+      });
+      sisId = sis.id;
+      const mod = await prisma.module.create({
+        data: { slug: SLUG_MOD, targetSystemId: sis.id },
+      });
+      modId = mod.id;
+      const t = await prisma.target.create({ data: { moduleId: mod.id, targetIndex: 1 } });
+      dianaId = t.id;
+    });
+
+    function impacto(over: Record<string, unknown> = {}) {
+      const n = Math.floor(Math.random() * 1e9);
+      return {
+        eventId: `e5-${n}-${Date.now()}`,
+        systemSlug: SLUG_SIS,
+        moduleSlug: SLUG_MOD,
+        targetIndex: 1,
+        gameId: null, roundId: null, participantId: null,
+        modulePositionX: null, modulePositionY: null, moduleRotation: null,
+        localSequence: BigInt(n),
+        deviceBootId: '00000000-0000-4000-8000-000000000005',
+        deviceUptimeUs: BigInt(1), deviceEventUs: BigInt(1), deviceEpochMs: null,
+        coordinatorRecvUs: null, coordinatorElapsedUs: null,
+        clockOffsetUs: null, offsetUncertaintyUs: null,
+        receivedAt: new Date(),
+        detectionMethod: 'digital_threshold', amplitude: null, threshold: null, noiseFloor: null,
+        neighbours: null, targetStateBefore: 'active',
+        classification: 'valid_hit', classificationReason: null,
+        firmwareVersion: '0.1.0', replay: false,
+        outOfWindow: false, outOfWindowReason: null, countsForScore: true,
+        rawPayload: {},
+        ...over,
+      } as never;
+    }
+
+    it('POSITIVO · slug, sistema y diana validos -> las TRES claves ajenas quedan puestas', async () => {
+      const repo = new PrismaHitRepository(prisma as never);
+      const r = await repo.insertIfAbsent(impacto());
+      expect(r.inserted).toBe(true);
+      expect(r.unresolved).toBeUndefined();
+
+      const fila = await prisma.hitEvent.findUnique({ where: { id: r.id } });
+      expect(fila!.moduleId).toBe(modId);
+      expect(fila!.targetSystemId).toBe(sisId);
+      expect(fila!.targetId).toBe(dianaId);
+      // Y corresponden EXACTAMENTE a lo que decia el mensaje.
+      expect(fila!.moduleSlug).toBe(SLUG_MOD);
+      expect(fila!.targetIndex).toBe(1);
+    });
+
+    it('NEGATIVO · modulo inexistente -> se guarda, sin enlazar, y se DICE', async () => {
+      const repo = new PrismaHitRepository(prisma as never);
+      const r = await repo.insertIfAbsent(impacto({ moduleSlug: 'no-existe-99' }));
+      expect(r.inserted).toBe(true);
+      expect(r.unresolved).toEqual(expect.arrayContaining([expect.stringContaining('no-existe-99')]));
+
+      const fila = await prisma.hitEvent.findUnique({ where: { id: r.id } });
+      expect(fila!.moduleId).toBeNull();
+      expect(fila!.targetSystemId).toBeNull();
+      expect(fila!.targetId).toBeNull();
+    });
+
+    it('NEGATIVO · diana fuera del modulo -> modulo y sistema SI, diana NO', async () => {
+      const repo = new PrismaHitRepository(prisma as never);
+      const r = await repo.insertIfAbsent(impacto({ targetIndex: 7 }));
+      expect(r.inserted).toBe(true);
+      expect(r.unresolved).toEqual(expect.arrayContaining([expect.stringContaining('diana 7')]));
+
+      const fila = await prisma.hitEvent.findUnique({ where: { id: r.id } });
+      expect(fila!.moduleId).toBe(modId);
+      expect(fila!.targetSystemId).toBe(sisId);
+      expect(fila!.targetId).toBeNull();
+    });
+
+    it('NEGATIVO · el sistema que dice el mensaje no es el del modulo -> manda el servidor', async () => {
+      const repo = new PrismaHitRepository(prisma as never);
+      const r = await repo.insertIfAbsent(impacto({ systemSlug: 'otro-sistema' }));
+      expect(r.inserted).toBe(true);
+      expect(r.unresolved).toEqual(expect.arrayContaining([expect.stringContaining('manda el servidor')]));
+
+      const fila = await prisma.hitEvent.findUnique({ where: { id: r.id } });
+      // La FK es la del modulo, no la que declaraba el dispositivo.
+      expect(fila!.targetSystemId).toBe(sisId);
+    });
+
+    it('CONTROL · sin la resolucion, esta prueba no podria distinguir nada', async () => {
+      // Deja constancia de por que las aserciones miran la FILA y no el
+      // resultado del repositorio: antes del arreglo, `inserted` era true
+      // igualmente y las tres claves quedaban en NULL sin que nadie fallara.
+      const repo = new PrismaHitRepository(prisma as never);
+      const r = await repo.insertIfAbsent(impacto());
+      const fila = await prisma.hitEvent.findUnique({ where: { id: r.id } });
+      expect([fila!.moduleId, fila!.targetSystemId, fila!.targetId]).not.toContain(null);
     });
   });
 });

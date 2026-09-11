@@ -12,6 +12,13 @@ export interface InsertResult {
   id: string;
   /** Restricción que detectó el duplicado. */
   duplicateBy?: 'event_id' | 'module_boot_sequence';
+  /**
+   * Identificadores externos del evento que NO se pudieron resolver contra una
+   * entidad existente. Vacío/ausente es lo normal. Si viene con algo, el
+   * impacto se guardó pero quedó sin enlazar, y la ingesta debe registrarlo:
+   * un slug desconocido no puede aceptarse en silencio.
+   */
+  unresolved?: string[];
 }
 
 /**

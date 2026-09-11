@@ -18,7 +18,68 @@ export class PrismaHitRepository implements HitRepositoryPort {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Resuelve los identificadores EXTERNOS del evento contra las entidades que
+   * ya existen en la base.
+   *
+   * El impacto llega del dispositivo con `module_id` y `system_id`, que son
+   * SLUGS del contrato, no claves de la base. Hasta ahora se guardaban tal
+   * cual y las tres claves ajenas quedaban en NULL: el impacto existía, se
+   * contaba y era idempotente, pero no estaba enlazado con su módulo, su
+   * sistema ni su diana. Cualquier consulta por entidad —estadísticas,
+   * resultados, la puntuación de una partida— se quedaba sin nada que unir.
+   *
+   * NO se inventa ninguna entidad: sólo se buscan las que ya están. Lo que no
+   * se pueda resolver se devuelve en `unresolved` para que la ingesta lo
+   * registre como incidencia; un slug desconocido no puede pasar en silencio.
+   *
+   * El sistema se toma del MÓDULO y no del `system_slug` del mensaje: la
+   * pertenencia de un módulo a un panel la decide el servidor, no el
+   * dispositivo. Si el mensaje nombra otro sistema, se dice.
+   */
+  private async resolver(record: HitRecord): Promise<{
+    moduleId: string | null;
+    targetSystemId: string | null;
+    targetId: string | null;
+    unresolved: string[];
+  }> {
+    const unresolved: string[] = [];
+
+    const module = await this.prisma.module.findUnique({
+      where: { slug: record.moduleSlug },
+      select: { id: true, targetSystemId: true, targetSystem: { select: { slug: true } } },
+    });
+    if (!module) {
+      // Ni módulo, ni sistema, ni diana: sin módulo no hay a qué colgarlas.
+      unresolved.push(`module_slug=${record.moduleSlug}`);
+      return { moduleId: null, targetSystemId: null, targetId: null, unresolved };
+    }
+
+    if (!module.targetSystemId) unresolved.push(`module ${record.moduleSlug} sin sistema asignado`);
+    else if (module.targetSystem && module.targetSystem.slug !== record.systemSlug) {
+      // No es motivo para descartar el impacto, pero sí para que quede escrito.
+      unresolved.push(
+        `system_slug del mensaje '${record.systemSlug}' != sistema del módulo ` +
+          `'${module.targetSystem.slug}' (manda el servidor)`,
+      );
+    }
+
+    const target = await this.prisma.target.findUnique({
+      where: { moduleId_targetIndex: { moduleId: module.id, targetIndex: record.targetIndex } },
+      select: { id: true },
+    });
+    if (!target) unresolved.push(`diana ${record.targetIndex} de ${record.moduleSlug}`);
+
+    return {
+      moduleId: module.id,
+      targetSystemId: module.targetSystemId,
+      targetId: target?.id ?? null,
+      unresolved,
+    };
+  }
+
   async insertIfAbsent(record: HitRecord): Promise<InsertResult> {
+    const ref = await this.resolver(record);
     try {
       const created = await this.prisma.hitEvent.create({
         data: {
@@ -26,6 +87,12 @@ export class PrismaHitRepository implements HitRepositoryPort {
           systemSlug: record.systemSlug,
           moduleSlug: record.moduleSlug,
           targetIndex: record.targetIndex,
+          // Claves ajenas resueltas contra entidades REALES. Nullables a
+          // propósito (onDelete: SetNull): un impacto sobrevive al borrado de
+          // su módulo, y esa es la única razón legítima para que estén vacías.
+          moduleId: ref.moduleId,
+          targetSystemId: ref.targetSystemId,
+          targetId: ref.targetId,
           gameId: record.gameId,
           roundId: record.roundId,
           participantId: record.participantId,
@@ -65,7 +132,11 @@ export class PrismaHitRepository implements HitRepositoryPort {
         },
         select: { id: true },
       });
-      return { inserted: true, id: created.id };
+      return {
+        inserted: true,
+        id: created.id,
+        unresolved: ref.unresolved.length > 0 ? ref.unresolved : undefined,
+      };
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         const target = String(error.meta?.target ?? '');

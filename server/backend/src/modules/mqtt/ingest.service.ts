@@ -363,6 +363,30 @@ export class IngestService {
 
     const result = await this.hits.insertIfAbsent(record);
 
+    // Un identificador del mensaje que no corresponde a ninguna entidad real
+    // NO puede pasar en silencio. El impacto se guarda igualmente --- es la
+    // prueba de un estimulo fisico y perderla seria peor --- pero queda sin
+    // enlazar, y eso tiene que verse.
+    if (result.unresolved && result.unresolved.length > 0) {
+      this.logger.warn(
+        `Impacto de ${record.moduleSlug} guardado SIN enlazar: ${result.unresolved.join('; ')}`,
+      );
+      await this.incidents
+        ?.record({
+          kind: 'hit_unresolved_entity',
+          severity: 'warning',
+          source: 'mqtt',
+          moduleSlug: record.moduleSlug,
+          eventId: record.eventId,
+          receivedAt,
+          message:
+            `El impacto de '${record.moduleSlug}' no se pudo enlazar con las entidades del ` +
+            `servidor: ${result.unresolved.join('; ')}.`,
+          detail: { unresolved: result.unresolved, target_index: record.targetIndex },
+        })
+        .catch(() => undefined);
+    }
+
     if (!result.inserted) {
       // ADR-0003: los duplicados son parte normal de QoS 1. Métrica, no error.
       this.metrics.duplicates += 1;
