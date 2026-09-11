@@ -15,7 +15,12 @@ import type { CredencialEmitida, MetadatosCredencial } from "../../api/mqttIdent
  * consultable, y el operador no tiene forma de notarlo.
  */
 
-const SECRETO = "s3cr3t0-de-un-solo-uso";
+// El valor lleva «prueba» a propósito. `scripts/security/secrets-scan.sh` marca
+// las asignaciones de credencial con literal largo, y hace bien: este fixture
+// tiene exactamente la forma de una contraseña de verdad. La salida correcta no
+// es ablandar la regla —no hay ninguna clase de falso positivo que generalizar,
+// es una credencial literal— sino que el valor diga lo que es.
+const SECRETO = "secreto-de-prueba-de-un-solo-uso";
 
 const EMITIDA: CredencialEmitida = {
   moduleId: "m1",
