@@ -174,6 +174,10 @@ static void log_mqtt_error(esp_mqtt_event_handle_t ev)
     }
 }
 
+/* Emite las suscripciones. Declarada aqui porque quien la dispara es el
+ * handler de MQTT_EVENT_CONNECTED, que esta mas arriba en el fichero. */
+static int mqtt_do_subscribe(struct diana_platform *p);
+
 static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t id,
                                void *data)
 {
@@ -190,6 +194,13 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t id,
          * despues es ACL o logica. */
         ESP_LOGI(TAG, "[OK] CONNACK aceptado: TCP+TLS+cert+hostname+auth "
                       "correctos (sesion #%u)", (unsigned)p->mqtt_reconnects);
+        /* CONFIG_RECONCILIATION. LAS SUSCRIPCIONES SE EMITEN AQUI Y SOLO AQUI.
+         * Antes se pedian justo despues de esp_mqtt_client_start(), con el
+         * cliente aun sin conectar: se perdian TODAS y el modulo no recibia
+         * nunca el config/desired retenido. Ver mqtt_do_subscribe(). */
+        if (p->sub_requested && mqtt_do_subscribe(p) != 0)
+            ESP_LOGE(TAG, "[MQTT] no se pudieron emitir las suscripciones tras "
+                          "el CONNACK: el modulo NO recibira config/desired");
         break;
 
     case MQTT_EVENT_DISCONNECTED:
@@ -357,9 +368,48 @@ int diana_platform_mqtt_start(struct diana_platform *p, const char *client_id,
     return esp_mqtt_client_start(p->mqtt) == ESP_OK ? 0 : -3;
 }
 
+/**
+ * Emite TODAS las suscripciones. Se llama UNICAMENTE desde
+ * MQTT_EVENT_CONNECTED (ver mqtt_subscribe_now en el handler), nunca antes.
+ *
+ * ── CONFIG_RECONCILIATION · el defecto que esto cierra ───────────────────────
+ *
+ * Antes, app_main.c llamaba a diana_platform_mqtt_subscribe() en la linea
+ * SIGUIENTE a diana_platform_mqtt_start(), y ahi el cliente todavia no ha
+ * conectado: esp_mqtt_client_start() es ASINCRONO y el CONNACK llega cientos
+ * de milisegundos despues (TCP + handshake TLS + CONNECT). Un
+ * esp_mqtt_client_subscribe() sobre un cliente no conectado no encola nada:
+ * devuelve -1 y se pierde. Como ningun otro punto del firmware volvia a
+ * suscribirse --el handler de MQTT_EVENT_CONNECTED solo registraba el CONNACK--
+ * el modulo NUNCA llegaba a estar suscrito a `config/desired`, y el retenido
+ * v1 del backend no le llegaba jamas. El sintoma medido era exactamente ese:
+ * publicaciones del modulo correctas (presencia, impactos hasta PostgreSQL) y
+ * reported_config_version clavado en 0.
+ *
+ * `disable_clean_session = true` no salvaba nada: el broker solo conserva
+ * suscripciones que alguna vez se hicieron, y aqui no se hizo ninguna.
+ *
+ * Se resuscribe en CADA CONNACK a proposito. Es idempotente, cuesta cuatro
+ * paquetes, y cubre el caso de que el broker pierda la sesion (reinicio,
+ * expiry, o un clean-session forzado desde el servidor): depender de la sesion
+ * persistente seria depender de un estado que no controlamos.
+ */
 int diana_platform_mqtt_subscribe(struct diana_platform *p, const char *module_id)
 {
-    if (!p || !p->mqtt) return -1;
+    if (!p || !module_id || !module_id[0]) return -1;
+
+    /* Se ANOTA la intencion; la emision va en el CONNACK. Si ya estamos
+     * conectados (resuscripcion pedida en caliente), se emite tambien ahora. */
+    snprintf(p->sub_module_id, sizeof(p->sub_module_id), "%s", module_id);
+    p->sub_requested = true;
+    if (p->mqtt && p->mqtt_connected) return mqtt_do_subscribe(p);
+    return 0;
+}
+
+static int mqtt_do_subscribe(struct diana_platform *p)
+{
+    if (!p || !p->mqtt || !p->sub_requested) return -1;
+    const char *module_id = p->sub_module_id;
 
     char topic[DIANA_TOPIC_MAXLEN];
     /* v1.2 · ADR-0008: `provision` cierra CONTRACT_GAP-PROVISION-COMMAND-TOPIC.
@@ -376,11 +426,21 @@ int diana_platform_mqtt_subscribe(struct diana_platform *p, const char *module_i
     for (size_t i = 0; i < sizeof(suffixes) / sizeof(suffixes[0]); ++i) {
         snprintf(topic, sizeof(topic), "targets/v1/module/%s/%s", module_id,
                  suffixes[i]);
-        if (esp_mqtt_client_subscribe(p->mqtt, topic, 1) < 0) return -1;
+        if (esp_mqtt_client_subscribe(p->mqtt, topic, 1) < 0) {
+            ESP_LOGE(TAG, "[MQTT] SUBSCRIBE rechazado por el cliente para '%s'",
+                     topic);
+            return -1;
+        }
+        p->sub_sent++;
     }
     /* Estado de partida publicado por el principal (ACL: solo lectura). */
-    if (esp_mqtt_client_subscribe(p->mqtt, "targets/v1/system/+/game/state", 1) < 0)
+    if (esp_mqtt_client_subscribe(p->mqtt, "targets/v1/system/+/game/state", 1) < 0) {
+        ESP_LOGE(TAG, "[MQTT] SUBSCRIBE rechazado para el estado de partida");
         return -1;
+    }
+    p->sub_sent++;
+    ESP_LOGI(TAG, "[OK] %u suscripciones emitidas tras el CONNACK",
+             (unsigned)p->sub_sent);
     return 0;
 }
 

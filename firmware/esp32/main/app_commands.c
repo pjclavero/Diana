@@ -236,6 +236,85 @@ static void handle_ota(diana_app *a, const cJSON *root, uint64_t recv_us)
 }
 
 /**
+ * CONFIG/DESIRED: reconciliacion de configuracion (CONFIG_RECONCILIATION).
+ *
+ * Toda la logica que se puede probar vive en diana_core y esta cubierta por
+ * test_config_reconcile.c. Aqui solo queda el cableado: parsear, decidir,
+ * aplicar, PERSISTIR y declarar.
+ *
+ * Las tres ramas del contrato son EXPLICITAS y ninguna es silenciosa:
+ *
+ *   remota  > local  -> aplicar, persistir en NVS y publicar config/reported
+ *   remota == local  -> NOOP, pero se REPUBLICA el reported: es justamente el
+ *                       caso en que el backend cree que el modulo va atrasado
+ *                       y el modulo ya esta al dia; callarse deja la base
+ *                       'pending' para siempre.
+ *   remota  < local  -> RECHAZO con diagnostico. Un retroceso de version es
+ *                       una anomalia del emisor, no un mensaje mas.
+ *
+ * El RELOJ no interviene: ni la hora de pared, ni rx->recv_us, ni el
+ * `calibrated_at` del payload deciden nada. El orden lo da el entero.
+ *
+ * El mensaje llega RETENIDO y eso es correcto y NO se rechaza por ello: a
+ * diferencia de una ORDEN (D1b), la configuracion deseada es estado, y el
+ * retenido es el mecanismo por el que un modulo que arranca se entera de la
+ * version vigente. La proteccion contra la reaplicacion en bucle es la
+ * comparacion de versiones, no el flag retain.
+ */
+static void handle_config_desired(diana_app *a, const diana_platform_rx *rx)
+{
+    diana_config incoming;
+    if (!diana_config_parse(rx->payload, rx->payload_len, &a->cfg, &incoming)) {
+        diana_publish_diagnostic(a, DIANA_DIAG_SCHEMA_REJECTED, DIANA_SEV_WARNING,
+                                 "config/desired no conforme: NO se aplica");
+        return;
+    }
+
+    diana_config_decision d = diana_config_decide(incoming.config_version,
+                                                  a->cfg.config_version);
+    if (d == DIANA_CFG_REJECT) {
+        ESP_LOGW(TAG, "config/desired v%u RECHAZADA: la aplicada es la v%u "
+                      "(la version no retrocede)",
+                 (unsigned)incoming.config_version,
+                 (unsigned)a->cfg.config_version);
+        diana_publish_diagnostic(a, DIANA_DIAG_SCHEMA_REJECTED, DIANA_SEV_WARNING,
+                                 "config/desired con version anterior a la aplicada");
+        return;
+    }
+
+    if (d == DIANA_CFG_NOOP) {
+        ESP_LOGI(TAG, "config/desired v%u ya aplicada: noop, se redeclara",
+                 (unsigned)incoming.config_version);
+        diana_publish_config_reported(a);
+        return;
+    }
+
+    if (diana_config_apply(&a->cfg, &incoming) != DIANA_HAL_OK) {
+        diana_publish_diagnostic(a, DIANA_DIAG_SCHEMA_REJECTED, DIANA_SEV_ERROR,
+                                 "config/desired fuera de los limites del contrato");
+        return;
+    }
+
+    /* PERSISTIR ANTES DE DECLARAR. Si se publicase primero y el guardado
+     * fallase, el backend anotaria una version que el modulo perderia en el
+     * siguiente reinicio: la base afirmaria lo contrario de lo que pasa, que es
+     * el defecto que esta columna existe para evitar. */
+    int rc = diana_config_save(&a->cfg, &a->hal);
+    if (rc != DIANA_HAL_OK) {
+        ESP_LOGE(TAG, "config v%u aplicada en RAM pero NO persistida (rc=%d)",
+                 (unsigned)a->cfg.config_version, rc);
+        diana_publish_diagnostic(a, DIANA_DIAG_SCHEMA_REJECTED, DIANA_SEV_ERROR,
+                                 "config aplicada sin persistir: se perdera al reiniciar");
+        return;
+    }
+
+    ESP_LOGI(TAG, "config v%u APLICADA y persistida", (unsigned)a->cfg.config_version);
+    /* `applied_at` va a NULL a proposito: el reloj del modulo puede no estar
+     * sincronizado y el backend usa su propio instante de recepcion. */
+    diana_publish_config_reported(a);
+}
+
+/**
  * DESPACHADOR UNICO de mensajes entrantes.
  *
  * El enrutado es EXACTO (diana_topic_route, tabla contractual espejo de
@@ -301,16 +380,8 @@ void diana_handle_message(diana_app *a, const diana_platform_rx *rx)
     }
 
     if (kind == DIANA_ROUTE_MODULE_CONFIG_DESIRED) {
-        /* La config no lleva sobre de comando: se protege con config_version
-         * monotonica, como manda el contrato. */
-        const cJSON *cv = cJSON_GetObjectItemCaseSensitive(root, "config_version");
-        if (cJSON_IsNumber(cv) && (uint32_t)cv->valuedouble > a->cfg.config_version) {
-            a->cfg.config_version = (uint32_t)cv->valuedouble;
-            /* El resto de campos se aplicarian aqui; pendiente de completar. */
-            diana_config_save(&a->cfg, &a->hal);
-            diana_publish_config_reported(a);
-        }
         cJSON_Delete(root);
+        handle_config_desired(a, rx);
         return;
     }
 

@@ -394,6 +394,12 @@ void app_main(void)
                                           a->id.mqtt_pass, ca_pem, ca_len,
                                           broker_ca_declared(),
                                           a->topic_presence, lwt);
+                /* Esto NO suscribe todavia: DECLARA con que identidad hay que
+                 * suscribirse. La emision ocurre en MQTT_EVENT_CONNECTED, y en
+                 * cada reconexion. Aqui el cliente acaba de arrancar y no ha
+                 * conectado: cualquier SUBSCRIBE emitido en este punto se
+                 * pierde -- que es exactamente por lo que el modulo nunca
+                 * recibia config/desired (CONFIG_RECONCILIATION). */
                 diana_platform_mqtt_subscribe(a->pf, a->id.module_id);
             }
         } else {

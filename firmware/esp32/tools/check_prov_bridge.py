@@ -94,8 +94,14 @@ def main() -> int:
     # ---------------------------------------------------------- suscripcion --
     print("\n[1] suscripcion a la ORDEN (CONTRACT_GAP-PROVISION-COMMAND-TOPIC)")
     mc = strip_comments(MQTT_CLIENT.read_text())
-    body = function_body(mc, "diana_platform_mqtt_subscribe")
-    check(body is not None, "existe diana_platform_mqtt_subscribe")
+    # CONFIG_RECONCILIATION: la tabla de sufijos ya no vive en
+    # diana_platform_mqtt_subscribe() --que ahora solo DECLARA la identidad--
+    # sino en mqtt_do_subscribe(), que es quien emite de verdad los SUBSCRIBE
+    # desde MQTT_EVENT_CONNECTED. Se mira donde se emite, no donde se pide.
+    body = function_body(mc, "mqtt_do_subscribe")
+    check(body is not None, "existe mqtt_do_subscribe (emisor de suscripciones)")
+    check(function_body(mc, "diana_platform_mqtt_subscribe") is not None,
+          "existe diana_platform_mqtt_subscribe")
     body = body or ""
 
     # La tabla de sufijos, tal cual la recorre el bucle de suscripcion.
