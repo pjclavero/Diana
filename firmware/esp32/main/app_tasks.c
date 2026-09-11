@@ -428,6 +428,10 @@ void diana_task_network(void *arg)
             diana_prov_app_announce(a);
             ESP_LOGI(TAG, "reconectado: vaciando %u eventos pendientes",
                      (unsigned)diana_queue_depth(&a->queue));
+            /* La cola persistente se liga a la identidad ACTUAL en cada
+             * conexion: si el modulo se reaprovisiono, lo que quedo dentro es
+             * de otro y no puede salir en su nombre. */
+            diana_queue_bind_identity(&a->queue, a->id.module_id, a->id.system_id);
         } else if (!connected && was_connected) {
             diana_module_fsm_apply(&a->fsm, DIANA_EV_MQTT_DISCONNECTED,
                                    a->hal.now_us(a->hal.ctx));
@@ -437,6 +441,17 @@ void diana_task_network(void *arg)
         if (connected && diana_queue_depth(&a->queue) > 0) {
             /* Vaciado por lotes: no monopoliza la red ni el watchdog. */
             diana_queue_flush(&a->queue, a->topic_hit, 8);
+            /* Diagnostico UNA sola vez: si se registrara en cada vaciado, una
+             * cola con eventos de otra identidad llenaria el log para siempre
+             * --- que es exactamente el sintoma que esto viene a cerrar. */
+            if (a->queue.stale_identity > 0 && !a->queue.stale_reported) {
+                a->queue.stale_reported = true;
+                ESP_LOGW(TAG,
+                         "cola: %u evento(s) retirados por pertenecer a OTRA "
+                         "identidad; la actual es '%s'/'%s'",
+                         (unsigned)a->queue.stale_identity, a->id.module_id,
+                         a->id.system_id);
+            }
         }
 
         diana_platform_rx rx;

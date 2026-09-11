@@ -147,5 +147,103 @@ int run_queue(void)
     CHECK_EQ_STR(survivor.event_id, g1.event_id,
                  "mismo event_id tras el reinicio: estable entre reintentos");
 
+    /* =====================================================================
+     * La cola queda LIGADA a la identidad con la que se generaron los eventos
+     * =====================================================================
+     * Lo encontro el banco: tras reaprovisionar el modulo de `lab-module-01` a
+     * `module-01`, ocho eventos que habian quedado en la cola se republicaban
+     * en cada arranque bajo el topico nuevo, con el `module_id` viejo dentro.
+     * El backend los rechazaba --- correctamente, un modulo no puede publicar
+     * en nombre de otro --- y el firmware los reintentaba para siempre.
+     */
+    SECTION("cola ligada a la identidad");
+    host_persistent nv4;
+    host_hal_ctx ctx4;
+    diana_hal hal4;
+    host_persistent_reset(&nv4, 8);
+    host_hal_init(&ctx4, &nv4, &hal4, 200);
+
+    diana_identity vieja;
+    diana_identity_load(&vieja, &hal4, "0.1.0");
+    diana_identity_provision(&vieja, &hal4, "lab-module-01", "lab-bench-3x3",
+                             "S-LAB", "protoA", "lab-module-01", "x");
+
+    diana_event_queue q4;
+    diana_queue_init(&q4, &hal4, DIANA_QUEUE_DROP_OLDEST);
+    host_mqtt_set_connected(&ctx4, false);
+    diana_hit_event viejos[3];
+    for (int i = 0; i < 3; ++i) {
+        make_event(&viejos[i], &hal4, &vieja, (uint8_t)(i + 1), 1000 + 100 * (uint64_t)i);
+        diana_queue_push(&q4, &viejos[i]);
+    }
+    CHECK_EQ_INT(diana_queue_depth(&q4), 3, "tres eventos de la identidad ANTIGUA");
+
+    /* CONTROL POSITIVO · con la MISMA identidad, la cola sale entera. */
+    diana_queue_bind_identity(&q4, "lab-module-01", "lab-bench-3x3");
+    CHECK(diana_queue_event_belongs(&q4, &viejos[0]),
+               "misma identidad: el evento pertenece");
+    host_mqtt_set_connected(&ctx4, true);
+    char topico[128];
+    diana_topic_build(topico, sizeof(topico), DIANA_TOPIC_HIT, "lab-module-01");
+    int salieron = diana_queue_flush(&q4, topico, 8);
+    CHECK_EQ_INT(salieron, 3, "misma identidad -> se publican los tres");
+    CHECK_EQ_INT(q4.stale_identity, 0, "nada retirado por identidad");
+
+    /* module_id distinto */
+    host_mqtt_set_connected(&ctx4, false);
+    for (int i = 0; i < 3; ++i) {
+        make_event(&viejos[i], &hal4, &vieja, (uint8_t)(i + 1), 5000 + 100 * (uint64_t)i);
+        diana_queue_push(&q4, &viejos[i]);
+    }
+    diana_queue_bind_identity(&q4, "module-01", "lab-bench-3x3");
+    CHECK(!diana_queue_event_belongs(&q4, &viejos[0]),
+               "module_id distinto: el evento NO pertenece");
+    host_mqtt_set_connected(&ctx4, true);
+    salieron = diana_queue_flush(&q4, topico, 8);
+    CHECK_EQ_INT(salieron, 0, "module_id distinto -> no sale ninguno");
+    CHECK_EQ_INT(diana_queue_depth(&q4), 0, "y la cola queda vacia: no se reintenta eternamente");
+    CHECK_EQ_INT(q4.stale_identity, 3, "los tres contabilizados como identidad ajena");
+    CHECK_EQ_INT(q4.dropped, 0, "no son perdidas por cola llena: se cuentan aparte");
+
+    /* system_id distinto */
+    host_mqtt_set_connected(&ctx4, false);
+    diana_hit_event otro;
+    make_event(&otro, &hal4, &vieja, 4, 9000);
+    diana_queue_push(&q4, &otro);
+    diana_queue_bind_identity(&q4, "lab-module-01", "banco-01");
+    CHECK(!diana_queue_event_belongs(&q4, &otro),
+               "system_id distinto: el evento NO pertenece");
+    host_mqtt_set_connected(&ctx4, true);
+    salieron = diana_queue_flush(&q4, topico, 8);
+    CHECK_EQ_INT(salieron, 0, "system_id distinto -> no sale");
+    CHECK_EQ_INT(q4.stale_identity, 4, "contabilizado tambien");
+
+    /* Sin identidad ligada NO se filtra: la propiedad es opcional y no puede
+     * convertirse en una perdida silenciosa por olvidar llamar a bind. */
+    host_mqtt_set_connected(&ctx4, false);
+    diana_event_queue q5;
+    diana_queue_init(&q5, &hal4, DIANA_QUEUE_DROP_OLDEST);
+    diana_hit_event libre;
+    make_event(&libre, &hal4, &vieja, 5, 12000);
+    diana_queue_push(&q5, &libre);
+    CHECK(diana_queue_event_belongs(&q5, &libre),
+               "sin bind: todo pertenece, no se filtra nada");
+    host_mqtt_set_connected(&ctx4, true);
+    CHECK_EQ_INT(diana_queue_flush(&q5, topico, 8), 1, "sin bind se publica igual");
+
+    /* Reinicio con la MISMA identidad: la cola sobrevive y sale. */
+    host_mqtt_set_connected(&ctx4, false);
+    diana_hit_event persistente;
+    make_event(&persistente, &hal4, &vieja, 6, 20000);
+    diana_queue_push(&q5, &persistente);
+    host_reboot(&ctx4, &hal4, 300, DIANA_RESET_PANIC);
+    diana_event_queue q6;
+    diana_queue_init(&q6, &hal4, DIANA_QUEUE_DROP_OLDEST);
+    diana_queue_bind_identity(&q6, "lab-module-01", "lab-bench-3x3");
+    CHECK_EQ_INT(diana_queue_depth(&q6), 1, "el evento sobrevive al reinicio");
+    host_mqtt_set_connected(&ctx4, true);
+    CHECK_EQ_INT(diana_queue_flush(&q6, topico, 8), 1,
+                 "reinicio con la misma identidad -> se publica");
+
     return g_tests_failed - before;
 }

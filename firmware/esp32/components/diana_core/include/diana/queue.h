@@ -41,6 +41,15 @@ typedef struct {
     uint32_t duplicates;    /* rechazados por event_id ya visto */
     uint32_t overflow_events;
 
+    /* Eventos retirados por pertenecer a OTRA identidad (ver
+     * diana_queue_bind_identity). No son perdidas por cola llena ni
+     * duplicados: se cuentan aparte para que no se confundan. */
+    uint32_t stale_identity;
+    /* Para que el diagnostico se registre UNA vez y no en cada vaciado. */
+    bool     stale_reported;
+    char     bound_module_id[DIANA_ID_MAXLEN];
+    char     bound_system_id[DIANA_ID_MAXLEN];
+
     char     dedup[DIANA_DEDUP_CACHE][DIANA_EVENTID_LEN];
     uint16_t dedup_next;
     uint16_t dedup_used;
@@ -79,6 +88,32 @@ int diana_queue_pop(diana_event_queue *q);
  * detiene y deja la cola intacta.
  * Devuelve el numero de eventos reenviados con exito.
  */
+/**
+ * Liga la cola a la identidad ACTUAL del modulo.
+ *
+ * Una cola persistente sobrevive a un cambio de identidad: los eventos que
+ * quedaron dentro llevan el `module_id` y el `system_id` con los que se
+ * generaron, y publicarlos bajo la identidad nueva seria atribuirle a un
+ * modulo hechos que no son suyos. El backend los rechaza --- un modulo no
+ * puede publicar en nombre de otro --- pero el firmware los reintenta en cada
+ * arranque, asi que el rechazo se repite para siempre.
+ *
+ * MEDIDO en el banco: tras reaprovisionar el modulo de `lab-module-01` a
+ * `module-01`, ocho eventos encolados generaban ocho rechazos por arranque.
+ *
+ * Con la cola ligada, `diana_queue_flush` solo publica lo que pertenece a esta
+ * identidad. Lo demas se RETIRA; jamas se reescribe con los slugs actuales,
+ * que falsificaria su procedencia.
+ *
+ * Si no se llama, la cola no filtra: el comportamiento es el de antes.
+ */
+void diana_queue_bind_identity(diana_event_queue *q, const char *module_id,
+                               const char *system_id);
+
+/** true si el evento pertenece a la identidad ligada (o si no hay ninguna). */
+bool diana_queue_event_belongs(const diana_event_queue *q,
+                               const diana_hit_event *ev);
+
 int diana_queue_flush(diana_event_queue *q, const char *topic, size_t max);
 
 #ifdef __cplusplus

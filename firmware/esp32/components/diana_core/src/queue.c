@@ -42,6 +42,39 @@ void diana_queue_remember(diana_event_queue *q, const char *event_id)
     if (q->dedup_used < DIANA_DEDUP_CACHE) q->dedup_used++;
 }
 
+void diana_queue_bind_identity(diana_event_queue *q, const char *module_id,
+                               const char *system_id)
+{
+    q->bound_module_id[0] = '\0';
+    q->bound_system_id[0] = '\0';
+    if (module_id && module_id[0]) {
+        size_t n = strlen(module_id);
+        if (n >= sizeof(q->bound_module_id)) n = sizeof(q->bound_module_id) - 1u;
+        memcpy(q->bound_module_id, module_id, n);
+        q->bound_module_id[n] = '\0';
+    }
+    if (system_id && system_id[0]) {
+        size_t n = strlen(system_id);
+        if (n >= sizeof(q->bound_system_id)) n = sizeof(q->bound_system_id) - 1u;
+        memcpy(q->bound_system_id, system_id, n);
+        q->bound_system_id[n] = '\0';
+    }
+}
+
+bool diana_queue_event_belongs(const diana_event_queue *q,
+                               const diana_hit_event *ev)
+{
+    /* Sin identidad ligada no se filtra nada: la propiedad es opcional y no
+     * puede convertirse en una perdida silenciosa de eventos por olvidar
+     * llamar a bind. */
+    if (!q->bound_module_id[0]) return true;
+    if (strcmp(ev->module_id, q->bound_module_id) != 0) return false;
+    /* El system_id solo se exige si la identidad ligada lo tiene. */
+    if (q->bound_system_id[0] && strcmp(ev->system_id, q->bound_system_id) != 0)
+        return false;
+    return true;
+}
+
 int diana_queue_push(diana_event_queue *q, const diana_hit_event *ev)
 {
     if (!q->hal || !q->hal->q_push) return DIANA_HAL_ERR_GENERIC;
@@ -97,6 +130,14 @@ int diana_queue_flush(diana_event_queue *q, const char *topic, size_t max)
 
         diana_hit_event ev;
         if (diana_queue_peek(q, 0, &ev) != DIANA_HAL_OK) break;
+
+        /* El evento es de OTRA identidad: se retira sin publicar. Reescribir
+         * sus slugs con los actuales falsificaria de donde vino. */
+        if (!diana_queue_event_belongs(q, &ev)) {
+            diana_queue_pop(q);
+            q->stale_identity++;
+            continue;
+        }
 
         /* Marca de reenvio: NO implica duplicado (ADR-0003). */
         ev.replay = true;
