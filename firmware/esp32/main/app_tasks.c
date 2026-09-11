@@ -452,10 +452,15 @@ void diana_task_network(void *arg)
 
 /* ------------------------------------------------------------- telemetria */
 
+/* Cadencia de la lectura diagnostica de VERSIONR: 30 s. Ni se acopla a la
+ * telemetria (1 s por defecto) ni necesita un bucle propio. */
+#define DIANA_VERSIONR_PERIOD_US (30ULL * 1000ULL * 1000ULL)
+
 void diana_task_telemetry(void *arg)
 {
     diana_app *a = (diana_app *)arg;
     esp_task_wdt_add(NULL);
+    uint64_t last_versionr_us = 0;
 
     for (;;) {
         esp_task_wdt_reset();
@@ -484,6 +489,27 @@ void diana_task_telemetry(void *arg)
         if (in.health.has_voltage && in.health.voltage_5v_mv < 4600) {
             diana_publish_diagnostic(a, DIANA_DIAG_LOW_VOLTAGE, DIANA_SEV_WARNING,
                                      "5V por debajo de 4,6 V");
+        }
+
+        /* VERSIONR con cadencia PROPIA y lenta, decimada dentro de la tarea de
+         * telemetria. Deliberadamente NO se ata a telemetry_interval_ms, que
+         * por defecto es 1000 ms: leer un registro por SPI una vez por segundo
+         * seria sondeo agresivo y competiria con el trafico del driver. Es UNA
+         * lectura cada DIANA_VERSIONR_PERIOD_US, por el mismo camino SPI y bajo
+         * el mismo mutex. Sirve para detectar en caliente una degradacion
+         * 0x04 -> 0x00 durante la endurance, invisible de otro modo. */
+        if (now - last_versionr_us >= DIANA_VERSIONR_PERIOD_US) {
+            last_versionr_us = now;
+            uint8_t vr = 0;
+            diana_w5500_version_class vcls = DIANA_W5500_VERSION_READ_ERROR;
+            int vrc = diana_platform_eth_versionr(a->pf, &vr, &vcls);
+            if (vrc == 0 && vcls == DIANA_W5500_VERSION_OK) {
+                ESP_LOGI(TAG, "W5500 VERSIONR=0x%02x (%s)", (unsigned)vr,
+                         diana_w5500_version_class_str(vcls));
+            } else if (vrc != -1) {
+                ESP_LOGW(TAG, "W5500 VERSIONR=0x%02x (%s)", (unsigned)vr,
+                         diana_w5500_version_class_str(vcls));
+            }
         }
 
         vTaskDelay(pdMS_TO_TICKS(a->cfg.telemetry_interval_ms));

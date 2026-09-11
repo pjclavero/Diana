@@ -16,9 +16,264 @@
 #include "esp_mac.h"
 #include "esp_netif_sntp.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 
 static const char *TAG = "diana.eth";
+
+/* ===========================================================================
+ * Camino SPI propio del W5500 (enganche `custom_spi_driver` de ESP-IDF).
+ *
+ * NO es un driver nuevo ni un segundo camino: es una REPLICA FIEL del driver
+ * SPI por defecto de la version instalada --- ESP-IDF v5.5, checkout
+ * 8c750b088c7cd857d079c0eeb495da199b359461, fichero
+ * components/esp_eth/src/spi/w5500/esp_eth_mac_w5500.c --- con el mismo
+ * framing, el mismo mutex, la misma transaccion por sondeo y el mismo trato de
+ * errores. Al pasarse por `custom_spi_driver`, el driver usa EXCLUSIVAMENTE
+ * estas funciones: sigue existiendo UN UNICO dispositivo SPI para el W5500.
+ *
+ * Existe por una sola razon. El driver por defecto no expone ningun acceso a
+ * registros, y su `w5500_verify_id()` sondea VERSIONR en bucle hasta obtener
+ * 0x04 --- su propio comentario reconoce que algunos W5500 devuelven 0 justo
+ * tras el reset ---. Solo registra el valor si agota el timeout. Consecuencia:
+ * la incidencia historica `VERSIONR=0x00` puede estar ocurriendo en cada
+ * arranque sin dejar rastro alguno. Aqui se lee UNA vez, antes de ese bucle, y
+ * el valor se conserva aunque despues el chip responda 0x04.
+ * =========================================================================== */
+
+/* Mismo valor que W5500_SPI_LOCK_TIMEOUT_MS en ESP-IDF. */
+#define DIANA_W5500_SPI_LOCK_TIMEOUT_MS 50
+
+/* Trama del W5500 tal y como la construye `w5500_read()` de ESP-IDF:
+ *   cmd  = direccion >> 16               -> fase de DIRECCION (command_bits=16)
+ *   addr = offset | RWB | modo operacion -> fase de CONTROL   (address_bits=8)
+ * Los nombres van invertidos respecto a lo intuitivo; se conservan tal cual
+ * para que la equivalencia con el original sea comprobable linea a linea. */
+#define DIANA_W5500_ADDR_OFFSET   16
+#define DIANA_W5500_RWB_OFFSET     2
+#define DIANA_W5500_BSB_OFFSET     3
+#define DIANA_W5500_BSB_COM_REG    0x00
+#define DIANA_W5500_ACCESS_READ    0
+#define DIANA_W5500_OP_MODE_VDM    0x00
+#define DIANA_W5500_CHIP_VERSION   0x04
+#define DIANA_W5500_REG_VERSIONR \
+    (((uint32_t)0x0039 << DIANA_W5500_ADDR_OFFSET) | \
+     ((uint32_t)DIANA_W5500_BSB_COM_REG << DIANA_W5500_BSB_OFFSET))
+
+typedef struct {
+    spi_device_handle_t hdl;
+    SemaphoreHandle_t   lock;
+    /* Diagnostico. `first_*` se toma antes del bucle de ESP-IDF y NO se
+     * sobrescribe nunca: es la unica prueba de un 0x00 recuperado despues. */
+    bool                      first_done;
+    uint8_t                   first_value;
+    diana_w5500_version_class first_class;
+    uint8_t                   last_value;
+    diana_w5500_version_class last_class;
+} diana_w5500_spi_info;
+
+/* Un unico W5500 por modulo. El callback `init` de ESP-IDF no recibe el
+ * contexto de plataforma, asi que el puntero al contexto se guarda aqui. */
+static diana_w5500_spi_info *s_w5500_spi;
+
+const char *diana_w5500_version_class_str(diana_w5500_version_class c)
+{
+    switch (c) {
+    case DIANA_W5500_VERSION_OK:         return "VERSION_OK";
+    case DIANA_W5500_VERSION_INVALID:    return "VERSION_INVALID";
+    case DIANA_W5500_VERSION_UNEXPECTED: return "VERSION_UNEXPECTED";
+    default:                             return "VERSION_READ_ERROR";
+    }
+}
+
+static diana_w5500_version_class classify_versionr(uint8_t v)
+{
+    if (v == DIANA_W5500_CHIP_VERSION) return DIANA_W5500_VERSION_OK;
+    if (v == 0x00)                     return DIANA_W5500_VERSION_INVALID;
+    return DIANA_W5500_VERSION_UNEXPECTED;
+}
+
+static inline bool w5500_spi_lock(diana_w5500_spi_info *spi)
+{
+    return xSemaphoreTake(spi->lock,
+                          pdMS_TO_TICKS(DIANA_W5500_SPI_LOCK_TIMEOUT_MS)) == pdTRUE;
+}
+
+static inline bool w5500_spi_unlock(diana_w5500_spi_info *spi)
+{
+    return xSemaphoreGive(spi->lock) == pdTRUE;
+}
+
+static esp_err_t diana_w5500_spi_read(void *spi_ctx, uint32_t cmd, uint32_t addr,
+                                      void *value, uint32_t len)
+{
+    esp_err_t ret = ESP_OK;
+    diana_w5500_spi_info *spi = (diana_w5500_spi_info *)spi_ctx;
+
+    spi_transaction_t trans = {
+        .flags = len <= 4 ? SPI_TRANS_USE_RXDATA : 0,
+        .cmd = cmd,
+        .addr = addr,
+        .length = 8 * len,
+        .rx_buffer = value
+    };
+    if (w5500_spi_lock(spi)) {
+        if (spi_device_polling_transmit(spi->hdl, &trans) != ESP_OK) {
+            ESP_LOGE(TAG, "transaccion SPI de lectura fallida");
+            ret = ESP_FAIL;
+        }
+        w5500_spi_unlock(spi);
+    } else {
+        ret = ESP_ERR_TIMEOUT;
+    }
+    if ((trans.flags & SPI_TRANS_USE_RXDATA) && len <= 4) {
+        memcpy(value, trans.rx_data, len);
+    }
+    return ret;
+}
+
+static esp_err_t diana_w5500_spi_write(void *spi_ctx, uint32_t cmd, uint32_t addr,
+                                       const void *value, uint32_t len)
+{
+    esp_err_t ret = ESP_OK;
+    diana_w5500_spi_info *spi = (diana_w5500_spi_info *)spi_ctx;
+
+    spi_transaction_t trans = {
+        .cmd = cmd,
+        .addr = addr,
+        .length = 8 * len,
+        .tx_buffer = value
+    };
+    if (w5500_spi_lock(spi)) {
+        if (spi_device_polling_transmit(spi->hdl, &trans) != ESP_OK) {
+            ESP_LOGE(TAG, "transaccion SPI de escritura fallida");
+            ret = ESP_FAIL;
+        }
+        w5500_spi_unlock(spi);
+    } else {
+        ret = ESP_ERR_TIMEOUT;
+    }
+    return ret;
+}
+
+/* UNA lectura de VERSIONR. Sin bucle, sin reintento, sin espera. */
+static esp_err_t w5500_read_versionr(diana_w5500_spi_info *spi, uint8_t *out)
+{
+    uint32_t cmd  = DIANA_W5500_REG_VERSIONR >> DIANA_W5500_ADDR_OFFSET;
+    uint32_t addr = (DIANA_W5500_REG_VERSIONR & 0xFFFFu)
+                    | ((uint32_t)DIANA_W5500_ACCESS_READ << DIANA_W5500_RWB_OFFSET)
+                    | DIANA_W5500_OP_MODE_VDM;
+    return diana_w5500_spi_read(spi, cmd, addr, out, 1);
+}
+
+static void *diana_w5500_spi_init(const void *spi_config)
+{
+    const eth_w5500_config_t *w5500_config = (const eth_w5500_config_t *)spi_config;
+    diana_w5500_spi_info *spi = calloc(1, sizeof(diana_w5500_spi_info));
+    if (!spi) {
+        ESP_LOGE(TAG, "sin memoria para el contexto SPI del W5500");
+        return NULL;
+    }
+
+    spi_device_interface_config_t spi_devcfg = *(w5500_config->spi_devcfg);
+    if (spi_devcfg.command_bits == 0 && spi_devcfg.address_bits == 0) {
+        spi_devcfg.command_bits = 16;  /* fase de direccion en la trama W5500 */
+        spi_devcfg.address_bits = 8;   /* fase de control  en la trama W5500 */
+    } else if (spi_devcfg.command_bits != 16 || spi_devcfg.address_bits != 8) {
+        ESP_LOGE(TAG, "formato de trama SPI incorrecto para el W5500");
+        free(spi);
+        return NULL;
+    }
+
+    if (spi_bus_add_device(w5500_config->spi_host_id, &spi_devcfg, &spi->hdl) != ESP_OK) {
+        ESP_LOGE(TAG, "spi_bus_add_device fallo para el W5500");
+        free(spi);
+        return NULL;
+    }
+    spi->lock = xSemaphoreCreateMutex();
+    if (!spi->lock) {
+        ESP_LOGE(TAG, "no se pudo crear el mutex del SPI del W5500");
+        spi_bus_remove_device(spi->hdl);
+        free(spi);
+        return NULL;
+    }
+
+    /* PRIMERA lectura de VERSIONR. Este es el unico instante en que puede
+     * observarse sin enmascarar: el dispositivo SPI ya existe, pero el driver
+     * todavia no ha ejecutado su `w5500_verify_id()` con reintentos. */
+    uint8_t v = 0;
+    if (w5500_read_versionr(spi, &v) == ESP_OK) {
+        spi->first_value = v;
+        spi->first_class = classify_versionr(v);
+    } else {
+        spi->first_value = 0;
+        spi->first_class = DIANA_W5500_VERSION_READ_ERROR;
+    }
+    spi->first_done = true;
+    spi->last_value = spi->first_value;
+    spi->last_class = spi->first_class;
+
+    if (spi->first_class == DIANA_W5500_VERSION_OK) {
+        ESP_LOGI(TAG, "W5500 first VERSIONR=0x%02x (%s)",
+                 (unsigned)spi->first_value,
+                 diana_w5500_version_class_str(spi->first_class));
+    } else {
+        /* Se registra UNA vez y con nivel alto: es la incidencia historica.
+         * No se reintenta aqui para "arreglarlo". */
+        ESP_LOGW(TAG, "W5500 first VERSIONR=0x%02x (%s) --- esperado 0x%02x",
+                 (unsigned)spi->first_value,
+                 diana_w5500_version_class_str(spi->first_class),
+                 DIANA_W5500_CHIP_VERSION);
+    }
+
+    s_w5500_spi = spi;
+    return spi;
+}
+
+static esp_err_t diana_w5500_spi_deinit(void *spi_ctx)
+{
+    diana_w5500_spi_info *spi = (diana_w5500_spi_info *)spi_ctx;
+    if (!spi) return ESP_OK;
+    if (s_w5500_spi == spi) s_w5500_spi = NULL;
+    spi_bus_remove_device(spi->hdl);
+    vSemaphoreDelete(spi->lock);
+    free(spi);
+    return ESP_OK;
+}
+
+int diana_platform_eth_versionr(diana_platform *p, uint8_t *out_value,
+                                diana_w5500_version_class *out_class)
+{
+    (void)p;
+    diana_w5500_spi_info *spi = s_w5500_spi;
+    if (!spi) return -1;
+
+    uint8_t v = 0;
+    diana_w5500_version_class cls;
+    if (w5500_read_versionr(spi, &v) != ESP_OK) {
+        cls = DIANA_W5500_VERSION_READ_ERROR;
+        v = 0;
+    } else {
+        cls = classify_versionr(v);
+    }
+    spi->last_value = v;
+    spi->last_class = cls;
+    if (out_value) *out_value = v;
+    if (out_class) *out_class = cls;
+    return cls == DIANA_W5500_VERSION_READ_ERROR ? -2 : 0;
+}
+
+bool diana_platform_eth_versionr_first(diana_platform *p, uint8_t *out_value,
+                                       diana_w5500_version_class *out_class)
+{
+    (void)p;
+    diana_w5500_spi_info *spi = s_w5500_spi;
+    if (!spi || !spi->first_done) return false;
+    if (out_value) *out_value = spi->first_value;
+    if (out_class) *out_class = spi->first_class;
+    return true;
+}
+
 
 static void eth_event_handler(void *arg, esp_event_base_t base, int32_t id,
                               void *data)
@@ -182,6 +437,18 @@ int diana_pf_net_init(struct diana_platform *p)
     w5500_cfg.int_gpio_num = -1;
     w5500_cfg.poll_period_ms = 10;
 
+    /* Camino SPI propio: MISMO framing y MISMO mutex que el driver por defecto
+     * de ESP-IDF v5.5. ESP-IDF exige los cuatro callbacks no nulos; si faltara
+     * alguno caeria SILENCIOSAMENTE al driver por defecto y perderiamos la
+     * primera lectura de VERSIONR sin ningun aviso. `config` apunta a esta
+     * misma estructura, viva durante toda la llamada sincrona a
+     * esp_eth_mac_new_w5500(), que es quien invoca a `init`. */
+    w5500_cfg.custom_spi_driver.config = &w5500_cfg;
+    w5500_cfg.custom_spi_driver.init   = diana_w5500_spi_init;
+    w5500_cfg.custom_spi_driver.deinit = diana_w5500_spi_deinit;
+    w5500_cfg.custom_spi_driver.read   = diana_w5500_spi_read;
+    w5500_cfg.custom_spi_driver.write  = diana_w5500_spi_write;
+
     eth_mac_config_t mac_cfg = ETH_MAC_DEFAULT_CONFIG();
     eth_phy_config_t phy_cfg = ETH_PHY_DEFAULT_CONFIG();
     /* RSTn ya se ha pulsado arriba con la temporizacion del datasheet, asi que
@@ -261,7 +528,22 @@ int diana_pf_net_reconnect(void *ctx)
     /* Reconexion automatica: parar y arrancar el driver renegocia el enlace.
      * El W5500 no siempre recupera solo tras un desconectado largo. */
     esp_eth_stop(p->eth);
-    return esp_eth_start(p->eth) == ESP_OK ? DIANA_HAL_OK : DIANA_HAL_ERR_GENERIC;
+    int rc = esp_eth_start(p->eth) == ESP_OK ? DIANA_HAL_OK : DIANA_HAL_ERR_GENERIC;
+
+    /* UNA lectura diagnostica por reconexion. Ni bucle ni sondeo periodico: un
+     * reconnect es un evento raro, y es justo cuando interesa saber si el chip
+     * sigue respondiendo por SPI. */
+    uint8_t v = 0;
+    diana_w5500_version_class cls = DIANA_W5500_VERSION_READ_ERROR;
+    if (diana_platform_eth_versionr(p, &v, &cls) == 0 &&
+        cls == DIANA_W5500_VERSION_OK) {
+        ESP_LOGI(TAG, "tras reconnect: VERSIONR=0x%02x (%s)",
+                 (unsigned)v, diana_w5500_version_class_str(cls));
+    } else {
+        ESP_LOGW(TAG, "tras reconnect: VERSIONR=0x%02x (%s)",
+                 (unsigned)v, diana_w5500_version_class_str(cls));
+    }
+    return rc;
 }
 
 bool diana_platform_eth_available(diana_platform *p)

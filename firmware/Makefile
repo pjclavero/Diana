@@ -77,6 +77,11 @@ contracts:
 # compila en la suite de host, asi que ninguna prueba en C puede cubrirlo.
 	@$(PYTHON) $(FW)/tools/check_w5500_reset.py
 
+# VERSIONR observable. Misma razon estructural: net_w5500.c no se compila en
+# host. Cubre ademas que el log no vuelva a mezclar disponibilidad del driver
+# con comunicacion SPI real, y que la lectura periodica no degenere en sondeo.
+	@$(PYTHON) $(FW)/tools/check_w5500_versionr.py
+
 # DEVICE_MANAGEMENT_COMMAND_PATH = UNIQUE. Propiedad ESTRUCTURAL: no la
 # cubre ninguna prueba de comportamiento, y se rompe sin que nada falle.
 	@$(PYTHON) $(FW)/tools/check_d1b_unique_path.py

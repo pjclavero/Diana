@@ -142,10 +142,33 @@ static void print_bringup(diana_app *a)
                  (unsigned)((snap.active_bitmap >> i) & 1u));
     }
     ESP_LOGI(TAG, "Ethernet:");
-    ESP_LOGI(TAG, "  W5500 SPI=%s",
-             diana_platform_eth_available(a->pf) ? "OK" : "FAIL");
-    ESP_LOGI(TAG, "  LINK=%s", net.link_up ? "UP" : "DOWN");
-    ESP_LOGI(TAG, "  IP=%s", net.has_ip ? net.ip : "0.0.0.0");
+    /* CUATRO observables distintos. El antiguo "W5500 SPI=OK" mezclaba los dos
+     * primeros: solo media `diana_platform_eth_available()`, es decir que el
+     * driver se instalo, y se venia leyendo como si demostrase una lectura SPI
+     * real del chip. No lo demostraba. */
+    ESP_LOGI(TAG, "  W5500 driver=%s",
+             diana_platform_eth_available(a->pf) ? "AVAILABLE" : "UNAVAILABLE");
+    {
+        uint8_t vr = 0;
+        diana_w5500_version_class vcls = DIANA_W5500_VERSION_READ_ERROR;
+        if (diana_platform_eth_versionr_first(a->pf, &vr, &vcls)) {
+            /* Tomada ANTES del bucle de reintentos de ESP-IDF: un 0x00 aqui es
+             * la incidencia historica, y se conserva aunque `current` de 0x04. */
+            ESP_LOGI(TAG, "  W5500 first VERSIONR=0x%02x (%s)",
+                     (unsigned)vr, diana_w5500_version_class_str(vcls));
+        } else {
+            ESP_LOGW(TAG, "  W5500 first VERSIONR=NO_LEIDA");
+        }
+        if (diana_platform_eth_versionr(a->pf, &vr, &vcls) == 0) {
+            ESP_LOGI(TAG, "  W5500 current VERSIONR=0x%02x (%s)",
+                     (unsigned)vr, diana_w5500_version_class_str(vcls));
+        } else {
+            ESP_LOGW(TAG, "  W5500 current VERSIONR=%s",
+                     diana_w5500_version_class_str(vcls));
+        }
+    }
+    ESP_LOGI(TAG, "  W5500 LINK=%s", net.link_up ? "UP" : "DOWN");
+    ESP_LOGI(TAG, "  W5500 IP=%s", net.has_ip ? net.ip : "0.0.0.0");
     ESP_LOGI(TAG, "LED:");
     ESP_LOGI(TAG, "  ROW1=NOT_TESTED");
     ESP_LOGI(TAG, "  ROW2=NOT_TESTED");
