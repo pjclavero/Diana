@@ -1,5 +1,39 @@
 # P0-2 · Inventario de reconciliación `hotfix/p02-tls-6da16d4` → `mp0/integration`
 
+> ## ADENDA DE CIERRE — el paso 16 se ha ejecutado
+>
+> Este inventario se escribió con el `listener 1883` vivo y atado a la decisión **D1**.
+> **D1 ha quedado sin objeto**, y conviene decir exactamente por qué, porque la razón no
+> es que alguien haya aceptado el coste: es que **la premisa era falsa a fecha de hoy**.
+>
+> La premisa de D1/R1 era «el firmware vigente lleva `mqtt://%s:1883` **cableado** y no
+> puede hablar 8883». Está desmentida por escrito en
+> `docs/coordination/C-PREPARACION-BANCO.md` (tabla de mitos): `app_main.c` construye la
+> URI con `diana_mqtt_uri(CONFIG_DIANA_BROKER_HOST, CONFIG_DIANA_BROKER_PORT, transport, …)`,
+> el esquema por defecto es `mqtts://` y el puerto por defecto 8883, configurable. Y el
+> hecho que la cierra no es documental sino físico: el módulo real **`module-01` conecta
+> contra `mqtts://192.168.1.209:8883` validando CA y nombre de servidor, y está ONLINE**.
+>
+> Nadie queda fuera de servicio al retirar el 1883, que era el único coste que D1 pesaba.
+> En consecuencia se han ejecutado A LA VEZ, como el propio inventario exigía:
+> el `listener 1883` de `mosquitto.conf`, su publicación en `compose.yml` y la regla
+> `tcp dport 1883` de `04-firewall.sh`. Y ha entrado al árbol la regresión que lo vigila,
+> `server/backend/test/mqtt/broker-sin-listener-en-claro.spec.ts`, con `js-yaml` declarado
+> como `devDependency` del backend.
+>
+> Estado resultante de esta línea:
+>
+> ```
+> INTEGRATION_TLS_STATE = TLS_EXCLUSIVE_MQTT
+>   (8883 con TLS es el único listener MQTT; G2, G3 y G10 verdes; G13 y G14 cubiertos
+>    por la prueba y su ronda de mutación registrada)
+> ```
+>
+> Lo que esta adenda **no** afirma: que el despliegue esté hecho (es una entrega de
+> repositorio; VM109 no se ha tocado), que las credenciales que viajaron por el 1883 estén
+> rotadas (no lo están) ni que «no quede ningún camino en claro» (el `listener 9001` de
+> WebSockets sigue sin cifrar, deuda **D4**, intacta).
+
 > **Este documento NO es un plan de merge.** Es un inventario clasificado, delta a
 > delta, hecho comparando **contenido** (`git show` / `git diff` entre árboles), no
 > mensajes de commit. Fusionar `hotfix/p02-tls-6da16d4` con `git merge` **regresaría**
@@ -357,12 +391,14 @@ Tres claves del orden:
 
 ## 5. Riesgos
 
-### R1 · Los módulos ESP32 físicos se quedan fuera (BLOQUEANTE)
+### R1 · Los módulos ESP32 físicos se quedan fuera (BLOQUEANTE) — **DECAÍDO**
 
-El firmware vigente lleva `mqtt://%s:1883` **cableado**: no puede hablar 8883. El propio
-hotfix lo dice y corrige el comentario de `compose.yml` que afirmaba lo contrario. En
-cuanto se ejecuta el paso 16, todo módulo físico deja de conectar hasta que exista el
-carril de TLS de firmware. **Exige decisión humana** (D1).
+~~El firmware vigente lleva `mqtt://%s:1883` **cableado**: no puede hablar 8883.~~ Se
+escribió así, y era cierto históricamente. **Ya no lo es**: `app_main.c` construye la URI
+con `diana_mqtt_uri(...)`, con esquema `mqtts://` y puerto 8883 por defecto, y el módulo
+físico `module-01` conecta por `mqtts://192.168.1.209:8883` validando CA y nombre — ONLINE.
+Al ejecutar el paso 16 **ningún módulo físico se queda fuera**, que era el coste íntegro de
+este riesgo. R1 decae y con él D1. Ver la adenda de cierre en la cabecera.
 
 ### R2 · Regresión silenciosa por porte "de fichero" en vez de "de delta"
 
@@ -405,7 +441,7 @@ reinicio del broker.
 
 | id | decisión | por qué no puede tomarla un agente |
 |---|---|---|
-| **D1** | ¿Se retira el 1883 productivo **antes** de que el firmware hable TLS, aceptando que los módulos físicos queden fuera? ¿O el paso 16 se congela hasta el carril de firmware? | Deja hardware real sin servicio. |
+| ~~**D1**~~ **SIN OBJETO** | ~~¿Se retira el 1883 productivo antes de que el firmware hable TLS, aceptando que los módulos físicos queden fuera?~~ La disyuntiva desaparece: **el firmware ya habla TLS** y el módulo físico está ONLINE sobre `mqtts://…:8883`. No hay hardware que dejar sin servicio, así que no hay coste que un humano tenga que aceptar. Paso 16 **ejecutado**. | (ya no aplica: la premisa era falsa, no el juicio) |
 | **D2** | Ubicación definitiva de `ca.key` y política de rotación (`CA_DIR=/root/diana-pki` es el defecto del script; el destino declarado es almacenamiento **offline** separado de la VM). | Custodia de material criptográfico. |
 | **D3** | Identidades de prueba de `test-acl.sh`: ¿se adoptan `module-acltest-a/b` + `module-aclobserver` (obliga a añadirlas a `identities.json`, la fuente única, y a crear sus contraseñas), o el arnés TLS se monta sobre las identidades reales que ya usa integración? | Crea credenciales válidas en el broker. |
 | **D4** | ¿El `listener 9001` en claro se abre como carril propio (WSS) o se acepta como riesgo declarado con fecha? | Aceptación de riesgo. |
@@ -486,16 +522,23 @@ son **verificables desde el repositorio**:
 - G13: `js-yaml` ausente; los 5 spec ausentes.
 - G14: no hay ronda de mutación registrada sobre esta rama.
 
-**Condiciones que no dependen del código** y bloquean el gate igualmente: **D1** (el
-firmware con `mqtt://…:1883` cableado impide que "producción representativa" incluya a
-los módulos físicos) y **D2** (custodia de `ca.key`). Mientras D1 siga abierta, lo más
-que puede alcanzarse honestamente es un estado intermedio:
+**Condiciones que no dependen del código**: **D1** ha quedado **sin objeto** (el firmware
+habla `mqtts://…:8883` y el módulo físico está ONLINE; ver la adenda de cabecera), de modo
+que ya no bloquea. **D2** (custodia de `ca.key`) **sigue abierta** y no la toca este carril.
+
+Con D1 decaída y G2/G3/G10 cerradas y calibradas, el estado alcanzable honestamente pasa a
+ser el exclusivo:
 
 ```
-INTEGRATION_TLS_STATE = TLS_WIRED_NOT_EXCLUSIVE
-  (8883 con TLS operativo y verificado; 1883 aún presente para el firmware;
-   G1, G4-G9, G11-G14 verdes; G2, G3 y G10 pendientes de D1)
+INTEGRATION_TLS_STATE = TLS_EXCLUSIVE_MQTT
+  (8883 con TLS es el ÚNICO listener MQTT; el 1883 no existe ni como listener, ni como
+   publicación, ni como regla nft; G1-G14 verdes con ronda de mutación registrada;
+   D2 sigue abierta y es independiente de esto)
 ```
+
+Sigue sin ser cierto «no queda ningún camino en claro»: el `listener 9001` de WebSockets
+continúa sin cifrar (deuda **D4**). Y esto es estado del **repositorio**, no del
+despliegue.
 
 Nombrarlo así evita el error de nomenclatura que este proyecto ya ha pagado: separar
 "cableado" de "exclusivo", y acotar el árbol al que se refiere la afirmación.

@@ -93,7 +93,10 @@ docker run --rm --network "$NET" -v /opt/diana:/repo -w /repo/server/backend \
 
 ```bash
 cd /opt/diana/infrastructure/mosquitto
-./test-acl.sh 127.0.0.1 1883 "$MQTT_BACKEND_PW" "$M1_PW" "$M2_PW"
+# El broker ya NO escucha en claro: la ACL se valida contra el 8883 con TLS,
+# validando la CA propia (el almacen del sistema no la tiene).
+MQTT_CAFILE=/opt/diana/infrastructure/mosquitto/certs/ca.crt \
+  ./test-acl.sh 127.0.0.1 8883 "$MQTT_BACKEND_PW" "$M1_PW" "$M2_PW"
 ```
 Requiere los usuarios `backend`, `module-m1`, `module-m2` en `passwd`. Todas
 las rutas negativas (suplantación, escritura en `config/desired`, `command`,
@@ -122,8 +125,11 @@ haga, esto es un procedimiento, no una verificación.
 
 ## Notas de seguridad de esta instalación (pendientes)
 
-- **TLS desactivado**: nginx y mosquitto sirven en claro dentro de la LAN. El
-  bloque HTTPS/8443 y el listener MQTT 8883 están preparados y comentados.
-- El único puerto MQTT publicado al host es `1883` (lo necesitan los módulos
-  ESP32 físicos). PostgreSQL NO se publica. El proxy publica `8080`.
+- **MQTT va por TLS**: mosquitto sirve `8883` con la CA propia y ya NO declara
+  ningún listener MQTT/TCP en claro. nginx sí sigue en claro dentro de la LAN
+  (el bloque HTTPS/8443 continúa preparado y comentado), y el `listener 9001`
+  de WebSockets del broker también: son deuda declarada (D4), no diseño.
+- El único puerto MQTT publicado al host es `8883` (TLS). El `1883` se retiró
+  del listener, de `compose.yml` y del firewall. PostgreSQL NO se publica. El
+  proxy publica `8080`.
 - No exponer nada a Internet sin revisar antes CORS, TLS y contraseñas.

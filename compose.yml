@@ -385,14 +385,15 @@ services:
     logging: *default-logging
 
   # ----------------------------------------------------------------------------
-  # Mosquitto — publica el puerto MQTT sobre TLS (8883) y, TODAVIA, el puerto
-  # en claro (1883). El WebSocket (9001) queda interno.
+  # Mosquitto — publica UNICAMENTE el puerto MQTT sobre TLS (8883). El
+  # WebSocket (9001) queda interno; el 1883 en claro YA NO EXISTE.
   #
   # OJO con la frase que habia aqui: decia que el 1883 «lo necesitan los modulos
-  # ESP32 fisicos de la LAN». Eso sigue siendo cierto Y ES EL PROBLEMA: el
-  # firmware vigente lleva `mqtt://%s:1883` CABLEADO y no puede usar el 8883.
-  # Por eso el 1883 sobrevive a este porte, marcado como perfil de transicion.
-  # Su retirada es el paso 16 y depende de la decision D1 del operador.
+  # ESP32 fisicos de la LAN», y despues que el firmware llevaba `mqtt://%s:1883`
+  # CABLEADO. Las dos han dejado de ser ciertas: el firmware construye la URI
+  # con esquema `mqtts://` y puerto 8883 por defecto, y el modulo fisico
+  # `module-01` conecta contra `mqtts://<host>:8883` validando CA y nombre. Esa
+  # era la premisa de la decision D1; caida la premisa, el 1883 se retira.
   # ----------------------------------------------------------------------------
   mosquitto:
     image: eclipse-mosquitto:2.0.18
@@ -408,14 +409,14 @@ services:
     ports:
       # Camino recomendado: MQTT sobre TLS.
       - "${MQTT_TLS_PORT:-8883}:8883"
-      # PERFIL DE TRANSICION, con fecha de muerte. El 1883 en claro es el camino
-      # por el que se leian credenciales de la LAN (hallazgo H7-03): cualquiera
-      # con acceso a la red lee el CONNECT y se lleva usuario y contrasena. Se
-      # mantiene publicado UNICAMENTE porque el firmware fisico no sabe hablar
-      # TLS todavia. Retirarlo es el paso 16 del orden de porteo y exige la
-      # decision D1. Mientras viva, toda credencial que viaje por aqui debe
-      # considerarse comprometida ante cualquiera con acceso a la LAN.
-      - "${MQTT_PORT:-1883}:1883"
+      # AQUI SE PUBLICABA `"${MQTT_PORT:-1883}:1883"`. Retirado con el listener
+      # en claro: era el camino por el que se leian credenciales de la LAN
+      # (hallazgo H7-03) --- cualquiera con acceso a la red leia el CONNECT y se
+      # llevaba usuario y contrasena. No volver a anadirlo: hay una regresion
+      # (server/backend/test/mqtt/broker-sin-listener-en-claro.spec.ts) que
+      # parsea este YAML y se pone roja si el 1883 reaparece, tambien con la
+      # sintaxis larga (`- target: 1883 / published: 1883`) o por un rango
+      # (`- "1880-1890:1880-1890"`).
     volumes:
       - ./infrastructure/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - ./infrastructure/mosquitto/acl:/mosquitto/config/acl:ro
@@ -694,16 +695,15 @@ networks:
   testnet:
     driver: bridge
   # Red de borde: proxy <-> frontend/backend. El proxy es el único servicio
-  # con puertos publicados al host (además de mosquitto:1883).
+  # con puertos publicados al host (además de mosquitto:8883).
   edge:
     driver: bridge
   # Red interna: backend/worker/migrate/backup <-> postgres/mosquitto. Ningún
   # servicio de esta red publica puertos al host salvo mosquitto, que publica
-  # 8883 (TLS) y todavia 1883 (en claro, perfil de transicion para el firmware
-  # fisico). NO escribir aqui «no queda ningun camino en claro»: hoy quedan dos
-  # --- el 1883 y el 9001 de WebSockets, que sigue sin cifrar dentro de esta
-  # red. La afirmacion cierta tras este porte es que el camino RECOMENDADO y el
-  # que usa el backend van por TLS.
+  # SOLO el 8883 (TLS). NO escribir aqui «no queda ningun camino en claro»:
+  # queda uno, el 9001 de WebSockets, que sigue sin cifrar dentro de esta red
+  # (deuda declarada D4, fuera del alcance de P0-2). La afirmacion cierta y
+  # comprobable es que NO queda ningun camino MQTT/TCP en claro.
   internal:
     driver: bridge
 

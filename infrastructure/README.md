@@ -34,7 +34,7 @@ correspondiente en `compose.yml`.
 | `worker` | Informes y tareas diferidas | internal | — |
 | `migrate` | Job de migraciones Prisma (no persistente) | internal | — |
 | `postgres` | Base de datos | internal | — (nunca publicado) |
-| `mosquitto` | Broker MQTT | internal | `MQTT_PORT` (1883, obligatorio para módulos) |
+| `mosquitto` | Broker MQTT | internal | `MQTT_TLS_PORT` (8883, TLS; único listener MQTT) |
 | `backup` | pg_dump programado | internal | — |
 | `device-simulator` (perfil `simulator`) | Simula módulos ESP32 | internal | — |
 | `seed` (perfil `dev`) | Siembra datos de prueba | internal | — |
@@ -42,7 +42,10 @@ correspondiente en `compose.yml`.
 | `cadvisor` (perfil `monitoring`) | Métricas de contenedores | internal | `MONITORING_HTTP_PORT` (9090) |
 
 **Únicos puertos publicados al host en el stack base:** el proxy (8080) y
-mosquitto (1883). PostgreSQL no se publica nunca. En desarrollo,
+mosquitto (8883, TLS). El `1883` en claro se retiró: no hay listener, no hay
+publicación y no hay regla de firewall, y una regresión
+(`server/backend/test/mqtt/broker-sin-listener-en-claro.spec.ts`) se pone roja
+si vuelve. PostgreSQL no se publica nunca. En desarrollo,
 `compose.dev.yml` añade publicaciones adicionales explícitas y documentadas
 (depuración Node, Vite, acceso directo a postgres/mosquitto).
 

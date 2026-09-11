@@ -95,7 +95,11 @@ escáner, todas calibradas:
   operador.
 - **Rotación.** Que hoy no haya secretos en el repositorio no dice nada sobre
   credenciales que hayan estado expuestas antes en otro canal.
-- **El listener 1883 en claro** sigue publicado por `compose.yml` como perfil de
-  transición (decisión D1): mientras viva, toda credencial que viaje por ahí
-  debe considerarse comprometida ante cualquiera con acceso a la LAN. Eso no lo
+- **El listener 1883 en claro ya NO existe** en esta línea: se retiró de
+  `mosquitto.conf`, de `compose.yml` y de `04-firewall.sh` al caer la premisa de
+  la decisión D1 (el firmware ya habla `mqtts://…:8883`). Lo que sí sigue en
+  claro es el `listener 9001` de WebSockets dentro de la red interna (deuda D4).
+  Y una advertencia que no caduca: toda credencial que VIAJÓ por el 1883
+  mientras estuvo abierto debe considerarse comprometida ante cualquiera que
+  tuviera acceso a la LAN. Cerrar el puerto no rota las credenciales; eso no lo
   arregla ningún escáner.

@@ -117,7 +117,7 @@ carril: no se toca hardware físico.
 
 | divergencia | evidencia en el repo | estado |
 |---|---|---|
-| TLS/8883 de P0-2 | `infrastructure/mosquitto/mosquitto.conf` declara `listener 1883`; el `8883` está comentado (líneas 69-77) | el endurecimiento vive en `hotfix/p02-tls-6da16d4@ad2d166`, **sin fusionar** |
+| TLS/8883 de P0-2 | `infrastructure/mosquitto/mosquitto.conf` declara **sólo** `listener 8883` (TLS, CA propia) y `listener 9001` (WS, en claro, deuda D4); **no hay ningún listener MQTT/TCP en claro** | cerrado en esta línea: contenido sustantivo ya integrado + cierre del 1883 y su regresión `broker-sin-listener-en-claro.spec.ts` |
 | ACL de MP0-A vs. la vigente | `docs/coordination/GAPS-MP0.md` | la ACL de MP0-A es más estricta (9 módulos enumerados) y **nunca ejercida contra un broker real** |
 | Migración PostgreSQL | ídem | **nunca ejecutada**; Prisma no modela el `CHECK`, que vive sólo en el fichero de migración |
 
