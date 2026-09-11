@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { ContractValidator, RejectionCode } from '../../contracts/contract-validator';
+import { ContractValidator, RejectionCode, ValidationErrorDetail } from '../../contracts/contract-validator';
 import { parseTopic, ParsedTopic } from '../../contracts/topics';
 import { HitEventPayload, markIfOutOfWindow, toHitRecord } from '../../domain/hits/hit-record';
 import {
@@ -154,7 +154,15 @@ export class IngestService {
         : this.validator.validate(parsed.schema, raw);
 
     if (!outcome.ok) {
-      return this.reject(parsed, topic, outcome.code, outcome.message, outcome.errors);
+      return this.reject(
+        parsed,
+        topic,
+        outcome.code,
+        outcome.message,
+        outcome.errors,
+        outcome.errorDetails,
+        raw,
+      );
     }
 
     const payload = outcome.value;
@@ -412,12 +420,58 @@ export class IngestService {
     };
   }
 
+  /**
+   * Campos que NUNCA se copian a una incidencia, venga el payload de donde
+   * venga. La lista es por NOMBRE y se aplica en cualquier nivel: un mensaje
+   * fuera de contrato puede traer cualquier cosa, y una incidencia se guarda,
+   * se exporta y se lee.
+   */
+  private static readonly CAMPOS_SENSIBLES = new Set([
+    'password', 'mqtt_password', 'secret', 'token', 'root_key', 'operational_key',
+    'private_key', 'signature', 'credential', 'passphrase',
+  ]);
+
+  /** Copia el payload sin los campos sensibles y acotado en tamaño. */
+  private static redactar(valor: unknown, profundidad = 0): unknown {
+    if (profundidad > 6) return '[...]';
+    if (Array.isArray(valor)) {
+      return valor.slice(0, 20).map((v) => IngestService.redactar(v, profundidad + 1));
+    }
+    if (valor !== null && typeof valor === 'object') {
+      const salida: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(valor as Record<string, unknown>).slice(0, 40)) {
+        salida[k] = IngestService.CAMPOS_SENSIBLES.has(k.toLowerCase())
+          ? '[redactado]'
+          : IngestService.redactar(v, profundidad + 1);
+      }
+      return salida;
+    }
+    if (typeof valor === 'string' && valor.length > 256) return `${valor.slice(0, 256)}…`;
+    return valor;
+  }
+
+  /** El mensaje llega como Buffer o string; para la incidencia interesa el
+   *  objeto, y si no se puede deserializar, el texto acotado. */
+  private aObjeto(raw: unknown): unknown {
+    if (Buffer.isBuffer(raw) || typeof raw === 'string') {
+      const texto = Buffer.isBuffer(raw) ? raw.toString('utf8') : raw;
+      try {
+        return JSON.parse(texto);
+      } catch {
+        return texto.slice(0, 512);
+      }
+    }
+    return raw;
+  }
+
   private async reject(
     parsed: ParsedTopic,
     topic: string,
     code: RejectionCode,
     message: string,
     errors: string[],
+    errorDetails?: ValidationErrorDetail[],
+    raw?: unknown,
   ): Promise<IngestResult> {
     this.metrics.rejected += 1;
     this.metrics.byRejectionCode[code] = (this.metrics.byRejectionCode[code] ?? 0) + 1;
@@ -430,7 +484,18 @@ export class IngestService {
       source: 'ingest',
       moduleSlug: parsed.kind.startsWith('module') ? parsed.id : null,
       message: `${message} (tópico ${topic})`,
-      detail: { errors },
+      // `detail: { errors }` a secas dejaba `errors: []` en cuanto el rechazo
+      // no venía de AJV, y aun viniendo de AJV una lista de frases no sirve
+      // para diagnosticar desde una incidencia guardada. Ahora va el detalle
+      // ESTRUCTURADO (instancePath, schemaPath, keyword, message, params) y el
+      // payload REDACTADO, que es lo que permite decir qué campo falla sin
+      // tener que reproducir el fallo.
+      detail: {
+        errors,
+        error_details: errorDetails ?? [],
+        rejection_code: code,
+        payload: raw === undefined ? null : IngestService.redactar(this.aObjeto(raw)),
+      },
     });
 
     this.logger.warn(`Mensaje rechazado en ${topic}: ${code} · ${message}`);

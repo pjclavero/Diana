@@ -15,9 +15,31 @@ export type RejectionCode =
   | 'schema_version_unsupported'
   | 'schema_violation';
 
+/**
+ * Error de validación en forma ESTRUCTURADA, tal y como lo da AJV.
+ *
+ * Las cadenas de `errors` sirven para un humano leyendo un log; no sirven para
+ * diagnosticar desde una incidencia guardada. Esto conserva los cinco campos
+ * que hacen falta para saber exactamente qué regla se rompió y dónde.
+ */
+export interface ValidationErrorDetail {
+  instancePath: string;
+  schemaPath: string;
+  keyword: string;
+  message: string;
+  params: Record<string, unknown>;
+}
+
 export type ValidationOutcome<T = Record<string, unknown>> =
   | { ok: true; value: T }
-  | { ok: false; code: RejectionCode; message: string; errors: string[] };
+  | {
+      ok: false;
+      code: RejectionCode;
+      message: string;
+      errors: string[];
+      /** Detalle estructurado. Vacío cuando el rechazo no viene de AJV. */
+      errorDetails?: ValidationErrorDetail[];
+    };
 
 const MQTT_BASE = 'https://diana.seccionnueve/contracts/mqtt/';
 const SCHEMAS_BASE = 'https://diana.seccionnueve/contracts/schemas/';
@@ -155,11 +177,15 @@ export class ContractValidator {
 
     const valid = validator(record);
     if (!valid) {
+      // `validator.errors` se lee AQUI y no mas tarde: AJV lo reutiliza y lo
+      // sobrescribe en la siguiente validacion.
+      const ajv = validator.errors;
       return {
         ok: false,
         code: 'schema_violation',
         message: `El payload no cumple ${schemaName}`,
-        errors: formatErrors(validator.errors),
+        errors: formatErrors(ajv),
+        errorDetails: detailErrors(ajv),
       };
     }
 
@@ -184,6 +210,25 @@ export class ContractValidator {
     }
     return this.validate<T>(schemaName, parsed);
   }
+}
+
+/**
+ * Conserva los cinco campos de AJV que permiten diagnosticar sin el payload:
+ * dónde falló (`instancePath`), qué regla (`schemaPath`, `keyword`), qué dijo
+ * (`message`) y con qué parámetros (`params`, que es donde viaja el nombre del
+ * campo que falta o del campo desconocido).
+ */
+export function detailErrors(
+  errors: ErrorObject[] | null | undefined,
+): ValidationErrorDetail[] {
+  if (!errors) return [];
+  return errors.map((e) => ({
+    instancePath: e.instancePath ?? '',
+    schemaPath: e.schemaPath ?? '',
+    keyword: e.keyword ?? '',
+    message: e.message ?? '',
+    params: (e.params ?? {}) as Record<string, unknown>,
+  }));
 }
 
 export function formatErrors(errors: ErrorObject[] | null | undefined): string[] {
