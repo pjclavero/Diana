@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "diana/ids.h"
+#include "diana/json.h"
 
 static const char *const ACTION_STR[] = {
     "arm_game", "start_game", "pause_game", "resume_game", "abort_game",
@@ -176,4 +177,97 @@ diana_coord_result diana_coordinator_on_system_command(
                                            ? c->target_count - c->next_target
                                            : 0);
     return DIANA_COORD_OK;
+}
+
+size_t diana_coord_module_command_json(const diana_coord_plan *plan,
+                                       const char *command_id,
+                                       uint64_t issued_at_ms,
+                                       uint32_t expires_in_ms,
+                                       char *buf, size_t cap)
+{
+    if (!plan || !command_id || !buf || !plan->emit_command) return 0;
+
+    diana_json j;
+    diana_json_init(&j, buf, cap);
+    diana_json_obj_open(&j);
+    diana_json_int(&j, "schema_version", DIANA_SCHEMA_VERSION);
+    diana_json_str(&j, "command_id", command_id);
+    diana_json_uint(&j, "issued_at_ms", issued_at_ms);
+    diana_json_uint(&j, "expires_in_ms", expires_in_ms);
+    diana_json_uint(&j, "nonce", plan->command_nonce);
+    /* UNICO emisor legitimo de este canal. El contrato retiro `backend` del
+     * enum en v1.1: no es un valor por defecto, es una decision de autoridad. */
+    diana_json_str(&j, "issuer", "coordinator");
+    diana_json_str(&j, "module_id", plan->command_module_id);
+    diana_json_str(&j, "action", "set_targets");
+
+    diana_json_key(&j, "params");
+    diana_json_obj_open(&j);
+    diana_json_key(&j, "targets");
+    diana_json_arr_open(&j);
+    for (uint8_t i = 1; i <= DIANA_TARGET_COUNT; ++i) {
+        diana_json_obj_open(&j);
+        diana_json_int(&j, "target_index", i);
+        /* La pedida se ACTIVA; las demas a SAFE en la MISMA orden, para que no
+         * exista un instante con dos dianas encendidas. */
+        diana_json_str(&j, "state",
+                       (i == plan->active_target_index) ? "active" : "safe");
+        diana_json_obj_close(&j);
+    }
+    diana_json_arr_close(&j);
+    diana_json_obj_close(&j);
+    diana_json_obj_close(&j);
+
+    return diana_json_ok(&j) ? diana_json_len(&j) : 0;
+}
+
+size_t diana_coord_game_state_json(const diana_coordinator *c,
+                                   const diana_coord_plan *plan,
+                                   const char *system_id,
+                                   const char *coordinator_module_id,
+                                   uint64_t elapsed_us,
+                                   uint64_t device_event_us,
+                                   uint64_t device_uptime_us,
+                                   const char *boot_id,
+                                   char *buf, size_t cap)
+{
+    if (!c || !plan || !system_id || !coordinator_module_id || !buf) return 0;
+
+    diana_json j;
+    diana_json_init(&j, buf, cap);
+    diana_json_obj_open(&j);
+    diana_json_int(&j, "schema_version", DIANA_SCHEMA_VERSION);
+    diana_json_str(&j, "system_id", system_id);
+    diana_json_str(&j, "coordinator_module_id", coordinator_module_id);
+    diana_json_str(&j, "game_id", c->game_id);
+    diana_json_str(&j, "round_id", c->round_id);
+    diana_json_str(&j, "mode", "sequence");
+    diana_json_str(&j, "phase", diana_game_phase_str(plan->phase));
+    diana_json_uint(&j, "elapsed_us", elapsed_us);
+    diana_json_int(&j, "targets_hit", 0);
+    diana_json_int(&j, "targets_remaining", plan->targets_remaining);
+    diana_json_int(&j, "penalties", 0);
+
+    diana_json_key(&j, "active_targets");
+    diana_json_arr_open(&j);
+    if (plan->active_target_index != 0) {
+        diana_json_obj_open(&j);
+        diana_json_str(&j, "module_id", plan->command_module_id);
+        diana_json_int(&j, "target_index", plan->active_target_index);
+        diana_json_str(&j, "state", "active");
+        diana_json_obj_close(&j);
+    }
+    diana_json_arr_close(&j);
+
+    diana_json_key(&j, "device");
+    diana_json_obj_open(&j);
+    diana_json_str(&j, "boot_id", boot_id);
+    /* `uptime_us` es obligatorio en deviceTime: lo exige el esquema congelado,
+     * y lo cazo el validador de mensajes reales, no una lectura del contrato. */
+    diana_json_uint(&j, "uptime_us", device_uptime_us);
+    diana_json_uint(&j, "event_us", device_event_us);
+    diana_json_obj_close(&j);
+
+    diana_json_obj_close(&j);
+    return diana_json_ok(&j) ? diana_json_len(&j) : 0;
 }

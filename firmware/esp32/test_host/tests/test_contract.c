@@ -13,6 +13,7 @@
 #include "diana/messages.h"
 #include "diana/queue.h"
 #include "diana/command.h"
+#include "diana/coordinator.h"
 #include "hal_host.h"
 #include "test_util.h"
 
@@ -349,6 +350,66 @@ int run_contract(void)
     diana_ulid(&hal, 1784500000000ULL, ulid);
     CHECK(diana_is_event_id(ulid), "el ULID generado cumple el patron eventId");
     CHECK_EQ_INT(strlen(ulid), 26, "ULID de 26 caracteres");
+
+    SECTION("COORDINADOR · los mensajes que EMITE, contra el esquema congelado");
+    {
+        /* El firmware nunca habia emitido un comando de modulo ni un estado de
+         * partida: solo los recibia. Estos dos payloads se validan contra
+         * module-command.schema.json y game-state.schema.json --- los mismos
+         * ficheros que usa el backend ---, no contra lo que yo creyera que
+         * dicen. */
+        diana_coordinator co;
+        diana_coordinator_reset(&co);
+        diana_coord_plan plan;
+        memset(&plan, 0, sizeof(plan));
+
+        diana_system_command arm;
+        memset(&arm, 0, sizeof(arm));
+        arm.schema_version = 1;
+        snprintf(arm.command_id, sizeof(arm.command_id), "%s",
+                 "11111111-1111-4111-8111-111111111111");
+        snprintf(arm.system_id, sizeof(arm.system_id), "%s", "banco-01");
+        arm.action = DIANA_SYS_ARM_GAME;
+        arm.issued_at_ms = 1789000000000ULL;
+        arm.expires_in_ms = 10000;
+        arm.nonce = 1;
+        arm.issuer = DIANA_ISSUER_BACKEND;
+        arm.has_game = true;
+        snprintf(arm.game_id, sizeof(arm.game_id), "%s",
+                 "44444444-4444-4444-8444-444444444444");
+        snprintf(arm.round_id, sizeof(arm.round_id), "%s",
+                 "55555555-5555-4555-8555-555555555555");
+        arm.target_count = 1;
+        snprintf(arm.targets[0].module_id, sizeof(arm.targets[0].module_id), "%s",
+                 "module-01");
+        arm.targets[0].target_index = 1;
+        (void)diana_coordinator_on_system_command(&co, true, "banco-01", &arm, &plan);
+
+        diana_system_command start = arm;
+        snprintf(start.command_id, sizeof(start.command_id), "%s",
+                 "22222222-2222-4222-8222-222222222222");
+        start.action = DIANA_SYS_START_GAME;
+        (void)diana_coordinator_on_system_command(&co, true, "banco-01", &start, &plan);
+        CHECK(plan.emit_command, "el plan pide emitir el comando de modulo");
+
+        size_t nc = diana_coord_module_command_json(
+            &plan, "33333333-3333-4333-8333-333333333333",
+            1789000000000ULL, 5000, buf, sizeof(buf));
+        CHECK(nc > 0, "module-command serializado");
+        CHECK(strstr(buf, "\"issuer\":\"coordinator\"") != NULL,
+              "issuer coordinator: el backend no es autoridad en este canal");
+        CHECK(strstr(buf, "\"state\":\"active\"") != NULL, "la diana pedida va a active");
+        CHECK(strstr(buf, "\"state\":\"safe\"") != NULL, "y el resto a safe en la MISMA orden");
+        dump_message("module-command.schema.json", "coord_set_targets", buf);
+
+        size_t ns = diana_coord_game_state_json(
+            &co, &plan, "banco-01", "module-01", 1234567ULL, 987654321ULL,
+            987700000ULL, "7b82490c-5f0a-4b09-8bcf-f2361482e8d0", buf, sizeof(buf));
+        CHECK(ns > 0, "game-state serializado");
+        CHECK(strstr(buf, "\"coordinator_module_id\":\"module-01\"") != NULL,
+              "declara QUIEN coordina: sin eso nadie sabe a quien creer");
+        dump_message("game-state.schema.json", "coord_game_state", buf);
+    }
 
     return g_tests_failed - before;
 }

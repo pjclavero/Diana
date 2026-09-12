@@ -156,6 +156,43 @@ diana_coord_result diana_coordinator_on_system_command(
     diana_coordinator *c, bool is_principal, const char *own_system_id,
     const diana_system_command *cmd, diana_coord_plan *out);
 
+/**
+ * Serializa el `module/{id}/command` del plan (accion `set_targets`).
+ *
+ * El firmware nunca habia EMITIDO un comando de modulo --- solo los recibia ---,
+ * asi que este es el primer serializador de ese sobre. Lleva `issuer:
+ * "coordinator"`, que es el unico valor legitimo aqui: el contrato retiro
+ * `backend` del enum en v1.1 precisamente para que este canal no admitiera otra
+ * autoridad.
+ *
+ * `set_targets` manda la diana activa a ACTIVE y el resto del modulo a SAFE, en
+ * una sola orden: dos ordenes dejarian un instante con dos dianas encendidas.
+ *
+ * Devuelve la longitud escrita, o 0 si no cabe (nunca trunca).
+ */
+size_t diana_coord_module_command_json(const diana_coord_plan *plan,
+                                       const char *command_id,
+                                       uint64_t issued_at_ms,
+                                       uint32_t expires_in_ms,
+                                       char *buf, size_t cap);
+
+/**
+ * Serializa el `system/{id}/game/state` (RETENIDO, contrato).
+ *
+ * `coordinator_module_id` es obligatorio: es la declaracion de quien manda en
+ * esta partida, y sin el nadie puede saber a quien creer si dos modulos
+ * publicaran estado.
+ */
+size_t diana_coord_game_state_json(const diana_coordinator *c,
+                                   const diana_coord_plan *plan,
+                                   const char *system_id,
+                                   const char *coordinator_module_id,
+                                   uint64_t elapsed_us,
+                                   uint64_t device_event_us,
+                                   uint64_t device_uptime_us,
+                                   const char *boot_id,
+                                   char *buf, size_t cap);
+
 #ifdef __cplusplus
 }
 #endif
