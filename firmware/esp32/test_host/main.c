@@ -96,6 +96,7 @@ int main(void)
         {"prov_bridge",  run_prov_bridge},
         {"config_reconcile", run_config_reconcile},
         {"mqtt_reasm", run_mqtt_reasm},
+        {"coordinator", run_coordinator},
     };
     const size_t n = sizeof(suites) / sizeof(suites[0]);
 

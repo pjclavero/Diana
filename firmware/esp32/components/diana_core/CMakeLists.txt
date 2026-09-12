@@ -30,6 +30,10 @@ idf_component_register(
          # ejercita fragmento a fragmento, que es justo lo que no se podia
          # hacer mientras vivia dentro del manejador de eventos.
          "src/mqtt_reasm.c"
+         # Rol de COORDINADOR (modulo en PRINCIPAL). En el nucleo y no en
+         # main/ por el mismo motivo que mqtt_reasm.c: aqui la suite de host
+         # puede ejercitar la autoridad, el dedup y el nonce sin MQTT.
+         "src/coordinator.c"
          "src/ota.c"
          # --- D1b · plano DEVICE_MANAGEMENT firmado -------------------------
          # Estos seis estaban en el arbol pero NO aqui: se compilaban solo con

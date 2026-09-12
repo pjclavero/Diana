@@ -356,6 +356,40 @@ mutate "M32 led_test no modifica salida" \
   '    case DIANA_MNT_LED_TEST_NUNCA:' \
   "$TEST" 'case DIANA_MNT_LED_TEST_NUNCA:'
 
+# M33 · se cae la comprobacion de autoridad: un SATELITE coordinaria y emitiria
+# ordenes de juego a los demas modulos. Es la propiedad central del rol.
+mutate "M33 satelite coordinando" \
+  "$CORE/src/coordinator.c" \
+  '    if (!is_principal) return DIANA_COORD_NOT_MINE;' \
+  '    if (false && !is_principal) return DIANA_COORD_NOT_MINE;' \
+  "$TEST" 'if (false && !is_principal)'
+
+# M34 · se cae la deduplicacion: una reentrega QoS 1 --- que el broker hizo de
+# verdad en el banco --- produciria un segundo efecto fisico.
+mutate "M34 coordinador sin dedup" \
+  "$CORE/src/coordinator.c" \
+  '    if (ya_visto(c, cmd->command_id)) return DIANA_COORD_DUPLICATE;' \
+  '    if (false && ya_visto(c, cmd->command_id)) return DIANA_COORD_DUPLICATE;' \
+  "$TEST" 'if (false && ya_visto(c, cmd->command_id))'
+
+# M35 · el nonce deja de crecer: el receptor rechaza todo nonce <= al ultimo
+# aceptado, asi que el segundo comando no se ejecutaria nunca.
+mutate "M35 nonce del coordinador estancado" \
+  "$CORE/src/coordinator.c" \
+  '    c->out_nonce++;
+    out->command_nonce = c->out_nonce;
+}
+
+/** Manda a SAFE' \
+  '    out->command_nonce = c->out_nonce;
+}
+
+/** Manda a SAFE' \
+  "$TEST" '    out->command_nonce = c->out_nonce;
+}
+
+/** Manda a SAFE'
+
 printf '\n=================================================\n'
 printf ' CALIBRACION: %d mutantes cazados, %d huecos\n' "$pass" "$fail"
 printf '=================================================\n'
