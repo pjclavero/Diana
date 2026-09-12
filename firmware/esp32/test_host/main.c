@@ -94,6 +94,7 @@ int main(void)
         {"contract",     run_contract},
         {"mqtt_endpoint",run_mqtt_endpoint},
         {"prov_bridge",  run_prov_bridge},
+        {"config_reconcile", run_config_reconcile},
     };
     const size_t n = sizeof(suites) / sizeof(suites[0]);
 

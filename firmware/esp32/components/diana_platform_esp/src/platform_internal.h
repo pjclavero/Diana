@@ -40,6 +40,12 @@ struct diana_platform {
      * cliente y PUBACK recibidos para que esa diferencia sea VISIBLE. */
     volatile uint32_t  mqtt_pub_sent;
     volatile uint32_t  mqtt_pub_acked;
+    /* CONFIG_RECONCILIATION. La identidad con la que hay que suscribirse se
+     * GUARDA y las suscripciones se emiten desde MQTT_EVENT_CONNECTED, no
+     * cuando lo pide app_main: ver diana_platform_mqtt_subscribe(). */
+    char               sub_module_id[64];
+    volatile bool      sub_requested;
+    volatile uint32_t  sub_sent;       /**< suscripciones emitidas (diagnostico) */
 
     /* sensores DO-only por 2 x 74HC165 */
     QueueHandle_t      trigger_queue;

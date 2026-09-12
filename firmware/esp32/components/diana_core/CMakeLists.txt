@@ -6,6 +6,7 @@ idf_component_register(
          "src/ids.c"
          "src/identity.c"
          "src/config.c"
+         "src/config_parse.c"
          "src/module_fsm.c"
          "src/target_fsm.c"
          "src/sensors.c"

@@ -103,6 +103,14 @@ contracts:
 # estructuralmente. Contador PROPIO, no sumado a los demas.
 	@$(PYTHON) $(FW)/tools/check_prov_bridge.py
 
+# CONFIG_RECONCILIATION. La decision (apply/noop/reject, sin reloj, persistida)
+# la prueba test_config_reconcile.c en host. Lo que NO compila en host es quien
+# EMITE las suscripciones y cuando --el defecto medido era suscribirse antes del
+# CONNACK, con lo que el config/desired retenido no llegaba nunca-- ni que el
+# despachador use esa logica en vez de resolver la version a mano. Contador
+# PROPIO, no sumado a los demas.
+	@$(PYTHON) $(FW)/tools/check_config_reconcile.py
+
 # ADR-0007. Valida los payloads que llevan `detection_method` contra el contrato
 # de ESTE arbol. Sin descarga ni referencia git: funciona en un clon limpio.
 # La guarda de abajo no es cosmetica: si alguien retira el contrato ADR-0007 de
