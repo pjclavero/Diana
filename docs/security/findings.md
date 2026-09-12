@@ -57,7 +57,7 @@ credenciales privilegiadas), **Alta**, **Media**, **Baja**. Se justifican una a 
 |---|---|---|---|---|---|
 | F-01 | El `.gitignore` no cubre `infrastructure/mosquitto/passwd` | Alta | A2 | WP-00/WP-01 | OBSERVADO |
 | F-02 | La ACL de MQTT autoriza por `client_id`: suplantación de módulo | Crítica | A1, A4 | WP-01 | **CONFIRMADO EN VIVO (2026-07-21)** |
-| F-03 | MQTT 1883 en claro y abierto a toda la LAN | Alta | A2, A1 | WP-01, WP-08 | OBSERVADO |
+| F-03 | MQTT 1883 en claro y abierto a toda la LAN | Alta | A2, A1 | WP-01, WP-08 | OBSERVADO → **MITIGADO EN EL REPOSITORIO** (pendiente de despliegue; ver el cierre al pie de F-03) |
 | F-04 | El contrato de variables de entorno está roto: `JWT_SECRET` nunca llega al backend | Alta | A3 | WP-01, WP-02 | OBSERVADO + DEDUCIDO |
 | F-05 | WebSocket `/live` sin autenticación y con CORS reflejado | Alta | A1, A6 | WP-02 | DEDUCIDO |
 | F-06 | Swagger `/docs` se publica sin autenticación ni condición de entorno | Media | A6 | WP-02 | DEDUCIDO |
@@ -253,6 +253,32 @@ downgrade en el cliente que controle). Coordinar con WP-04 (el firmware necesita
 almacén de confianza) y WP-05 (simuladores). Mientras no haya TLS, la regla nft de 1883
 debería acotarse a las IP de los módulos en lugar de a `192.168.1.0/24` entero: es una
 reducción de superficie real y barata (WP-08).
+
+**CIERRE EN EL REPOSITORIO (P0-2).** La evidencia de arriba se conserva tal cual: describe
+el estado en el momento de la recogida y no se reescribe. Lo que ha cambiado:
+
+- `mosquitto.conf` declara **sólo** `listener 8883` con `cafile`/`certfile`/`keyfile`
+  activos. El `listener 1883` se eliminó; en su sitio queda una lápida con el motivo.
+- `compose.yml` ya no publica `"${MQTT_PORT:-1883}:1883"`; el único puerto MQTT publicado
+  al host es el 8883.
+- `infrastructure/provisioning/04-firewall.sh` ya no lleva la regla
+  `ip saddr 192.168.1.0/24 tcp dport 1883 accept`. Con ello WP-08 (acotar la regla a las IP
+  de los módulos) queda **sin objeto**: no hay regla que acotar.
+- La mitigación es ahora **comprobable**, que es lo que le faltaba:
+  `server/backend/test/mqtt/broker-sin-listener-en-claro.spec.ts` se pone roja ante cada una
+  de las reintroducciones (listener, publicación corta, sintaxis larga, rango de puertos,
+  regla de firewall), calibrada una a una.
+
+**Lo que NO cierra este cambio, y hay que decirlo:**
+
+1. **Despliegue.** Esto es el repositorio. Mientras VM109 no despliegue esta configuración,
+   el 1883 sigue escuchando allí donde ya esté abierto.
+2. **Rotación.** Toda credencial MQTT que haya viajado por el 1883 mientras estuvo abierto
+   debe considerarse comprometida ante cualquiera con acceso a la LAN. Cerrar el puerto no
+   rota nada. La rotación es una acción aparte y sigue pendiente.
+3. **El 9001 de WebSockets sigue en claro** dentro de la red interna (deuda declarada D4).
+   La afirmación cierta es «no queda ningún camino **MQTT/TCP** en claro», no «no queda
+   ningún camino en claro».
 
 ---
 

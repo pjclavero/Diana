@@ -40,10 +40,17 @@ Se descarta explícitamente al atacante remoto de Internet: no hay exposición e
 
 ### T1 · Alguien en la LAN, sin credenciales
 
-**Qué alcanza hoy:** los puertos 22, 80/443 y **1883** desde `192.168.1.0/24` (regla nft
-verificada). El broker rechaza el anónimo (`mosquitto.conf:29`), pero **1883 va en claro**:
-un CONNECT MQTT lleva usuario y contraseña sin cifrar. En una LAN doméstica con WiFi, la
-captura pasiva es realista.
+**Qué alcanzaba cuando se levantó este modelo:** los puertos 22, 80/443 y **1883** desde
+`192.168.1.0/24` (regla nft verificada). El broker rechazaba el anónimo
+(`mosquitto.conf:29`), pero **1883 iba en claro**: un CONNECT MQTT lleva usuario y
+contraseña sin cifrar. En una LAN doméstica con WiFi, la captura pasiva es realista.
+
+**Qué alcanza en la línea canónica actual:** 22, 80/443 y **8883 (TLS)**. El 1883 se retiró
+del listener, de la publicación de `compose.yml` y de la regla nft (ver el cierre de F-03),
+así que la captura pasiva de credenciales MQTT deja de estar disponible **una vez
+desplegado**. Dos matices que no se pueden omitir: las credenciales que ya viajaron por ahí
+siguen debiendo tratarse como comprometidas hasta que se roten, y el `listener 9001` de
+WebSockets continúa en claro dentro de la red interna de Docker (deuda D4).
 
 **Qué consigue:** con capturar un solo arranque de módulo obtiene A2 y se convierte en T3.
 Además ve todo el tráfico de juego y de control en claro. Puede conectarse al WebSocket
@@ -125,7 +132,8 @@ grupo `docker`; la clave es el **único** factor. Ver el dictamen completo en **
 | HTTP 80/443 → nginx → panel y API | cabeceras de seguridad completas, `limit_req`, CSP con `frame-ancestors 'none'` | F-07, F-08 |
 | API REST `/api/**` | JWT + permisos como guards globales, `ValidationPipe` estricto, `helmet` | F-04, F-06, F-12 |
 | WebSocket `/live` | **sin autenticación y con CORS reflejado** | F-05 |
-| MQTT 1883/tcp (toda la LAN) | sin anónimo, con ACL, **sin TLS**, autorización por `client_id` | F-02, F-03 |
+| MQTT 8883/tcp (toda la LAN) | sin anónimo, con ACL, **TLS con CA propia**, autorización por usuario autenticado (`use_username_as_clientid` en cada listener) | F-02, F-03 (ambos mitigados en repo) |
+| MQTT 1883/tcp en claro | **RETIRADO**: no hay listener, ni publicación, ni regla nft. Vigilado por regresión | F-03 |
 | Canal de comandos → módulo | `nonce` persistido en NVS + `command_id` + caducidad; techo de 30 s para acciones críticas | F-16 |
 | Canal OTA → módulo | sha256 + tamaño + placa + versión + firma delegada a ESP-IDF; prohibida en partida; rollback A/B | F-14 |
 | PostgreSQL | **no publicado al host** en `compose.yml` (sí en `compose.dev.yml`, documentado) | — |
