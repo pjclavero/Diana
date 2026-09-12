@@ -374,10 +374,13 @@ static void handle_config_desired(diana_app *a, const diana_platform_rx *rx)
 static void execute_maintenance(diana_app *a, diana_maintenance_type type,
                                 const cJSON *params, uint64_t now)
 {
-    uint32_t ms = 5000;
+    /* duration_ms = 0 significa APAGAR YA, no "usa el valor por defecto": es
+     * como el panel apaga una diana que dejo encendida. Tratar el 0 como
+     * ausente dejaria el LED encendido cinco segundos mas justo cuando se ha
+     * pedido apagarlo. */
     const cJSON *d = params ? cJSON_GetObjectItemCaseSensitive(params, "duration_ms")
                             : NULL;
-    if (cJSON_IsNumber(d) && d->valuedouble > 0) ms = (uint32_t)d->valuedouble;
+    uint32_t ms = cJSON_IsNumber(d) ? (uint32_t)d->valuedouble : 5000;
 
     switch (type) {
     case DIANA_MNT_LED_TEST: {
@@ -399,9 +402,15 @@ static void execute_maintenance(diana_app *a, diana_maintenance_type type,
                                      "led_test con target_index fuera de 1..9");
             return;
         }
-        a->led_test_target = (uint8_t)idx;
-        a->led_test_until_us = now + (uint64_t)ms * 1000ULL;
-        ESP_LOGI(TAG, "led_test: diana %d durante %u ms", idx, (unsigned)ms);
+        if (ms == 0) {
+            a->led_test_target = 0;
+            a->led_test_until_us = 0;
+            ESP_LOGI(TAG, "led_test: diana %d APAGADA (duration_ms=0)", idx);
+        } else {
+            a->led_test_target = (uint8_t)idx;
+            a->led_test_until_us = now + (uint64_t)ms * 1000ULL;
+            ESP_LOGI(TAG, "led_test: diana %d durante %u ms", idx, (unsigned)ms);
+        }
         break;
     }
     case DIANA_MNT_IDENTIFY:
