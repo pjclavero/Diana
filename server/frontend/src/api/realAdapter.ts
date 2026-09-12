@@ -143,9 +143,12 @@ export function createRealApiClient(): DianaApiClient {
       apiRequestAs<CommandAck>()<"/api/modules/{idOrSlug}/targets/{targetIndex}/test-led", "post">(
         "/api/modules/{idOrSlug}/targets/{targetIndex}/test-led",
         `/api/modules/${moduleId}/targets/${targetIndex}/test-led`,
-        // El contrato habla de ESTADOS de diana (`targetState`), no de
-        // «patrones»: el nombre anterior era un invento del backend.
-        { method: "POST", body: JSON.stringify({ state: pattern }) },
+        // La ampliación v1.1 retiró `state` de `maintenance/command`: el LED de
+        // mantenimiento se prueba por DURACIÓN. El comentario anterior --- que
+        // el contrato hablaba de estados de diana --- dejó de ser cierto con
+        // ese cambio, y este cuerpo se quedó en la versión vieja: el backend lo
+        // rechazaba con 400 antes de publicar nada.
+        { method: "POST", body: JSON.stringify(pattern === "off" ? { duration_ms: 0 } : {}) },
       ),
     getModuleDiagnostics: (moduleId) =>
       apiRequestAs<DiagnosticResults>()(

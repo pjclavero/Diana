@@ -115,10 +115,25 @@ export const identifyModule = (idOrSlug: string, durationMs = 4000) =>
     body: JSON.stringify({ duration_ms: durationMs }),
   });
 
+/**
+ * Prueba de LED de una diana.
+ *
+ * La ampliación v1.1 del contrato quitó `state` de este canal: el LED de
+ * MANTENIMIENTO se prueba por DURACIÓN, porque `state` era un campo del tópico
+ * de juego (`module-command`), que el backend ya no escribe. El panel seguía
+ * mandando `{ state }` y el backend corre con `forbidNonWhitelisted`, así que
+ * respondía 400 y la orden no llegaba a publicarse: el botón de la pantalla de
+ * prueba de LED no encendía nada. Las pruebas del panel no podían verlo porque
+ * mockean esta función, no el cuerpo que viaja.
+ *
+ * El toggle de la pantalla se conserva traduciéndolo aquí: apagar es una
+ * duración de 0, y encender omite el campo para que mande el valor por defecto
+ * del servidor en vez de fijar una segunda copia del mismo número en el cliente.
+ */
 export const testLed = (idOrSlug: string, targetIndex: number, state: TargetState) =>
   req<CommandAck>(
     `/modules/${encodeURIComponent(idOrSlug)}/targets/${targetIndex}/test-led`,
-    { method: "POST", body: JSON.stringify({ state }) },
+    { method: "POST", body: JSON.stringify(state === "off" ? { duration_ms: 0 } : {}) },
   );
 
 export const testSensor = (idOrSlug: string, targetIndex: number) =>
