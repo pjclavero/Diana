@@ -103,6 +103,11 @@ else
   fi
   MODULE_ID="$USERNAME_OF"
   NEW_BODY="user ${MODULE_ID}
+# El coordinador RECIBE la orden del backend por aqui. Sin esta lectura el
+# broker le deniega la suscripcion que hace mqtt_client.c al activar el rol y
+# la cadena backend -> coordinador -> modulo no llega a existir: el bloque
+# concedia las tres escrituras y ninguna entrada.
+topic read targets/v1/system/+/command
 topic write targets/v1/module/+/command
 topic write targets/v1/system/+/game/state
 topic write targets/v1/system/+/game/event"

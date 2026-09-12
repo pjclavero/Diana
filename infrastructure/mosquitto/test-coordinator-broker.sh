@@ -91,7 +91,8 @@ if [[ $rc -ne 0 ]]; then
 fi
 # Efecto observable, no el rc: el bloque tiene que estar realmente en el fichero.
 if grep -qE '^user module-01$' "$LAB/tree/acl" &&
-   grep -qF 'topic write targets/v1/module/+/command' "$LAB/tree/acl"; then
+   grep -qF 'topic write targets/v1/module/+/command' "$LAB/tree/acl" &&
+   grep -qF 'topic read targets/v1/system/+/command' "$LAB/tree/acl"; then
   pass "el bloque de coordinador está escrito en la ACL"
 else
   fail "set-coordinator.sh dijo rc=0 pero el bloque NO está en la ACL"
@@ -286,6 +287,53 @@ if [[ -z "$GOT_PLAIN" ]]; then
   pass "ACL APLICADA: module-02 (no coordinador) publica y el mensaje NO llega (denegación silenciosa, rc=0)"
 else
   fail "module-02 SÍ escribió en module/+/command: la ACL no se está aplicando (recibido: '${GOT_PLAIN}')"
+fi
+
+# ---------------------------------------------------------------------------
+# 6. LA ENTRADA DEL COORDINADOR — `system/+/command`.
+#    El bloque generado concedia las tres ESCRITURAS y ninguna LECTURA, asi que
+#    el coordinador podia mandar y no podia ser mandado: mqtt_client.c se
+#    suscribe a targets/v1/system/{id}/command al activar el rol y el broker le
+#    devolvia la suscripcion denegada. La comprobacion 5 seguia verde porque
+#    solo miraba el lado de escritura. Aqui se mide por EFECTO: el backend
+#    publica y se observa quien lo recibe.
+# ---------------------------------------------------------------------------
+cat > "$LAB/readprobe.sh" <<'A4'
+#!/bin/sh
+# El SUSCRIPTOR es el modulo bajo prueba; el backend publica la orden.
+mosquitto_sub -h broker -p 1883 -u "$SUBUSER" -P "$EPH_PW" \
+  -t targets/v1/system/banco-01/command -C 1 -W 5 > /out/received.txt 2>/dev/null &
+SUB=$!
+sleep 1
+mosquitto_pub -h broker -p 1883 -u backend -P "$EPH_PW" \
+  -t targets/v1/system/banco-01/command -m "$PAYLOAD"
+wait $SUB 2>/dev/null
+exit 0
+A4
+chmod +x "$LAB/readprobe.sh"
+
+run_read_probe() {  # $1 = usuario suscriptor, $2 = payload
+  local out="$LAB/rout-$1"
+  rm -rf "$out"; mkdir -p "$out"
+  docker run --rm --env-file "$LAB/eph.env" --link "$CID_NAME:broker" \
+    -e "SUBUSER=$1" -e "PAYLOAD=$2" \
+    -v "$LAB/readprobe.sh:/t.sh:ro" -v "$out:/out" \
+    "$IMAGE" /t.sh >/dev/null 2>&1
+  cat "$out/received.txt" 2>/dev/null || true
+}
+
+GOT_IN_COORD="$(run_read_probe module-01 orden-al-coordinador)"
+GOT_IN_PLAIN="$(run_read_probe module-02 orden-al-satelite)"
+
+if [[ "$GOT_IN_COORD" == "orden-al-coordinador" ]]; then
+  pass "ACL APLICADA: el coordinador (module-01) RECIBE la orden en system/+/command"
+else
+  fail "el coordinador NO recibe en system/+/command (recibido: '${GOT_IN_COORD}'): sin esta lectura la cadena backend -> coordinador -> modulo no existe"
+fi
+if [[ -z "$GOT_IN_PLAIN" ]]; then
+  pass "ACL APLICADA: module-02 (no coordinador) NO recibe en system/+/command"
+else
+  fail "module-02 SI recibe la orden de sistema: la lectura se esta concediendo de mas (recibido: '${GOT_IN_PLAIN}')"
 fi
 
 echo
