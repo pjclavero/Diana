@@ -445,6 +445,23 @@ suite('HIT-LINKAGE · impactos enlazados y ingesta endurecida (PostgreSQL real)'
           }),
         );
       }
+      // Un impacto que NO cuenta como detectado. Sin el, `detectedHits` y el
+      // total de la ronda coinciden por casualidad y la comparacion contra
+      // `enBase` no distingue nada: quitando el filtro DETECTED de
+      // `round-statistics.ts` la suite seguia VERDE. Lo detecto la revision
+      // independiente (mutante M6). `crosstalk_rejected` esta fuera del
+      // conjunto DETECTED a proposito: es diafonia descartada, no un disparo.
+      await repo.insertIfAbsent(
+        registro({
+          gameId,
+          roundId,
+          participantId: participanteId,
+          targetIndex: 3,
+          classification: 'crosstalk_rejected',
+          countsForScore: false,
+        }),
+      );
+
       await prisma.shotCount.create({
         data: {
           participantId: participanteId,
@@ -490,8 +507,14 @@ suite('HIT-LINKAGE · impactos enlazados y ingesta endurecida (PostgreSQL real)'
       expect(s.detectedHits).toBe(6);
       expect(s.validHits).toBe(4);
       expect(s.invalidHits).toBe(2);
+      // La ronda tiene 7 filas y solo 6 son DETECTADAS: el filtro tiene que
+      // notarse. Comparar contra el total a secas era la asercion que
+      // sostenia al mutante --- afirmaba como verdad justo lo que el mutante
+      // hacia.
       const enBase = await prisma.hitEvent.count({ where: { roundId } });
-      expect(s.detectedHits).toBe(enBase);
+      expect(enBase).toBe(7);
+      expect(s.detectedHits).toBeLessThan(enBase);
+      expect(enBase - s.detectedHits).toBe(1);
 
       // DECISIÓN MEDIDA: `hitsPerTarget` se agrupa por `moduleSlug#targetIndex`
       // y NO por las claves ajenas. Es correcto para lo que hace —es una
@@ -520,9 +543,12 @@ suite('HIT-LINKAGE · impactos enlazados y ingesta endurecida (PostgreSQL real)'
         ranking: Array<{ participantId: string; validHits?: number }>;
         board: Array<{ moduleSlug: string; targets: Array<{ targetIndex: number; hits: number }> }>;
       };
-      expect(m.totals.detected).toBe(6);
+      // 7 y no 6: el marcador cuenta TODAS las filas de la ronda, sin el
+      // filtro DETECTED que si aplica la estadistica. Que las dos cifras
+      // difieran es parte de lo que estas pruebas dejan escrito.
+      expect(m.totals.detected).toBe(7);
       expect(m.totals.valid).toBe(4);
-      expect(m.totals.invalid).toBe(2);
+      expect(m.totals.invalid).toBe(3);
       expect(m.ranking.map((e) => e.participantId)).toContain(participanteId);
 
       // La rejilla cubre los módulos del panel de la partida.
@@ -532,7 +558,7 @@ suite('HIT-LINKAGE · impactos enlazados y ingesta endurecida (PostgreSQL real)'
         (acc, b) => acc + b.targets.reduce((a, t) => a + t.hits, 0),
         0,
       );
-      expect(total).toBe(6);
+      expect(total).toBe(7);
     });
 
     it('HALLAZGO · la rejilla casa por SLUG: un impacto sin enlazar se cuenta y no se dibuja', async () => {
@@ -550,13 +576,13 @@ suite('HIT-LINKAGE · impactos enlazados y ingesta endurecida (PostgreSQL real)'
         totals: { detected: number };
         board: Array<{ targets: Array<{ hits: number }> }>;
       };
-      expect(m.totals.detected).toBe(7);
+      expect(m.totals.detected).toBe(8);
       const enRejilla = m.board.reduce(
         (acc, b) => acc + b.targets.reduce((a, t) => a + t.hits, 0),
         0,
       );
-      // 7 contados, 6 dibujados: la diferencia es el impacto sin enlazar.
-      expect(enRejilla).toBe(6);
+      // 8 contados, 7 dibujados: la diferencia es el impacto sin enlazar.
+      expect(enRejilla).toBe(7);
       expect(m.totals.detected - enRejilla).toBe(1);
 
       // Se deja la ronda como estaba para no arrastrar el desfase.
