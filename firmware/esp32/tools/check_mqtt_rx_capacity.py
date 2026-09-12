@@ -200,6 +200,25 @@ def main() -> int:
           "CONTROL: con la capacidad ANTERIOR (2048) NO cabia --- "
           "esta guarda habria estado roja")
 
+    # [4] Subir la capacidad tiene un coste que la suite de host no ve: cada
+    # diana_platform_rx pasa a ocupar ~4.3 KB. En la placa eso desbordo la pila
+    # de diana_net (8 KB) en cuanto llego el primer mensaje. Declararlo como
+    # variable local vuelve a meterlo en la pila.
+    print("\n[4] ningun diana_platform_rx vive en la pila de una tarea")
+    for ruta in sorted((FW / "main").glob("*.c")) + sorted(
+            (FW / "components/diana_platform_esp/src").glob("*.c")):
+        for n, linea in enumerate(ruta.read_text().splitlines(), 1):
+            s = linea.strip()
+            if not s.startswith("diana_platform_rx "):
+                continue
+            # punteros y parametros no reservan el objeto
+            if "*" in s or s.endswith(","):
+                continue
+            check(False, "%s:%d declara un diana_platform_rx en pila (%s)"
+                  % (ruta.name, n, s))
+    check(True, "ninguna declaracion en pila de diana_platform_rx "
+                "(son ~%d bytes cada una)" % (cap + 200))
+
     print("\nMQTT_RX_CAPACITY: %d comprobaciones, %d fallidas" % (checks, len(fallos)))
     if fallos:
         print("MQTT_RX_CAPACITY: FALLO")

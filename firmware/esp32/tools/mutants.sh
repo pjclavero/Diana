@@ -186,6 +186,18 @@ mutate "M17 mqtt_reasm.c fuera del CMakeLists del componente" \
   '         # "src/mqtt_reasm.c"' \
   "$REASM" '# "src/mqtt_reasm.c"'
 
+MAIN="firmware/esp32/main"
+
+# M18 · el buffer de recepcion vuelve a la pila de diana_net. La suite de host
+# sigue VERDE (main/ no se compila ahi) y el firmware compila sin una queja:
+# solo la placa lo dice, con un stack overflow. La guarda lo caza antes.
+mutate "M18 diana_platform_rx de vuelta a la pila" \
+  "$MAIN/app_tasks.c" \
+  '        static diana_platform_rx rx;' \
+  '        diana_platform_rx rx;' \
+  "$CAP" '
+        diana_platform_rx rx;'
+
 printf '\n=================================================\n'
 printf ' CALIBRACION: %d mutantes cazados, %d huecos\n' "$pass" "$fail"
 printf '=================================================\n'

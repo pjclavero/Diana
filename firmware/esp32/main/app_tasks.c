@@ -454,7 +454,14 @@ void diana_task_network(void *arg)
             }
         }
 
-        diana_platform_rx rx;
+        /* FUERA DE LA PILA. Un diana_platform_rx son ~4.3 KB desde que el
+         * buffer de recepcion se dimensiono contra el contrato, y la pila de
+         * diana_net son 8 KB: en la placa esto desbordo con
+         * "A stack overflow in task diana_net has been detected" justo despues
+         * de las suscripciones, en cuanto llego el primer mensaje. `static` es
+         * seguro porque diana_task_network es la UNICA tarea que ejecuta esta
+         * funcion; si algun dia deja de serlo, hay que volver aqui. */
+        static diana_platform_rx rx;
         while (diana_platform_rx_pop(a->pf, &rx, 20))
             diana_handle_message(a, &rx);
 
