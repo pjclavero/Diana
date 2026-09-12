@@ -543,10 +543,17 @@ export class GamesService {
       }
 
       // ── PASO 3 · ARRANCAR ────────────────────────────────────────────────
+      // El sobre viaja TAMBIÉN aquí: el contrato lo exige para las dos acciones
+      // (`system-command.schema.json`, allOf: if action in [arm_game,
+      // start_game] then required: [game]). Enviar `start_game` sin él hacía
+      // que el validador lanzase y el arranque devolviera 500 --- lo pilló el
+      // banco, no la suite, porque el doble de MQTT no valida el contrato.
+      // Quien decide NO es este sobre: el coordinador arranca la partida que
+      // ya declaró en `arm_game`.
       command = await this.mqtt.sendSystemCommand(
         game.targetSystem.slug,
         'start_game',
-        {},
+        sobreDeJuego,
         10000,
       );
       this.exigirEntrega(command, 'start_game');
