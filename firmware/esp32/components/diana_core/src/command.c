@@ -265,3 +265,37 @@ diana_command_verdict diana_command_validate(diana_command_guard *g,
     }
     return verdict(DIANA_CMD_RESULT_ACCEPTED, NULL);
 }
+
+diana_maintenance_category diana_maintenance_category_of(diana_maintenance_type t)
+{
+    switch (t) {
+    case DIANA_MNT_REQUEST_TELEMETRY:
+    case DIANA_MNT_IDENTIFY:
+    case DIANA_MNT_QUERY_VERSION:
+    case DIANA_MNT_QUERY_STATUS:
+        return DIANA_MNT_CAT_READ;
+    case DIANA_MNT_ABORT_CALIBRATION:
+        return DIANA_MNT_CAT_SAFETY;
+    case DIANA_MNT_LED_TEST:
+    case DIANA_MNT_PIEZO_TEST:
+    case DIANA_MNT_SELF_TEST:
+    case DIANA_MNT_START_CALIBRATION:
+    default:
+        /* Por defecto ACT: una orden nueva que nadie haya clasificado se trata
+         * como si moviera hardware. Equivocarse hacia el lado seguro aqui
+         * cuesta un rechazo; hacia el otro, un actuador movido por una orden
+         * de antiguedad desconocida. */
+        return DIANA_MNT_CAT_ACT;
+    }
+}
+
+bool diana_maintenance_clock_gate(diana_maintenance_type t, bool clock_ok,
+                                  bool expired)
+{
+    switch (diana_maintenance_category_of(t)) {
+    case DIANA_MNT_CAT_READ:   return true;
+    case DIANA_MNT_CAT_SAFETY: return true;
+    case DIANA_MNT_CAT_ACT:
+    default:                   return clock_ok && !expired;
+    }
+}

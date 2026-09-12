@@ -58,6 +58,11 @@ STR_TABLE(diana_command_action_str, diana_command_action,
           "start_calibration", "abort_calibration", "self_test", "led_test",
           "flush_queue", "set_maintenance", "clear_error")
 
+STR_TABLE(diana_maintenance_type_str, diana_maintenance_type,
+          "led_test", "piezo_test", "request_telemetry", "self_test",
+          "identify", "query_version", "query_status", "start_calibration",
+          "abort_calibration")
+
 STR_TABLE(diana_command_result_str, diana_command_result,
           "accepted", "rejected", "expired", "duplicate", "failed")
 
@@ -101,6 +106,15 @@ int diana_command_action_parse(const char *s, diana_command_action *out)
     if (parse_in(diana_command_action_str_tab, DIANA_CMD_ACTION_COUNT, s, &v) != 0)
         return -1;
     *out = (diana_command_action)v;
+    return 0;
+}
+
+int diana_maintenance_type_parse(const char *s, diana_maintenance_type *out)
+{
+    int v = 0;
+    if (parse_in(diana_maintenance_type_str_tab, DIANA_MNT_TYPE_COUNT, s, &v) != 0)
+        return -1;
+    *out = (diana_maintenance_type)v;
     return 0;
 }
 

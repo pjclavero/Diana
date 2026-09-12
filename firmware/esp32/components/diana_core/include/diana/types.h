@@ -182,6 +182,27 @@ typedef enum {
     DIANA_CMD_ACTION_COUNT
 } diana_command_action;
 
+/**
+ * module-maintenance-command.schema.json#/properties/command_type
+ *
+ * Canal EXCLUSIVO del backend. Es una lista CERRADA de mantenimiento: ninguna
+ * orden de juego vive aqui, y el contrato dice explicitamente que no se
+ * ampliara por la via implicita. El reparto de autoridad es por DOMINIO
+ * (juego vs. mantenimiento), no por disponibilidad.
+ */
+typedef enum {
+    DIANA_MNT_LED_TEST = 0,
+    DIANA_MNT_PIEZO_TEST,
+    DIANA_MNT_REQUEST_TELEMETRY,
+    DIANA_MNT_SELF_TEST,
+    DIANA_MNT_IDENTIFY,
+    DIANA_MNT_QUERY_VERSION,
+    DIANA_MNT_QUERY_STATUS,
+    DIANA_MNT_START_CALIBRATION,
+    DIANA_MNT_ABORT_CALIBRATION,
+    DIANA_MNT_TYPE_COUNT
+} diana_maintenance_type;
+
 /** module-status.schema.json#/properties/last_command/result */
 typedef enum {
     DIANA_CMD_RESULT_ACCEPTED = 0,
@@ -249,6 +270,8 @@ const char *diana_reset_reason_str(diana_reset_reason v);
 
 int diana_target_state_parse(const char *s, diana_target_state *out);
 int diana_command_action_parse(const char *s, diana_command_action *out);
+const char *diana_maintenance_type_str(diana_maintenance_type v);
+int diana_maintenance_type_parse(const char *s, diana_maintenance_type *out);
 int diana_issuer_parse(const char *s, diana_issuer *out);
 int diana_ota_action_parse(const char *s, diana_ota_action *out);
 

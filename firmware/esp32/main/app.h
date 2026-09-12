@@ -45,6 +45,14 @@ typedef struct {
     bool               identify_button_active;
     uint64_t           identify_until_us;
 
+    /* Prueba de LED de UNA diana (canal de mantenimiento, `led_test`).
+     * 1..9, o 0 si no hay ninguna en prueba. Separado de identify_active a
+     * proposito: `identify` es una orden sobre el MODULO y `led_test` sobre una
+     * diana concreta; tratarlas igual --que es lo que hacia este firmware--
+     * enciende las nueve cuando el backend ha pedido una. */
+    uint8_t            led_test_target;
+    uint64_t           led_test_until_us;
+
     /* ultimo comando, para module-status.last_command */
     bool               has_last_command;
     char               last_command_id[DIANA_UUID_LEN];

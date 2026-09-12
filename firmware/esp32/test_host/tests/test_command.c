@@ -347,5 +347,58 @@ int run_command(void)
     CHECK_EQ_STR(diana_command_result_str(v.result), "duplicate",
                  "el primero de los 128 sigue recordado");
 
+    SECTION("canal de MANTENIMIENTO: categoria y regla de reloj (6-bis)");
+    {
+        /* El modulo fisico arranca SIN hora: SNTP no levanta y epoch_ms=0. Esta
+         * regla decide, en ese estado exacto, que ordenes del backend se
+         * ejecutan y cuales se rechazan. No es un detalle: con el reloj caido
+         * es lo unico que separa "diagnosticable" de "ladrillo mudo". */
+        struct { diana_maintenance_type t; diana_maintenance_category c; } esperado[] = {
+            { DIANA_MNT_REQUEST_TELEMETRY, DIANA_MNT_CAT_READ },
+            { DIANA_MNT_IDENTIFY,          DIANA_MNT_CAT_READ },
+            { DIANA_MNT_QUERY_VERSION,     DIANA_MNT_CAT_READ },
+            { DIANA_MNT_QUERY_STATUS,      DIANA_MNT_CAT_READ },
+            { DIANA_MNT_LED_TEST,          DIANA_MNT_CAT_ACT },
+            { DIANA_MNT_PIEZO_TEST,        DIANA_MNT_CAT_ACT },
+            { DIANA_MNT_SELF_TEST,         DIANA_MNT_CAT_ACT },
+            { DIANA_MNT_START_CALIBRATION, DIANA_MNT_CAT_ACT },
+            { DIANA_MNT_ABORT_CALIBRATION, DIANA_MNT_CAT_SAFETY },
+        };
+        int mal = 0;
+        for (size_t i = 0; i < sizeof(esperado) / sizeof(esperado[0]); ++i)
+            if (diana_maintenance_category_of(esperado[i].t) != esperado[i].c) mal++;
+        CHECK_EQ_INT(mal, 0, "las nueve ordenes estan en la categoria del contrato");
+
+        /* read: se acepta sin reloj y aunque haya vencido. */
+        CHECK(diana_maintenance_clock_gate(DIANA_MNT_QUERY_STATUS, false, false),
+              "read sin reloj se ACEPTA (si no, un modulo sin hora es indiagnosticable)");
+        CHECK(diana_maintenance_clock_gate(DIANA_MNT_IDENTIFY, false, true),
+              "read vencida se ACEPTA igual");
+
+        /* act: las dos condiciones, por separado y juntas. */
+        CHECK(diana_maintenance_clock_gate(DIANA_MNT_LED_TEST, true, false),
+              "act con reloj y dentro de plazo se ACEPTA");
+        CHECK(!diana_maintenance_clock_gate(DIANA_MNT_LED_TEST, false, false),
+              "act SIN reloj se rechaza aunque no haya vencido");
+        CHECK(!diana_maintenance_clock_gate(DIANA_MNT_LED_TEST, true, true),
+              "act vencida se rechaza aunque haya reloj");
+        CHECK(!diana_maintenance_clock_gate(DIANA_MNT_START_CALIBRATION, false, true),
+              "act sin reloj y vencida se rechaza");
+
+        /* safety: parar algo no puede depender de tener la hora. */
+        CHECK(diana_maintenance_clock_gate(DIANA_MNT_ABORT_CALIBRATION, false, true),
+              "safety se ACEPTA sin reloj y vencida");
+
+        /* Los nombres del contrato, ida y vuelta. */
+        diana_maintenance_type mt;
+        CHECK(diana_maintenance_type_parse("led_test", &mt) == 0 &&
+                  mt == DIANA_MNT_LED_TEST,
+              "led_test se parsea al tipo correcto");
+        CHECK(diana_maintenance_type_parse("set_targets", &mt) != 0,
+              "una orden de JUEGO no se parsea en el canal de mantenimiento");
+        CHECK_EQ_STR(diana_maintenance_type_str(DIANA_MNT_ABORT_CALIBRATION),
+                     "abort_calibration", "el nombre vuelve intacto");
+    }
+
     return g_tests_failed - before;
 }

@@ -53,13 +53,20 @@ const char *diana_led_pattern_str(diana_led_pattern p);
 /**
  * Renderiza el fotograma de una cadena (0..2) para las 3 dianas de esa fila.
  * @param states     estados de las 9 dianas, indice 0 = diana 1.
- * @param identify   true si el modulo esta en modo identificacion.
+ * @param identify   true si el MODULO esta en modo identificacion (todas).
+ * @param test_target diana 1..9 en prueba de LED, o 0 si ninguna. Es lo que
+ *                   distingue "prueba el LED de la diana 3" de "identifica el
+ *                   modulo": el canal de mantenimiento manda `target_index` y
+ *                   antes se ignoraba, encendiendo el modulo entero. Si
+ *                   `identify` esta activo manda el, porque es una orden sobre
+ *                   el modulo completo.
  * @param brightness limite global de brillo 1..255 (config.led_brightness_max).
  * @param t_ms       tiempo monotonico en ms, para animar los patrones.
  * @param out        buffer de DIANA_LEDS_PER_CHAIN pixeles.
  */
 void diana_led_render_chain(uint8_t chain, const diana_target_state *states,
-                            bool identify, uint8_t brightness, uint64_t t_ms,
+                            bool identify, uint8_t test_target,
+                            uint8_t brightness, uint64_t t_ms,
                             diana_hal_rgb out[DIANA_LEDS_PER_CHAIN]);
 
 /**

@@ -86,7 +86,8 @@ static uint8_t scale8(uint8_t v, uint8_t f)
 }
 
 void diana_led_render_chain(uint8_t chain, const diana_target_state *states,
-                            bool identify, uint8_t brightness, uint64_t t_ms,
+                            bool identify, uint8_t test_target,
+                            uint8_t brightness, uint64_t t_ms,
                             diana_hal_rgb out[DIANA_LEDS_PER_CHAIN])
 {
     memset(out, 0, sizeof(diana_hal_rgb) * DIANA_LEDS_PER_CHAIN);
@@ -95,8 +96,14 @@ void diana_led_render_chain(uint8_t chain, const diana_target_state *states,
 
     for (uint8_t slot = 0; slot < 3; ++slot) {
         uint8_t target0 = (uint8_t)(chain * 3 + slot);   /* 0..8 */
-        diana_led_style st = identify ? diana_led_style_identify()
-                                      : diana_led_style_for(states[target0]);
+        /* Una prueba de LED ilumina SOLO la diana pedida; el resto sigue
+         * mostrando su estado real, que es lo que permite ver de un vistazo
+         * que la orden fue a la diana correcta y no a todas. */
+        bool en_prueba = (test_target >= 1 && test_target <= DIANA_TARGET_COUNT &&
+                          (uint8_t)(test_target - 1) == target0);
+        diana_led_style st = (identify || en_prueba)
+                                 ? diana_led_style_identify()
+                                 : diana_led_style_for(states[target0]);
 
         uint8_t phase = phase_of(t_ms, st.period_ms);
 

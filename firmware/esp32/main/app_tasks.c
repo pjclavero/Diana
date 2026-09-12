@@ -363,6 +363,8 @@ void diana_task_leds(void *arg)
 
         if (a->identify_active && now > a->identify_until_us)
             a->identify_active = false;
+        if (a->led_test_target != 0 && now > a->led_test_until_us)
+            a->led_test_target = 0;
 
 #if CONFIG_DIANA_BENCH_HIT_LED_TEST
         for (uint8_t i = 0; i < 3; ++i) {
@@ -384,6 +386,7 @@ void diana_task_leds(void *arg)
         for (uint8_t c = 0; c < DIANA_LED_CHAINS; ++c)
             diana_led_render_chain(c, states,
                                    a->identify_active || a->identify_button_active,
+                                   a->led_test_target,
                                    a->cfg.led_brightness_max, t_ms, px[c]);
 
         /* Presupuesto de potencia ANTES de escribir: nunca se envia al hardware

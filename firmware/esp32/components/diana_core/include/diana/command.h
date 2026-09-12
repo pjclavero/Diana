@@ -148,6 +148,42 @@ typedef struct {
 } diana_command_verdict;
 
 /**
+ * Categoria de una orden de MANTENIMIENTO por su consecuencia
+ * (module-maintenance-command.schema.json, README 6-bis).
+ *
+ *   read   — no tocan el hardware: request_telemetry, identify, query_version,
+ *            query_status.
+ *   act    — arrancan un proceso o mueven un actuador: led_test, piezo_test,
+ *            self_test, start_calibration.
+ *   safety — para lo que otra orden arranco: abort_calibration, la unica.
+ */
+typedef enum {
+    DIANA_MNT_CAT_READ = 0,
+    DIANA_MNT_CAT_ACT,
+    DIANA_MNT_CAT_SAFETY,
+} diana_maintenance_category;
+
+diana_maintenance_category diana_maintenance_category_of(diana_maintenance_type t);
+
+/**
+ * Regla de reloj y caducidad del canal de mantenimiento (README 6-bis).
+ * Devuelve true si la orden debe ACEPTARSE pese al estado del reloj.
+ *
+ *   read   — se acepta siempre. Rechazarla dejaria indiagnosticable justo el
+ *            caso que mas falta hace: un modulo recien arrancado sin hora.
+ *   act    — se rechaza sin reloj sincronizado o con el TTL vencido: no hay
+ *            forma honesta de acotar cuanto lleva circulando una orden que va
+ *            a mover un actuador.
+ *   safety — se acepta SIEMPRE, sin reloj y aunque haya vencido. Parar algo no
+ *            puede depender de tener la hora.
+ *
+ * Esta regla vivia solo en el simulador: el firmware ESP-IDF nunca se habia
+ * compilado con ella, porque este canal no estaba implementado.
+ */
+bool diana_maintenance_clock_gate(diana_maintenance_type t, bool clock_ok,
+                                  bool expired);
+
+/**
  * Inicializa el guardian y CARGA de NVS el ultimo nonce aceptado por emisor.
  * Con hal == NULL funciona solo en memoria.
  */

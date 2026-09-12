@@ -84,9 +84,9 @@ int run_led(void)
     diana_hal_rgb chain0[DIANA_LEDS_PER_CHAIN];
     diana_hal_rgb chain1[DIANA_LEDS_PER_CHAIN];
     diana_hal_rgb chain2[DIANA_LEDS_PER_CHAIN];
-    diana_led_render_chain(0, states, false, 255, 0, chain0);
-    diana_led_render_chain(1, states, false, 255, 0, chain1);
-    diana_led_render_chain(2, states, false, 255, 0, chain2);
+    diana_led_render_chain(0, states, false, 0, 255, 0, chain0);
+    diana_led_render_chain(1, states, false, 0, 255, 0, chain1);
+    diana_led_render_chain(2, states, false, 0, 255, 0, chain2);
 
     CHECK(chain0[0].b > 0 && chain0[0].r == 0, "cadena 0: diana 1 en azul");
     /* diana 5 = indice 4 -> cadena 1, hueco 1 -> LED 24..47 */
@@ -95,15 +95,57 @@ int run_led(void)
 
     SECTION("modo identificacion afecta a todo el modulo");
     diana_hal_rgb idc[DIANA_LEDS_PER_CHAIN];
-    diana_led_render_chain(0, states, true, 255, 0, idc);
+    diana_led_render_chain(0, states, true, 0, 255, 0, idc);
     int cyan = 0;
     for (int i = 0; i < DIANA_LEDS_PER_CHAIN; ++i)
         if (idc[i].g > 0 && idc[i].b > 0 && idc[i].r == 0) cyan++;
     CHECK(cyan > 0, "el barrido de identificacion pinta en cian");
 
+    SECTION("prueba de LED de UNA diana, no del modulo entero");
+    {
+        /* El defecto medido en el banco: el backend manda `led_test` con
+         * target_index y el firmware encendia las nueve dianas en modo
+         * identify. Aqui se comprueba que ilumina la pedida Y que las vecinas
+         * siguen mostrando su estado. */
+        diana_hal_rgb c0[DIANA_LEDS_PER_CHAIN];
+        diana_led_render_chain(0, states, false, 2, 255, 0, c0);
+
+        int cyan_d2 = 0;
+        for (int i = DIANA_LEDS_PER_TARGET; i < 2 * DIANA_LEDS_PER_TARGET; ++i)
+            if (c0[i].g > 0 && c0[i].b > 0 && c0[i].r == 0) cyan_d2++;
+        CHECK(cyan_d2 > 0, "la diana 2 se ilumina con el estilo de prueba");
+        CHECK(c0[0].b > 0 && c0[0].g == 0,
+              "la diana 1 sigue en su estado (azul), no en prueba");
+        CHECK(c0[2 * DIANA_LEDS_PER_TARGET].b > 0 &&
+                  c0[2 * DIANA_LEDS_PER_TARGET].g == 0,
+              "la diana 3 tampoco se contagia");
+
+        /* La diana pedida esta en OTRA cadena: esta no debe cambiar nada. */
+        diana_hal_rgb c0b[DIANA_LEDS_PER_CHAIN];
+        diana_led_render_chain(0, states, false, 5, 255, 0, c0b);
+        CHECK(memcmp(c0b, chain0, sizeof(c0b)) == 0,
+              "pedir la diana 5 no altera la cadena 0");
+
+        /* 0 = ninguna en prueba; fuera de rango tampoco enciende nada. */
+        diana_hal_rgb c0c[DIANA_LEDS_PER_CHAIN];
+        diana_led_render_chain(0, states, false, 0, 255, 0, c0c);
+        CHECK(memcmp(c0c, chain0, sizeof(c0c)) == 0, "0 = ninguna en prueba");
+        diana_led_render_chain(0, states, false, 99, 255, 0, c0c);
+        CHECK(memcmp(c0c, chain0, sizeof(c0c)) == 0,
+              "un indice fuera de rango no enciende nada");
+
+        /* identify es una orden sobre el MODULO: manda sobre la prueba. */
+        diana_hal_rgb c0d[DIANA_LEDS_PER_CHAIN];
+        diana_led_render_chain(0, states, true, 2, 255, 0, c0d);
+        int cyan_todas = 0;
+        for (int i = 0; i < DIANA_LEDS_PER_TARGET; ++i)
+            if (c0d[i].g > 0 && c0d[i].b > 0) cyan_todas++;
+        CHECK(cyan_todas > 0, "con identify activo se ilumina todo el modulo");
+    }
+
     SECTION("limite global de brillo");
     diana_hal_rgb dim[DIANA_LEDS_PER_CHAIN];
-    diana_led_render_chain(0, states, false, 64, 0, dim);
+    diana_led_render_chain(0, states, false, 0, 64, 0, dim);
     CHECK(dim[0].b < chain0[0].b, "brillo 64 produce menos intensidad que 255");
     CHECK(dim[0].b > 0, "pero no apaga la diana");
 
