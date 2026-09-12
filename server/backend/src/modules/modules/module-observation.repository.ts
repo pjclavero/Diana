@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import type { ModuleObservationPort } from '../hits/ports';
 import { esObservacionNueva } from '../../domain/modules/selectorObservation';
+import { CoordinatorElectionService } from './coordinator-election.service';
 
 /**
  * Persiste la posición OBSERVADA del selector físico (3.1).
@@ -18,7 +19,10 @@ import { esObservacionNueva } from '../../domain/modules/selectorObservation';
 export class ModuleObservationRepository implements ModuleObservationPort {
   private readonly logger = new Logger(ModuleObservationRepository.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly eleccion: CoordinatorElectionService,
+  ) {}
 
   async observeSelector(input: {
     moduleSlug: string;
@@ -48,5 +52,15 @@ export class ModuleObservationRepository implements ModuleObservationPort {
     this.logger.log(
       `Selector observado en ${input.moduleSlug}: ${input.selector} (${input.role})`,
     );
+
+    /* La eleccion se dispara al OBSERVAR un cambio, no periodicamente: la
+     * entrada de esta decision es el interruptor fisico y solo cambia cuando
+     * alguien lo mueve. Un fallo aqui no invalida la observacion, que ya esta
+     * persistida: se reevaluara con la siguiente. */
+    await this.eleccion
+      .reevaluar(input.moduleSlug, input.observedAt)
+      .catch((error: Error) =>
+        this.logger.warn(`No se pudo reevaluar el coordinador: ${error.message}`),
+      );
   }
 }

@@ -10,6 +10,7 @@ import {
   PRESENCE_SINK,
 } from '../hits/ports';
 import { ModuleObservationRepository } from '../modules/module-observation.repository';
+import { CoordinatorElectionService } from '../modules/coordinator-election.service';
 import { PrismaHitRepository } from '../hits/prisma-hit.repository';
 import { PrismaHitAttributor } from '../hits/prisma-hit-attributor';
 import { PrismaIncidentSink } from '../maintenance/incident.sink';
@@ -78,6 +79,7 @@ export class MqttController {
     ResilienceService,
     { provide: PRESENCE_SINK, useExisting: ResilienceService },
     /* 3.1 · el selector observado en `module-status` deja de descartarse. */
+    CoordinatorElectionService,
     ModuleObservationRepository,
     { provide: MODULE_OBSERVATION, useExisting: ModuleObservationRepository },
     {
