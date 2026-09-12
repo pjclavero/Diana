@@ -31,8 +31,8 @@ describe('aplicación de la elección · 3.2/3.3', () => {
   it('un PRINCIPAL observado se persiste como coordinador del sistema', async () => {
     const { service, update } = build(
       [
-        { id: 'm1', slug: 'module-01', selector: 'PRINCIPAL', selectorObservedAt: reciente },
-        { id: 'm2', slug: 'module-02', selector: 'SATELITE', selectorObservedAt: reciente },
+        { id: 'm1', slug: 'module-01', selector: 'PRINCIPAL', selectorObservedAt: reciente, online: true },
+        { id: 'm2', slug: 'module-02', selector: 'SATELITE', selectorObservedAt: reciente, online: true },
       ],
       null,
     );
@@ -46,7 +46,7 @@ describe('aplicación de la elección · 3.2/3.3', () => {
   it('si no cambia nada, NO se escribe', async () => {
     // Escribir en cada status retenido movería el sistema sin motivo.
     const { service, update } = build(
-      [{ id: 'm1', slug: 'module-01', selector: 'PRINCIPAL', selectorObservedAt: reciente }],
+      [{ id: 'm1', slug: 'module-01', selector: 'PRINCIPAL', selectorObservedAt: reciente, online: true }],
       'm1',
     );
     await service.reevaluar('module-01', AHORA);
@@ -55,7 +55,7 @@ describe('aplicación de la elección · 3.2/3.3', () => {
 
   it('al pasar a SATÉLITE el sistema se queda SIN coordinador', async () => {
     const { service, update } = build(
-      [{ id: 'm1', slug: 'module-01', selector: 'SATELITE', selectorObservedAt: reciente }],
+      [{ id: 'm1', slug: 'module-01', selector: 'SATELITE', selectorObservedAt: reciente, online: true }],
       'm1',
     );
     await service.reevaluar('module-01', AHORA);
@@ -68,8 +68,8 @@ describe('aplicación de la elección · 3.2/3.3', () => {
   it('dos PRINCIPAL: avisa con una incidencia y deja UN solo coordinador', async () => {
     const { service, update, incidents } = build(
       [
-        { id: 'm2', slug: 'module-02', selector: 'PRINCIPAL', selectorObservedAt: reciente },
-        { id: 'm3', slug: 'module-03', selector: 'PRINCIPAL', selectorObservedAt: reciente },
+        { id: 'm2', slug: 'module-02', selector: 'PRINCIPAL', selectorObservedAt: reciente, online: true },
+        { id: 'm3', slug: 'module-03', selector: 'PRINCIPAL', selectorObservedAt: reciente, online: true },
       ],
       null,
     );
@@ -86,7 +86,7 @@ describe('aplicación de la elección · 3.2/3.3', () => {
   it('una observación caducada no elige coordinador', async () => {
     const viejo = new Date(AHORA.getTime() - FRESCURA_SELECTOR_MS - 1);
     const { service, update } = build(
-      [{ id: 'm1', slug: 'module-01', selector: 'PRINCIPAL', selectorObservedAt: viejo }],
+      [{ id: 'm1', slug: 'module-01', selector: 'PRINCIPAL', selectorObservedAt: viejo, online: true }],
       null,
     );
     await service.reevaluar('module-01', AHORA);

@@ -7,10 +7,12 @@ const mod = (
   slug: string,
   selector: CandidatoModulo['selector'],
   hace = 1000,
+  online = true,
 ): CandidatoModulo => ({
   slug,
   selector,
   selectorObservedAt: new Date(AHORA.getTime() - hace),
+  online,
 });
 
 describe('elección de coordinador · el interruptor manda', () => {
@@ -139,7 +141,7 @@ describe('FRESCURA · no elegir sobre estado viejo', () => {
 
   it('un selector guardado SIN fecha no es una observación', () => {
     const r = elegirCoordinador(
-      [{ slug: 'module-01', selector: 'PRINCIPAL', selectorObservedAt: null }],
+      [{ slug: 'module-01', selector: 'PRINCIPAL', selectorObservedAt: null, online: true }],
       null, AHORA, FRESCURA,
     );
     expect(r.coordinador).toBeNull();
@@ -159,6 +161,44 @@ describe('FRESCURA · no elegir sobre estado viejo', () => {
     const r = elegirCoordinador(
       [mod('module-01', 'PRINCIPAL', 10 * 60_000)],
       'module-01', AHORA, FRESCURA,
+    );
+    expect(r.coordinador).toBeNull();
+  });
+});
+
+describe('ONLINE · un módulo desconectado no coordina', () => {
+  it('un PRINCIPAL offline no es candidato aunque su observación sea fresca', () => {
+    // La frescura dice cuándo se vio el interruptor; `online` dice si el módulo
+    // está ahí para ejercer. Hacen falta las dos.
+    const r = elegirCoordinador(
+      [mod('module-01', 'PRINCIPAL', 1000, false)],
+      null, AHORA, FRESCURA,
+    );
+    expect(r.coordinador).toBeNull();
+    expect(r.ignoradosPorOffline).toContain('module-01');
+  });
+
+  it('el vigente que acaba de caerse DEJA de ser coordinador', () => {
+    const r = elegirCoordinador(
+      [mod('module-01', 'PRINCIPAL', 1000, false)],
+      'module-01', AHORA, FRESCURA,
+    );
+    expect(r.coordinador).toBeNull();
+  });
+
+  it('con dos PRINCIPAL y uno caído, coordina el que sigue en pie', () => {
+    const r = elegirCoordinador(
+      [mod('module-01', 'PRINCIPAL', 1000, false), mod('module-05', 'PRINCIPAL')],
+      'module-01', AHORA, FRESCURA,
+    );
+    expect(r.coordinador).toBe('module-05');
+    expect(r.conflicto).toBe(false); // sólo uno es candidato real
+  });
+
+  it('un AUTO offline tampoco sirve de respaldo', () => {
+    const r = elegirCoordinador(
+      [mod('module-03', 'AUTO', 1000, false)],
+      null, AHORA, FRESCURA,
     );
     expect(r.coordinador).toBeNull();
   });

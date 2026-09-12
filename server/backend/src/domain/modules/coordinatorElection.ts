@@ -19,6 +19,13 @@ export interface CandidatoModulo {
   selector: SelectorPosition | null;
   /** Cuándo se observó. `null` = nunca. */
   selectorObservedAt: Date | null;
+  /**
+   * Presencia observada. Un módulo desconectado NO puede coordinar aunque su
+   * observación sea fresca: la frescura dice cuándo se vio el interruptor, no
+   * si el módulo está ahí para ejercer. Son cosas distintas y hacen falta las
+   * dos.
+   */
+  online: boolean;
 }
 
 export type MotivoEleccion =
@@ -44,6 +51,8 @@ export interface ResultadoEleccion {
    * debe hacerlo en silencio.
    */
   ignoradosPorAntiguedad: string[];
+  /** Candidatos descartados por estar desconectados. */
+  ignoradosPorOffline: string[];
 }
 
 /** Orden determinista: el "menor module_id" de las reglas. */
@@ -69,9 +78,16 @@ export function elegirCoordinador(
   frescuraMaxMs: number,
 ): ResultadoEleccion {
   const ignoradosPorAntiguedad: string[] = [];
+  const ignoradosPorOffline: string[] = [];
 
-  const fresco = (c: CandidatoModulo): boolean => {
+  const esCandidato = (c: CandidatoModulo): boolean => {
     if (c.selector === null) return false;
+    if (!c.online) {
+      // Se enumera en vez de desaparecer: un módulo en PRINCIPAL que acaba de
+      // caerse deja de coordinar, y conviene poder ver por qué.
+      ignoradosPorOffline.push(c.slug);
+      return false;
+    }
     if (c.selectorObservedAt === null) {
       // Nunca observado: no se puede afirmar en qué posición está el
       // interruptor, y una posición guardada sin fecha no es una observación.
@@ -86,7 +102,7 @@ export function elegirCoordinador(
     return true;
   };
 
-  const vivos = candidatos.filter(fresco);
+  const vivos = candidatos.filter(esCandidato);
   const principales = vivos.filter((c) => c.selector === 'PRINCIPAL').map((c) => c.slug);
   const autos = vivos.filter((c) => c.selector === 'AUTO').map((c) => c.slug);
   // SATELITE nunca es candidato. No se filtra "lo que no sea satélite": se
@@ -100,6 +116,7 @@ export function elegirCoordinador(
       conflicto: false,
       principales,
       ignoradosPorAntiguedad,
+      ignoradosPorOffline,
     };
   }
 
@@ -116,6 +133,7 @@ export function elegirCoordinador(
       conflicto: true,
       principales,
       ignoradosPorAntiguedad,
+      ignoradosPorOffline,
     };
   }
 
@@ -128,6 +146,7 @@ export function elegirCoordinador(
       conflicto: false,
       principales,
       ignoradosPorAntiguedad,
+      ignoradosPorOffline,
     };
   }
 
@@ -140,5 +159,6 @@ export function elegirCoordinador(
     conflicto: false,
     principales,
     ignoradosPorAntiguedad,
+    ignoradosPorOffline,
   };
 }

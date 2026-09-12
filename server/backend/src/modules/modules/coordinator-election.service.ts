@@ -11,14 +11,16 @@ import type { SelectorPosition } from '../../domain/modules/selectorObservation'
  * Antigüedad máxima admisible de una observación del selector.
  *
  * Decisión de PRODUCTO, no un número técnico: cuánto tiempo puede uno fiarse de
- * que el interruptor sigue donde se vio. Cinco minutos cubre de sobra la
- * propagación real —el módulo publica `module-status` en el mismo instante del
- * cambio, medido en el banco— y descarta un módulo que lleva apagado un rato.
+ * que el interruptor sigue donde se vio. Un minuto, porque esto elige AUTORIDAD
+ * de juego y no es telemetría: el módulo publica `module-status` en el mismo
+ * instante del cambio —medido en el banco—, así que un minuto sobra para la
+ * propagación real y no deja a un módulo apagado siendo candidato durante
+ * varios minutos.
  *
  * Se declara aquí, visible, en vez de esconderse dentro de la función de
  * elección: cambiarlo es una decisión, no un ajuste.
  */
-export const FRESCURA_SELECTOR_MS = 5 * 60_000;
+export const FRESCURA_SELECTOR_MS = 60_000;
 
 /**
  * Aplica la elección de coordinador (3.2 / 3.3).
@@ -60,13 +62,20 @@ export class CoordinatorElectionService {
 
     const modulos = await this.prisma.module.findMany({
       where: { targetSystemId: sistema.id },
-      select: { id: true, slug: true, selector: true, selectorObservedAt: true },
+      select: {
+        id: true,
+        slug: true,
+        selector: true,
+        selectorObservedAt: true,
+        online: true,
+      },
     });
 
     const candidatos: CandidatoModulo[] = modulos.map((m) => ({
       slug: m.slug,
       selector: (m.selector as SelectorPosition | null) ?? null,
       selectorObservedAt: m.selectorObservedAt,
+      online: m.online,
     }));
 
     const vigente = sistema.coordinatorModuleId
@@ -94,6 +103,12 @@ export class CoordinatorElectionService {
           receivedAt: ahora,
         } as never)
         .catch(() => undefined);
+    }
+
+    if (r.ignoradosPorOffline.length > 0) {
+      this.logger.warn(
+        `Selector ignorado por estar desconectado: ${r.ignoradosPorOffline.join(', ')}`,
+      );
     }
 
     if (r.ignoradosPorAntiguedad.length > 0) {
