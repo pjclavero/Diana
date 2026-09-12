@@ -139,6 +139,12 @@ contracts:
 # hardware. net_w5500.c no se compila en host. Contador PROPIO.
 	@$(PYTHON) $(FW)/tools/check_clock_source.py
 
+# LED_TEST_INDEPENDENCE. Los tres defectos que se midieron en el banco ---
+# encender D2 apagaba D1, apagar D1 apagaba la ultima, y un unico plazo ---
+# venian de un hueco de estado GLOBAL en main/, que no se compila en host.
+# Contador PROPIO.
+	@$(PYTHON) $(FW)/tools/check_led_test_independence.py
+
 # ADR-0007. Valida los payloads que llevan `detection_method` contra el contrato
 # de ESTE arbol. Sin descarga ni referencia git: funciona en un clon limpio.
 # La guarda de abajo no es cosmetica: si alguien retira el contrato ADR-0007 de

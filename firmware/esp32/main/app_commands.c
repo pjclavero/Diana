@@ -402,13 +402,14 @@ static void execute_maintenance(diana_app *a, diana_maintenance_type type,
                                      "led_test con target_index fuera de 1..9");
             return;
         }
+        /* El apagado es DIRIGIDO: toca el vencimiento de la diana pedida y de
+         * ninguna otra. La version anterior borraba un hueco global, asi que
+         * "apagar D1" apagaba la ultima encendida. */
         if (ms == 0) {
-            a->led_test_target = 0;
-            a->led_test_until_us = 0;
+            a->led_test_until_us[idx - 1] = 0;
             ESP_LOGI(TAG, "led_test: diana %d APAGADA (duration_ms=0)", idx);
         } else {
-            a->led_test_target = (uint8_t)idx;
-            a->led_test_until_us = now + (uint64_t)ms * 1000ULL;
+            a->led_test_until_us[idx - 1] = now + (uint64_t)ms * 1000ULL;
             ESP_LOGI(TAG, "led_test: diana %d durante %u ms", idx, (unsigned)ms);
         }
         break;

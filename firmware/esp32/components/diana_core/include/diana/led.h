@@ -54,20 +54,24 @@ const char *diana_led_pattern_str(diana_led_pattern p);
  * Renderiza el fotograma de una cadena (0..2) para las 3 dianas de esa fila.
  * @param states     estados de las 9 dianas, indice 0 = diana 1.
  * @param identify   true si el MODULO esta en modo identificacion (todas).
- * @param test_target diana 1..9 en prueba de LED, o 0 si ninguna. Es lo que
- *                   distingue "prueba el LED de la diana 3" de "identifica el
- *                   modulo": el canal de mantenimiento manda `target_index` y
- *                   antes se ignoraba, encendiendo el modulo entero. Si
- *                   `identify` esta activo manda el, porque es una orden sobre
- *                   el modulo completo.
+ * @param test_mask MASCARA de dianas en prueba de LED: bit 0 = diana 1, ...,
+ *                   bit 8 = diana 9. 0 = ninguna. Es una mascara y no un indice
+ *                   porque cada `led_test` es INDEPENDIENTE: pedir D2 no puede
+ *                   apagar D1, y nada en el contrato dice lo contrario. El
+ *                   modelo anterior guardaba un solo indice, asi que cada orden
+ *                   pisaba la anterior. Si `identify` esta activo manda el,
+ *                   porque es una orden sobre el modulo completo.
  * @param brightness limite global de brillo 1..255 (config.led_brightness_max).
  * @param t_ms       tiempo monotonico en ms, para animar los patrones.
  * @param out        buffer de DIANA_LEDS_PER_CHAIN pixeles.
  */
 void diana_led_render_chain(uint8_t chain, const diana_target_state *states,
-                            bool identify, uint8_t test_target,
+                            bool identify, uint16_t test_mask,
                             uint8_t brightness, uint64_t t_ms,
                             diana_hal_rgb out[DIANA_LEDS_PER_CHAIN]);
+
+/** Bit de la diana `n` (1..9) dentro de la mascara de prueba de LED. */
+#define DIANA_LED_TEST_BIT(n) ((uint16_t)(1u << ((n) - 1)))
 
 /**
  * Corriente estimada de un fotograma completo, en mA.

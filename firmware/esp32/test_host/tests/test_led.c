@@ -7,6 +7,16 @@
 #include "diana/led.h"
 #include "test_util.h"
 
+/** LEDs en cian (estilo de prueba/identificacion) del hueco `pos` (0..2). */
+static int cian_en(const diana_hal_rgb *px, int pos)
+{
+    int n = 0;
+    for (int i = pos * DIANA_LEDS_PER_TARGET;
+         i < (pos + 1) * DIANA_LEDS_PER_TARGET; ++i)
+        if (px[i].g > 0 && px[i].b > 0 && px[i].r == 0) n++;
+    return n;
+}
+
 int run_led(void)
 {
     TEST_SUITE("led");
@@ -108,7 +118,7 @@ int run_led(void)
          * identify. Aqui se comprueba que ilumina la pedida Y que las vecinas
          * siguen mostrando su estado. */
         diana_hal_rgb c0[DIANA_LEDS_PER_CHAIN];
-        diana_led_render_chain(0, states, false, 2, 255, 0, c0);
+        diana_led_render_chain(0, states, false, DIANA_LED_TEST_BIT(2), 255, 0, c0);
 
         int cyan_d2 = 0;
         for (int i = DIANA_LEDS_PER_TARGET; i < 2 * DIANA_LEDS_PER_TARGET; ++i)
@@ -122,7 +132,7 @@ int run_led(void)
 
         /* La diana pedida esta en OTRA cadena: esta no debe cambiar nada. */
         diana_hal_rgb c0b[DIANA_LEDS_PER_CHAIN];
-        diana_led_render_chain(0, states, false, 5, 255, 0, c0b);
+        diana_led_render_chain(0, states, false, DIANA_LED_TEST_BIT(5), 255, 0, c0b);
         CHECK(memcmp(c0b, chain0, sizeof(c0b)) == 0,
               "pedir la diana 5 no altera la cadena 0");
 
@@ -130,17 +140,70 @@ int run_led(void)
         diana_hal_rgb c0c[DIANA_LEDS_PER_CHAIN];
         diana_led_render_chain(0, states, false, 0, 255, 0, c0c);
         CHECK(memcmp(c0c, chain0, sizeof(c0c)) == 0, "0 = ninguna en prueba");
-        diana_led_render_chain(0, states, false, 99, 255, 0, c0c);
+        diana_led_render_chain(0, states, false, DIANA_LED_TEST_BIT(9), 255, 0, c0c);
         CHECK(memcmp(c0c, chain0, sizeof(c0c)) == 0,
-              "un indice fuera de rango no enciende nada");
+              "un bit de otra cadena no enciende nada en esta");
 
         /* identify es una orden sobre el MODULO: manda sobre la prueba. */
         diana_hal_rgb c0d[DIANA_LEDS_PER_CHAIN];
-        diana_led_render_chain(0, states, true, 2, 255, 0, c0d);
+        diana_led_render_chain(0, states, true, DIANA_LED_TEST_BIT(2), 255, 0, c0d);
         int cyan_todas = 0;
         for (int i = 0; i < DIANA_LEDS_PER_TARGET; ++i)
             if (c0d[i].g > 0 && c0d[i].b > 0) cyan_todas++;
         CHECK(cyan_todas > 0, "con identify activo se ilumina todo el modulo");
+    }
+
+    SECTION("las pruebas de LED son INDEPENDIENTES entre dianas");
+    {
+        /* Los tres defectos medidos en el banco, cada uno con su caso:
+         * encender D2 apagaba D1; apagar D1 apagaba la ultima encendida; y
+         * habia un unico plazo, el de la ultima orden. El modelo de un solo
+         * hueco no podia expresar dos dianas a la vez --- comprobado entonces
+         * recorriendo los 256 valores posibles del indice. */
+        diana_hal_rgb px[DIANA_LEDS_PER_CHAIN];
+
+        uint16_t mask = DIANA_LED_TEST_BIT(1);
+        diana_led_render_chain(0, states, false, mask, 255, 0, px);
+        CHECK(cian_en(px, 0) > 0 && cian_en(px, 1) == 0,
+              "D1 ON: solo D1 en cian");
+
+        mask |= DIANA_LED_TEST_BIT(2);
+        diana_led_render_chain(0, states, false, mask, 255, 0, px);
+        CHECK(cian_en(px, 0) > 0 && cian_en(px, 1) > 0,
+              "D2 ON con D1 ya encendida: LAS DOS en cian (antes D1 se apagaba)");
+
+        mask |= DIANA_LED_TEST_BIT(3);
+        diana_led_render_chain(0, states, false, mask, 255, 0, px);
+        CHECK(cian_en(px, 0) > 0 && cian_en(px, 1) > 0 && cian_en(px, 2) > 0,
+              "D3 ON: las tres a la vez");
+
+        /* Apagado DIRIGIDO: se retira el bit de D1 y solo el de D1. */
+        mask &= (uint16_t)~DIANA_LED_TEST_BIT(1);
+        diana_led_render_chain(0, states, false, mask, 255, 0, px);
+        CHECK(cian_en(px, 0) == 0 && cian_en(px, 1) > 0 && cian_en(px, 2) > 0,
+              "OFF D1: se apaga D1 y D2/D3 SIGUEN encendidas");
+
+        /* Caducidad de una sola: equivale a retirar su bit. */
+        mask &= (uint16_t)~DIANA_LED_TEST_BIT(2);
+        diana_led_render_chain(0, states, false, mask, 255, 0, px);
+        CHECK(cian_en(px, 1) == 0 && cian_en(px, 2) > 0,
+              "vence D2: se apaga D2 y D3 sigue encendida");
+
+        /* Las nueve a la vez, en las tres cadenas. */
+        uint16_t todas = 0;
+        for (int i = 1; i <= DIANA_TARGET_COUNT; ++i) todas |= DIANA_LED_TEST_BIT(i);
+        int encendidas = 0;
+        for (uint8_t ch = 0; ch < DIANA_LED_CHAINS; ++ch) {
+            diana_led_render_chain(ch, states, false, todas, 255, 0, px);
+            for (int hueco = 0; hueco < 3; ++hueco)
+                if (cian_en(px, hueco) > 0) encendidas++;
+        }
+        CHECK_EQ_INT(encendidas, 9, "las NUEVE dianas pueden estar en prueba a la vez");
+
+        /* Y la mascara vacia no enciende nada. */
+        diana_led_render_chain(0, states, false, 0, 255, 0, px);
+        CHECK(memcmp(px, chain0, sizeof(px)) == 0,
+              "mascara 0: ninguna diana en prueba");
     }
 
     SECTION("limite global de brillo");

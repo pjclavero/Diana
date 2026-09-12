@@ -45,13 +45,19 @@ typedef struct {
     bool               identify_button_active;
     uint64_t           identify_until_us;
 
-    /* Prueba de LED de UNA diana (canal de mantenimiento, `led_test`).
-     * 1..9, o 0 si no hay ninguna en prueba. Separado de identify_active a
-     * proposito: `identify` es una orden sobre el MODULO y `led_test` sobre una
-     * diana concreta; tratarlas igual --que es lo que hacia este firmware--
-     * enciende las nueve cuando el backend ha pedido una. */
-    uint8_t            led_test_target;
-    uint64_t           led_test_until_us;
+    /* Prueba de LED por diana (canal de mantenimiento, `led_test`).
+     *
+     * UN VENCIMIENTO POR DIANA, no un hueco global. El modelo anterior guardaba
+     * un solo indice y un solo plazo, y eso producia tres defectos medidos en
+     * el banco: encender D2 apagaba D1; apagar D1 apagaba en realidad la ultima
+     * encendida, porque la rama de apagado borraba el hueco sin mirar que diana
+     * se pedia; y el unico plazo era el de la ultima orden.
+     *
+     * Nada en el contrato dice que una prueba deba cancelar otra: cada
+     * `led_test` lleva su `target_index` y su `duration_ms` y es independiente.
+     *
+     * 0 = esa diana no esta en prueba. */
+    uint64_t           led_test_until_us[DIANA_TARGET_COUNT];
 
     /* ultimo comando, para module-status.last_command */
     bool               has_last_command;

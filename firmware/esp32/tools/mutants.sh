@@ -209,14 +209,14 @@ mutate "M19 handler de mantenimiento sin suscripcion" \
   '' \
   "$SUBS" '"command", "config/desired", "ota", "provision",'
 
-# M20 · la diana pedida se ignora y se enciende el modulo entero, que es lo que
-# hacia antes: lo caza la suite, no una guarda estructural.
+# M20 · el BIT de la diana se ignora: cualquier prueba enciende el modulo
+# entero, que es lo que hacia el firmware antes de que led_test mirase
+# target_index. Lo caza la suite, no una guarda estructural.
 mutate "M20 led_test enciende todas las dianas" \
   "$CORE/src/led.c" \
-  '        bool en_prueba = (test_target >= 1 && test_target <= DIANA_TARGET_COUNT &&
-                          (uint8_t)(test_target - 1) == target0);' \
-  '        bool en_prueba = (test_target >= 1 && test_target <= DIANA_TARGET_COUNT);' \
-  "$TEST" 'bool en_prueba = (test_target >= 1 && test_target <= DIANA_TARGET_COUNT);'
+  '        bool en_prueba = (test_mask & (uint16_t)(1u << target0)) != 0;' \
+  '        bool en_prueba = (test_mask != 0);' \
+  "$TEST" 'bool en_prueba = (test_mask != 0);'
 
 # M21 · 'act' deja de exigir reloj: led_test se ejecutaria con una orden de
 # antiguedad desconocida. El contrato lo prohibe y la suite lo fija.
@@ -252,6 +252,34 @@ mutate "M23 SNTP dependiendo del DHCP" \
     cfg.renew_servers_after_new_IP = true;' \
   "$CLOCK" '    cfg.server_from_dhcp = true;
     cfg.renew_servers_after_new_IP = true;'
+
+LEDIND='python3 firmware/esp32/tools/check_led_test_independence.py'
+
+# M24 · el apagado vuelve a ser global: "apagar D1" apaga la ultima encendida.
+# Es el defecto exacto que se midio en el banco, y vive en main/, que NO se
+# compila en host: solo la guarda estructural puede cazarlo.
+mutate "M24 apagado de LED no dirigido" \
+  "$MAIN/app_commands.c" \
+  '            a->led_test_until_us[idx - 1] = 0;' \
+  '            memset(a->led_test_until_us, 0, sizeof(a->led_test_until_us));' \
+  "$LEDIND" 'memset(a->led_test_until_us, 0, sizeof(a->led_test_until_us));'
+
+# M25 · el render vuelve a un solo indice: dos dianas simultaneas dejan de ser
+# expresables. Lo caza la suite, que ya recorre la secuencia D1+D2+D3.
+mutate "M25 render de LED con una sola diana" \
+  "$CORE/src/led.c" \
+  '        bool en_prueba = (test_mask & (uint16_t)(1u << target0)) != 0;' \
+  '        bool en_prueba = (test_mask == (uint16_t)(1u << target0));' \
+  "$TEST" 'bool en_prueba = (test_mask == (uint16_t)(1u << target0));'
+
+# M26 · una diana que vence apaga a todas: el plazo vuelve a ser comun.
+mutate "M26 caducidad de LED compartida" \
+  "$MAIN/app_tasks.c" \
+  '                a->led_test_until_us[i] = 0;
+                continue;' \
+  '                memset(a->led_test_until_us, 0, sizeof(a->led_test_until_us));
+                continue;' \
+  "$LEDIND" 'memset(a->led_test_until_us, 0, sizeof(a->led_test_until_us));'
 
 printf '\n=================================================\n'
 printf ' CALIBRACION: %d mutantes cazados, %d huecos\n' "$pass" "$fail"
