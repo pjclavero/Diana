@@ -18,8 +18,8 @@ import { ApiError } from "../../api/client";
 
 const ack = (over: Partial<diagnosticsApi.CommandAck> = {}): diagnosticsApi.CommandAck => ({
   module_id: "mod-a",
-  action: "start_calibration",
-  command_id: "c1",
+  command_type: "start_calibration",
+  request_id: "c1",
   delivered: true,
   note: "",
   target_index: 3,
@@ -103,6 +103,7 @@ describe("CalibrationPage (F6) · habla con la API real", () => {
           occurredAt: "2026-08-04T10:00:00.000Z",
           receivedAt: "2026-08-04T10:00:03.000Z",
           timeBasis: "module_epoch",
+          requestId: null,
         },
       ],
     });
@@ -124,6 +125,7 @@ describe("CalibrationPage (F6) · habla con la API real", () => {
           occurredAt: null,
           receivedAt: "2026-08-04T10:00:03.000Z",
           timeBasis: "ingest_received",
+          requestId: null,
         },
       ],
     });
@@ -135,7 +137,7 @@ describe("CalibrationPage (F6) · habla con la API real", () => {
     vi.spyOn(diagnosticsApi, "getDiagnostics").mockResolvedValue(sinResultados);
     const abort = vi
       .spyOn(diagnosticsApi, "abortCalibration")
-      .mockResolvedValue(ack({ action: "abort_calibration" }));
+      .mockResolvedValue(ack({ command_type: "abort_calibration" }));
     renderPage();
     await userEvent.click(await screen.findByRole("button", { name: "Abortar calibración" }));
     await waitFor(() => expect(abort).toHaveBeenCalledWith("mod-a"));

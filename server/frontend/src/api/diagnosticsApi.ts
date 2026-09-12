@@ -69,15 +69,26 @@ export const TARGET_STATES = [
 export type TargetState = (typeof TARGET_STATES)[number];
 
 /**
- * Respuesta a una orden. `delivered: false` significa que la orden quedó
- * ENCOLADA y el módulo no la ha recibido: la pantalla no debe pintar como
- * hecho lo que todavía no ha salido.
+ * Respuesta a una orden de MANTENIMIENTO, tal y como la devuelve el backend.
+ *
+ * `delivered: true` significa EXCLUSIVAMENTE que el backend publicó en el
+ * broker. No dice nada del hardware: la confirmación de ejecución sólo puede
+ * venir del módulo, por `diagnostic` correlado con `request_id`.
+ *
+ * Esta interfaz declaraba `action` y `command_id`, que el backend NO envía
+ * (devuelve `command_type` y `request_id`), y OMITÍA `denied` —de modo que una
+ * denegación del broker por ACL se le presentaba al operador como «la orden
+ * queda encolada», que es falso—. Ahora es la forma real de `dispatch()`.
  */
 export interface CommandAck {
   module_id: string;
-  action: string;
-  command_id: string;
+  command_type: string;
+  request_id: string;
   delivered: boolean;
+  /** El broker DENEGÓ la publicación (ACL). No es un encolado. */
+  denied?: boolean;
+  /** El backend ya había cursado esta misma `request_id`: no republica. */
+  duplicate?: boolean;
   note: string;
   /** Diana a la que se refería la petición, si la había. */
   target_index?: number;
@@ -100,6 +111,14 @@ export interface DiagnosticItem {
   /** Hora en que lo recibió el backend. Siempre presente. */
   receivedAt: string;
   timeBasis: "module_epoch" | "ingest_received";
+  /**
+   * Correlación con la orden que lo originó. `null` en los diagnósticos
+   * espontáneos (boot, sensor_error, low_voltage…). Es el ÚNICO campo que
+   * permite saber si este diagnóstico responde a la orden que se acaba de
+   * dar: filtrar por `kind` presentaba como respuesta un diagnóstico de hace
+   * dos horas.
+   */
+  requestId: string | null;
 }
 
 export interface DiagnosticResults {
@@ -109,10 +128,10 @@ export interface DiagnosticResults {
   note: string | null;
 }
 
-export const identifyModule = (idOrSlug: string, durationMs = 4000) =>
+export const identifyModule = (idOrSlug: string, durationMs = 4000, requestId?: string) =>
   req<CommandAck>(`/modules/${encodeURIComponent(idOrSlug)}/commands/identify`, {
     method: "POST",
-    body: JSON.stringify({ duration_ms: durationMs }),
+    body: JSON.stringify({ duration_ms: durationMs, ...(requestId ? { request_id: requestId } : {}) }),
   });
 
 /**
@@ -130,27 +149,42 @@ export const identifyModule = (idOrSlug: string, durationMs = 4000) =>
  * duración de 0, y encender omite el campo para que mande el valor por defecto
  * del servidor en vez de fijar una segunda copia del mismo número en el cliente.
  */
-export const testLed = (idOrSlug: string, targetIndex: number, state: TargetState) =>
+export const testLed = (
+  idOrSlug: string,
+  targetIndex: number,
+  state: TargetState,
+  requestId?: string,
+) =>
   req<CommandAck>(
     `/modules/${encodeURIComponent(idOrSlug)}/targets/${targetIndex}/test-led`,
-    { method: "POST", body: JSON.stringify(state === "off" ? { duration_ms: 0 } : {}) },
+    {
+      method: "POST",
+      body: JSON.stringify({
+        ...(state === "off" ? { duration_ms: 0 } : {}),
+        // El identificador lo elige el CLIENTE y viaja hasta la respuesta del
+        // módulo. Sin él, el backend genera uno y la pantalla no tiene con qué
+        // correlar el diagnóstico que vuelve.
+        ...(requestId ? { request_id: requestId } : {}),
+      }),
+    },
   );
 
-export const testSensor = (idOrSlug: string, targetIndex: number) =>
+export const testSensor = (idOrSlug: string, targetIndex: number, requestId?: string) =>
   req<CommandAck>(
     `/modules/${encodeURIComponent(idOrSlug)}/targets/${targetIndex}/test-sensor`,
-    { method: "POST" },
+    { method: "POST", body: JSON.stringify(requestId ? { request_id: requestId } : {}) },
   );
 
-export const calibrateTarget = (idOrSlug: string, targetIndex: number) =>
+export const calibrateTarget = (idOrSlug: string, targetIndex: number, requestId?: string) =>
   req<CommandAck>(
     `/modules/${encodeURIComponent(idOrSlug)}/targets/${targetIndex}/calibrate`,
-    { method: "POST" },
+    { method: "POST", body: JSON.stringify(requestId ? { request_id: requestId } : {}) },
   );
 
-export const abortCalibration = (idOrSlug: string) =>
+export const abortCalibration = (idOrSlug: string, requestId?: string) =>
   req<CommandAck>(`/modules/${encodeURIComponent(idOrSlug)}/commands/abort-calibration`, {
     method: "POST",
+    body: JSON.stringify(requestId ? { request_id: requestId } : {}),
   });
 
 export const getDiagnostics = (idOrSlug: string, take = 20) =>

@@ -10,8 +10,8 @@ const ack = (
   over: Partial<diagnosticsApi.CommandAck> = {},
 ): diagnosticsApi.CommandAck => ({
   module_id: "m1",
-  action: "led_test",
-  command_id: "c",
+  command_type: "led_test",
+  request_id: "c",
   delivered: true,
   note: "",
   ...over,
@@ -49,7 +49,7 @@ describe("TestSensorsPage (F6)", () => {
     vi.spyOn(diagnosticsApi, "getDiagnostics").mockResolvedValue(empty);
     const test = vi
       .spyOn(diagnosticsApi, "testSensor")
-      .mockResolvedValue(ack({ command_id: "c1", delivered: true, scope: "module" }));
+      .mockResolvedValue(ack({ request_id: "c1", delivered: true, scope: "module" }));
     renderPage();
     await userEvent.click(screen.getAllByRole("button", { name: "Probar" })[2]);
     await waitFor(() => expect(test).toHaveBeenCalledWith("mod-a", 3));
@@ -60,7 +60,7 @@ describe("TestSensorsPage (F6)", () => {
 
   it("si la orden no llegó al broker se dice, no se finge que se probó", async () => {
     vi.spyOn(diagnosticsApi, "getDiagnostics").mockResolvedValue(empty);
-    vi.spyOn(diagnosticsApi, "testSensor").mockResolvedValue(ack({ command_id: "c1", delivered: false }));
+    vi.spyOn(diagnosticsApi, "testSensor").mockResolvedValue(ack({ request_id: "c1", delivered: false }));
     renderPage();
     await userEvent.click(screen.getAllByRole("button", { name: "Probar" })[0]);
     expect(await screen.findByText(/NO llegó al broker/)).toBeInTheDocument();
@@ -89,6 +89,7 @@ describe("TestSensorsPage (F6)", () => {
           receivedAt: "2026-07-26T10:00:03Z",
           detail: null,
           timeBasis: "module_epoch",
+          requestId: null,
         },
         {
           id: "i2",
@@ -99,6 +100,7 @@ describe("TestSensorsPage (F6)", () => {
           receivedAt: "2026-07-26T10:00:03Z",
           detail: null,
           timeBasis: "module_epoch",
+          requestId: null,
         },
       ],
     });
@@ -123,6 +125,7 @@ describe("TestSensorsPage (F6)", () => {
           receivedAt: "2026-07-26T10:00:03Z",
           detail: null,
           timeBasis: "module_epoch",
+          requestId: null,
         },
         {
           id: "sin-reloj",
@@ -133,6 +136,7 @@ describe("TestSensorsPage (F6)", () => {
           receivedAt: "2026-07-26T10:00:05Z",
           detail: null,
           timeBasis: "ingest_received",
+          requestId: null,
         },
       ],
     });

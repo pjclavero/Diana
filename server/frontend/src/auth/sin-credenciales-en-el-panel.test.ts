@@ -25,6 +25,12 @@ const RAIZ = path.resolve(__dirname, "..");
 
 /** Ficheros que SÍ pueden usar un generador aleatorio, y por qué. */
 const ALEATORIEDAD_PERMITIDA: Record<string, string> = {
+  "pages/test-leds/TestLedsPage.tsx":
+    "`request_id` de una orden de mantenimiento: es un identificador de CORRELACIÓN, " +
+    "no un secreto. Sirve para que el diagnóstico que devuelve el módulo se pueda atar " +
+    "a la orden que lo causó; no autoriza nada, no se almacena y viaja en claro dentro " +
+    "del propio mensaje del contrato. Que sea impredecible no es un requisito de " +
+    "seguridad, sino de que no colisione con el de otra pantalla abierta a la vez.",
   "pages/demo/demoLogic.ts":
     "Secuencia de dianas de la demostración: es un sorteo de juego, no una credencial. " +
     "Además recibe el generador por parámetro para poder fijarlo en las pruebas.",
