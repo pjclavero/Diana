@@ -91,6 +91,45 @@ CLOCK_SYNC  = FAIL      (medido: CLOCK_VALID=false en la placa)
 CLOCK_VALID = false
 ```
 
+## INCIDENTE 2026-09-12 · recargar nftables tumba las reglas de Docker
+
+Al persistir la regla de NTP y recargar el firewall se cayeron **MQTT (8883) y
+el panel (8080)**, y el módulo pasó a `online=false`.
+
+Causa: `/etc/nftables.conf` empieza con `flush ruleset`, que borra **todas** las
+tablas del sistema — no sólo la suya. Se llevó por delante `table ip filter`
+(cadenas de Docker y de Tailscale) y la tabla `nat` con el DNAT de los puertos
+publicados. El comentario de cabecera del propio fichero afirma lo contrario:
+
+```
+# Solo filtra INPUT del host; no toca FORWARD/NAT
+# (esas cadenas las gestiona Docker via iptables-nft y no se tocan aqui)
+```
+
+Eso es cierto para las reglas que el fichero **declara**, y falso para el efecto
+de `flush ruleset`. Un fichero que describe mal su propio alcance es peor que
+uno sin comentarios: invita justo al error que se cometió.
+
+Los contenedores **no** se detuvieron y no hubo pérdida de datos: lo que
+desapareció fue la publicación de puertos hacia el host.
+
+Recuperación:
+
+```bash
+systemctl restart docker    # recrea sus cadenas nat/filter
+systemctl restart tailscaled  # si la ruta Tailscale no vuelve sola
+```
+
+Reglas de operación que salen de aquí:
+
+- Un cambio en `/etc/nftables.conf` **no** es autocontenido mientras el fichero
+  empiece por `flush ruleset` y Docker publique puertos en esta máquina.
+  Después de cada recarga hay que reconstruir las cadenas de Docker.
+- Añadir la regla **en caliente** (`nft add rule`) no tiene este efecto: durante
+  esa fase MQTT y el panel siguieron funcionando. El daño lo hizo la recarga.
+- Antes de recargar, comprobar siempre `nft list tables` después y verificar un
+  servicio real que pase por Docker (8883 y 8080), no sólo el puerto tocado.
+
 ## Verificación
 
 ```bash
