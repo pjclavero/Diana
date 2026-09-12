@@ -281,6 +281,48 @@ mutate "M26 caducidad de LED compartida" \
                 continue;' \
   "$LEDIND" 'memset(a->led_test_until_us, 0, sizeof(a->led_test_until_us));'
 
+RETURN='python3 firmware/esp32/tools/check_maintenance_return_path.py'
+
+# M27 · el rechazo vuelve a la via generica: sin request_id el serializador lo
+# descarta y el rechazo se pierde en silencio. Es el defecto exacto que
+# encontro la revision independiente.
+mutate "M27 rechazo de mantenimiento sin correlar" \
+  "$MAIN/app_commands.c" \
+  '            diana_publish_command_rejected(a, request_id,
+                                           DIANA_REJECT_PARAMS_OUT_OF_RANGE,
+                                           "led_test sin params.target_index");' \
+  '            diana_publish_diagnostic(a, DIANA_DIAG_COMMAND_REJECTED,
+                                     DIANA_SEV_WARNING,
+                                     "led_test sin params.target_index");' \
+  "$RETURN" 'diana_publish_diagnostic(a, DIANA_DIAG_COMMAND_REJECTED,'
+
+# M28 · la orden aceptada deja de publicar resultado: el panel vuelve a quedarse
+# esperando una respuesta que no llega.
+mutate "M28 sin resultado de la orden aceptada" \
+  "$MAIN/app_commands.c" \
+  '        diana_publish_maintenance_result(a, request_id,' \
+  '        if (0) diana_publish_maintenance_result(a, request_id,' \
+  "$RETURN" 'if (0) diana_publish_maintenance_result(a, request_id,'
+
+# M29 · vuelve el descarte SILENCIOSO de un diagnostico no serializado, que es
+# lo que oculto el defecto durante toda una tanda.
+mutate "M29 descarte silencioso de diagnostico" \
+  "$MAIN/app_tasks.c" \
+  '    else   ESP_LOGE(TAG, "diagnostico '"'"'%s'"'"' NO serializado: se descarta",
+                    diana_diagnostic_kind_str(d.kind));
+    free(buf);
+}
+
+void diana_publish_maintenance_result' \
+  '    free(buf);
+}
+
+void diana_publish_maintenance_result' \
+  "$RETURN" '    free(buf);
+}
+
+void diana_publish_maintenance_result'
+
 printf '\n=================================================\n'
 printf ' CALIBRACION: %d mutantes cazados, %d huecos\n' "$pass" "$fail"
 printf '=================================================\n'

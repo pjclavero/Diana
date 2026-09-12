@@ -122,6 +122,23 @@ void diana_prov_app_announce(diana_app *a);
 
 void diana_publish_diagnostic(diana_app *a, diana_diagnostic_kind kind,
                               diana_severity sev, const char *message);
+
+/* VIA DE RETORNO del canal de mantenimiento (MODULE_DIAGNOSTICS_V1 · P0).
+ *
+ * Una orden de mantenimiento tiene que poder demostrar QUE HIZO. Hasta ahora el
+ * modulo ejecutaba y solo publicaba `status` con `last_command`, que el backend
+ * NO consume: el resultado no llegaba a ninguna parte y el panel se quedaba
+ * esperando para siempre.
+ *
+ * Se publica `self_test_result` CORRELADO por request_id, que es el patron que
+ * el simulador ya emitia y que el backend ya persiste en `incidents`. No se
+ * inventa un kind nuevo: el contrato v1 no define `led_test_result` y P1 decidira
+ * si hace falta.
+ *
+ * `target_index` 0 = la orden no era de una diana concreta. */
+void diana_publish_maintenance_result(diana_app *a, const char *request_id,
+                                      const char *component, int target_index,
+                                      uint32_t duration_ms);
 void diana_publish_config_reported(diana_app *a);
 
 /* Comandos entrantes (app_commands.c). */

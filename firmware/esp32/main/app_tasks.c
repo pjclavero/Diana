@@ -4,6 +4,10 @@
  */
 #include "app.h"
 
+/* diana_is_uuid(): el resultado de mantenimiento no se publica sin un
+ * request_id valido con que correlarlo. */
+#include "diana/ids.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -187,6 +191,57 @@ void diana_publish_command_rejected(diana_app *a, const char *command_id,
                                      a->hal.now_us(a->hal.ctx) - a->boot_us,
                                      buf, DIANA_MSG_JSON_MAX);
     if (n) publish(a, a->topic_diagnostic, buf, n, DIANA_TOPIC_DIAGNOSTIC);
+    else   ESP_LOGE(TAG, "diagnostico '%s' NO serializado: se descarta",
+                    diana_diagnostic_kind_str(d.kind));
+    free(buf);
+}
+
+void diana_publish_maintenance_result(diana_app *a, const char *request_id,
+                                      const char *component, int target_index,
+                                      uint32_t duration_ms)
+{
+    diana_diagnostic d;
+    diana_diagnostic_init(&d, &a->hal, DIANA_DIAG_SELF_TEST_RESULT,
+                          DIANA_SEV_INFO, "orden de mantenimiento ejecutada");
+
+    /* Sin UUID con que correlar, este resultado no sirve para nada: el panel no
+     * podria distinguirlo de la respuesta a otra orden. Se calla en vez de
+     * publicar algo incorrelable, igual que hace el rechazo. */
+    if (!request_id || !diana_is_uuid(request_id)) {
+        ESP_LOGW(TAG, "resultado de mantenimiento sin request_id valido: "
+                      "no se publica (seria incorrelable)");
+        return;
+    }
+    d.has_request_id = true;
+    snprintf(d.request_id, sizeof(d.request_id), "%s", request_id);
+
+    d.detail_keys[d.detail_count] = "result";
+    d.detail_str[d.detail_count++] = "ok";
+    d.detail_keys[d.detail_count] = "component";
+    d.detail_str[d.detail_count++] = component;
+    if (target_index > 0) {
+        d.detail_keys[d.detail_count] = "target_index";
+        d.detail_str[d.detail_count] = NULL;
+        d.detail_num[d.detail_count++] = target_index;
+    }
+    if (duration_ms > 0) {
+        d.detail_keys[d.detail_count] = "duration_ms";
+        d.detail_str[d.detail_count] = NULL;
+        d.detail_num[d.detail_count++] = (int64_t)duration_ms;
+    }
+
+    char *buf = alloc_message_buffer();
+    if (!buf) return;
+    size_t n = diana_diagnostic_json(&d, &a->id,
+                                     a->hal.now_us(a->hal.ctx) - a->boot_us,
+                                     buf, DIANA_MSG_JSON_MAX);
+    /* Un diagnostico que no serializa se DICE. El silencio de este camino es
+     * lo que oculto durante toda una tanda que los rechazos de mantenimiento
+     * no salian del modulo: el serializador los rechazaba por incorrelables
+     * --- con razon --- y aqui se tiraban sin dejar rastro. */
+    if (n) publish(a, a->topic_diagnostic, buf, n, DIANA_TOPIC_DIAGNOSTIC);
+    else   ESP_LOGE(TAG, "diagnostico '%s' NO serializado: se descarta",
+                    diana_diagnostic_kind_str(d.kind));
     free(buf);
 }
 
@@ -200,7 +255,13 @@ void diana_publish_diagnostic(diana_app *a, diana_diagnostic_kind kind,
     size_t n = diana_diagnostic_json(&d, &a->id,
                                      a->hal.now_us(a->hal.ctx) - a->boot_us,
                                      buf, DIANA_MSG_JSON_MAX);
+    /* Un diagnostico que no serializa se DICE. El silencio de este camino es
+     * lo que oculto durante toda una tanda que los rechazos de mantenimiento
+     * no salian del modulo: el serializador los rechazaba por incorrelables
+     * --- con razon --- y aqui se tiraban sin dejar rastro. */
     if (n) publish(a, a->topic_diagnostic, buf, n, DIANA_TOPIC_DIAGNOSTIC);
+    else   ESP_LOGE(TAG, "diagnostico '%s' NO serializado: se descarta",
+                    diana_diagnostic_kind_str(d.kind));
     free(buf);
 }
 

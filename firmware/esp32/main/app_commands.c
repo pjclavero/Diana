@@ -372,7 +372,8 @@ static void handle_config_desired(diana_app *a, const diana_platform_rx *rx)
  * pedia una diana y se encendian las nueve.
  */
 static void execute_maintenance(diana_app *a, diana_maintenance_type type,
-                                const cJSON *params, uint64_t now)
+                                const cJSON *params, uint64_t now,
+                                const char *request_id)
 {
     /* duration_ms = 0 significa APAGAR YA, no "usa el valor por defecto": es
      * como el panel apaga una diana que dejo encendida. Tratar el 0 como
@@ -389,17 +390,23 @@ static void execute_maintenance(diana_app *a, diana_maintenance_type type,
         if (!cJSON_IsNumber(ti)) {
             /* Sin diana no hay prueba de diana. Encender el modulo entero
              * "por si acaso" es justo el comportamiento que se esta
-             * corrigiendo: se rechaza y se dice por que. */
-            diana_publish_diagnostic(a, DIANA_DIAG_COMMAND_REJECTED,
-                                     DIANA_SEV_WARNING,
-                                     "led_test sin params.target_index");
+             * corrigiendo: se rechaza y se dice por que, CORRELADO.
+             *
+             * Antes esto usaba el publicador generico, que construye el
+             * diagnostico sin request_id; el serializador --- que exige
+             * correlacion para kind=command_rejected --- devolvia 0 y el
+             * rechazo se perdia en silencio. La guarda era correcta y el
+             * emisor la incumplia. */
+            diana_publish_command_rejected(a, request_id,
+                                           DIANA_REJECT_PARAMS_OUT_OF_RANGE,
+                                           "led_test sin params.target_index");
             return;
         }
         int idx = ti->valueint;
         if (idx < 1 || idx > DIANA_TARGET_COUNT) {
-            diana_publish_diagnostic(a, DIANA_DIAG_COMMAND_REJECTED,
-                                     DIANA_SEV_WARNING,
-                                     "led_test con target_index fuera de 1..9");
+            diana_publish_command_rejected(a, request_id,
+                                           DIANA_REJECT_PARAMS_OUT_OF_RANGE,
+                                           "led_test con target_index fuera de 1..9");
             return;
         }
         /* El apagado es DIRIGIDO: toca el vencimiento de la diana pedida y de
@@ -441,9 +448,26 @@ static void execute_maintenance(diana_app *a, diana_maintenance_type type,
         /* Declarado, no fingido: la excitacion del piezo no esta implementada
          * en este firmware y decirlo es mejor que un silencio que se lee como
          * exito. */
-        diana_publish_diagnostic(a, DIANA_DIAG_COMMAND_REJECTED, DIANA_SEV_WARNING,
-                                 "orden de mantenimiento sin implementar en este firmware");
+        diana_publish_command_rejected(a, request_id,
+                                       DIANA_REJECT_UNKNOWN_COMMAND,
+                                       "orden de mantenimiento sin implementar en este firmware");
         return;
+    }
+    /* VIA DE RETORNO: el resultado sale CORRELADO por request_id. `status` se
+     * sigue publicando por compatibilidad, pero no es la fuente de verdad del
+     * panel: el backend no consume `last_command`. */
+    {
+        int idx = 0;
+        uint32_t dur = 0;
+        if (type == DIANA_MNT_LED_TEST) {
+            const cJSON *ti = params
+                ? cJSON_GetObjectItemCaseSensitive(params, "target_index") : NULL;
+            if (cJSON_IsNumber(ti)) idx = ti->valueint;
+            dur = ms;
+        }
+        diana_publish_maintenance_result(a, request_id,
+                                         diana_maintenance_type_str(type),
+                                         idx, dur);
     }
     diana_publish_status(a);
 }
@@ -470,8 +494,13 @@ static void handle_maintenance(diana_app *a, const cJSON *root,
          * contrato marca este topico retain=false: si llega retenido, no es
          * una orden nueva. */
         ESP_LOGW(TAG, "orden de mantenimiento RETENIDA descartada");
-        diana_publish_diagnostic(a, DIANA_DIAG_COMMAND_REJECTED, DIANA_SEV_WARNING,
-                                 "orden de mantenimiento retenida: replay del broker");
+        /* MAPEO IMPERFECTO, declarado: el vocabulario cerrado del contrato no
+         * tiene una razon para "retenido". `duplicate` es la mas cercana --- un
+         * retenido ES un replay de algo ya servido --- y la explicacion exacta
+         * viaja intacta en `message`, que no tiene vocabulario acotado. */
+        diana_publish_command_rejected(a, cmd.command_id, DIANA_REJECT_DUPLICATE,
+                                       "orden de mantenimiento retenida: "
+                                       "replay del broker");
         return;
     }
 
@@ -490,6 +519,7 @@ static void handle_maintenance(diana_app *a, const cJSON *root,
                  clock_ok ? "caducada" : "sin reloj sincronizado");
         ESP_LOGW(TAG, "mantenimiento %s rechazado: %s",
                  diana_maintenance_type_str(type), v.detail);
+        diana_publish_command_rejected(a, cmd.command_id, v.reason, v.detail);
         remember_verdict(a, cmd.command_id, v);
         return;
     }
@@ -499,12 +529,13 @@ static void handle_maintenance(diana_app *a, const cJSON *root,
     if (v.result != DIANA_CMD_RESULT_ACCEPTED) {
         ESP_LOGW(TAG, "mantenimiento %s rechazado: %s",
                  diana_maintenance_type_str(type), v.detail);
+        diana_publish_command_rejected(a, cmd.command_id, v.reason, v.detail);
         remember_verdict(a, cmd.command_id, v);
         return;
     }
 
     execute_maintenance(a, type, cJSON_GetObjectItemCaseSensitive(root, "params"),
-                        a->hal.now_us(a->hal.ctx));
+                        a->hal.now_us(a->hal.ctx), cmd.command_id);
     remember_verdict(a, cmd.command_id, v);
 }
 

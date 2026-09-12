@@ -145,6 +145,12 @@ contracts:
 # Contador PROPIO.
 	@$(PYTHON) $(FW)/tools/check_led_test_independence.py
 
+# MAINTENANCE_RETURN_PATH. Una orden de mantenimiento tiene que poder demostrar
+# que hizo o por que no. Los rechazos se publicaban por la via generica, sin
+# request_id, y el serializador los descartaba en silencio: nadie se enteraba.
+# Contador PROPIO.
+	@$(PYTHON) $(FW)/tools/check_maintenance_return_path.py
+
 # ADR-0007. Valida los payloads que llevan `detection_method` contra el contrato
 # de ESTE arbol. Sin descarga ni referencia git: funciona en un clon limpio.
 # La guarda de abajo no es cosmetica: si alguien retira el contrato ADR-0007 de
