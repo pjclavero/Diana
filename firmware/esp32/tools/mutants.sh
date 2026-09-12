@@ -198,6 +198,42 @@ mutate "M18 diana_platform_rx de vuelta a la pila" \
   "$CAP" '
         diana_platform_rx rx;'
 
+SUBS='python3 firmware/esp32/tools/check_topic_subscriptions.py'
+
+# M19 · se cae la suscripcion a maintenance/command: el handler vuelve a ser
+# codigo inalcanzable y la suite de host sigue VERDE, porque alli el
+# despachador se invoca a mano. Es el defecto exacto que habia.
+mutate "M19 handler de mantenimiento sin suscripcion" \
+  "$PESP/src/mqtt_client.c" \
+  '        "maintenance/command",' \
+  '' \
+  "$SUBS" '"command", "config/desired", "ota", "provision",'
+
+# M20 · la diana pedida se ignora y se enciende el modulo entero, que es lo que
+# hacia antes: lo caza la suite, no una guarda estructural.
+mutate "M20 led_test enciende todas las dianas" \
+  "$CORE/src/led.c" \
+  '        bool en_prueba = (test_target >= 1 && test_target <= DIANA_TARGET_COUNT &&
+                          (uint8_t)(test_target - 1) == target0);' \
+  '        bool en_prueba = (test_target >= 1 && test_target <= DIANA_TARGET_COUNT);' \
+  "$TEST" 'bool en_prueba = (test_target >= 1 && test_target <= DIANA_TARGET_COUNT);'
+
+# M21 · 'act' deja de exigir reloj: led_test se ejecutaria con una orden de
+# antiguedad desconocida. El contrato lo prohibe y la suite lo fija.
+mutate "M21 act sin exigir reloj" \
+  "$CORE/src/command.c" \
+  '    default:                   return clock_ok && !expired;' \
+  '    default:                   return true;' \
+  "$TEST" 'default:                   return true;'
+
+# M22 · 'read' pasa a exigir reloj: un modulo recien arrancado sin hora se
+# vuelve indiagnosticable, que es justo lo que 6-bis evita.
+mutate "M22 read exigiendo reloj" \
+  "$CORE/src/command.c" \
+  '    case DIANA_MNT_CAT_READ:   return true;' \
+  '    case DIANA_MNT_CAT_READ:   return clock_ok;' \
+  "$TEST" 'case DIANA_MNT_CAT_READ:   return clock_ok;'
+
 printf '\n=================================================\n'
 printf ' CALIBRACION: %d mutantes cazados, %d huecos\n' "$pass" "$fail"
 printf '=================================================\n'

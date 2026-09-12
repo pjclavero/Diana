@@ -127,6 +127,13 @@ contracts:
 # componente. Contador PROPIO, no sumado a los demas.
 	@$(PYTHON) $(FW)/tools/check_mqtt_reassembly.py
 
+# TOPIC_SUBSCRIPTIONS. Un handler sin suscripcion es codigo inalcanzable, y ya
+# ha pasado tres veces: provision, config/desired y maintenance/command. La
+# suite de host no puede verlo --- alli el despachador se invoca a mano, asi
+# que sus ramas se ejercitan aunque el firmware real no reciba nunca ese
+# topico. Contador PROPIO, no sumado a los demas.
+	@$(PYTHON) $(FW)/tools/check_topic_subscriptions.py
+
 # ADR-0007. Valida los payloads que llevan `detection_method` contra el contrato
 # de ESTE arbol. Sin descarga ni referencia git: funciona en un clon limpio.
 # La guarda de abajo no es cosmetica: si alguien retira el contrato ADR-0007 de

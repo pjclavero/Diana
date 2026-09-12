@@ -456,6 +456,12 @@ static int mqtt_do_subscribe(struct diana_platform *p)
      * suscribirse a lo que uno emite solo ensancha la superficie. */
     static const char *const suffixes[] = {
         "command", "config/desired", "ota", "provision",
+        /* Canal EXCLUSIVO del backend (contrato v1.1). El despachador tenia
+         * rama para el desde el principio, pero NADIE se suscribia: el codigo
+         * estaba escrito y era inalcanzable, asi que ninguna orden del panel
+         * --- probar un LED, identificar, calibrar --- llegaba nunca al modulo.
+         * Mismo defecto que tuvo `provision` y que tuvo `config/desired`. */
+        "maintenance/command",
     };
     for (size_t i = 0; i < sizeof(suffixes) / sizeof(suffixes[0]); ++i) {
         snprintf(topic, sizeof(topic), "targets/v1/module/%s/%s", module_id,

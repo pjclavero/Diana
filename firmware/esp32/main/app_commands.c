@@ -87,6 +87,56 @@ static diana_command_clock clock_now(diana_app *a, uint64_t recv_us)
     return c;
 }
 
+/**
+ * Sobre del canal de MANTENIMIENTO (module-maintenance-command.schema.json).
+ *
+ * Es un sobre DISTINTO al del canal de juego: `request_id` en vez de
+ * `command_id`, `command_type` en vez de `action`, y `requested_by` en vez de
+ * `issuer`. Se normaliza a `diana_command` para reutilizar el guardian de
+ * nonce y de duplicados sin duplicar su logica.
+ *
+ * El emisor se fija a BACKEND por el CANAL, no por lo que diga el payload: el
+ * contrato exige que el nonce de mantenimiento viva en un espacio
+ * INDEPENDIENTE del de juego, y el guardian indexa por emisor. `requested_by`
+ * es el origen humano y sirve para auditoria, no para autorizar.
+ */
+static bool parse_maintenance_envelope(const cJSON *root, diana_command *out,
+                                       diana_maintenance_type *type)
+{
+    memset(out, 0, sizeof(*out));
+
+    const cJSON *sv = cJSON_GetObjectItemCaseSensitive(root, "schema_version");
+    const cJSON *ri = cJSON_GetObjectItemCaseSensitive(root, "request_id");
+    const cJSON *mi = cJSON_GetObjectItemCaseSensitive(root, "module_id");
+    const cJSON *ct = cJSON_GetObjectItemCaseSensitive(root, "command_type");
+    const cJSON *ia = cJSON_GetObjectItemCaseSensitive(root, "issued_at_ms");
+    const cJSON *ex = cJSON_GetObjectItemCaseSensitive(root, "expires_in_ms");
+    const cJSON *no = cJSON_GetObjectItemCaseSensitive(root, "nonce");
+    const cJSON *rb = cJSON_GetObjectItemCaseSensitive(root, "requested_by");
+
+    if (!cJSON_IsNumber(sv) || !cJSON_IsString(ri) || !cJSON_IsString(mi) ||
+        !cJSON_IsString(ct) || !cJSON_IsNumber(ia) || !cJSON_IsNumber(ex) ||
+        !cJSON_IsNumber(no) || !cJSON_IsObject(rb))
+        return false;
+
+    if (diana_maintenance_type_parse(ct->valuestring, type) != 0) return false;
+
+    out->schema_version = (uint32_t)sv->valuedouble;
+    snprintf(out->command_id, sizeof(out->command_id), "%s", ri->valuestring);
+    snprintf(out->module_id, sizeof(out->module_id), "%s", mi->valuestring);
+    out->issued_at_ms = (uint64_t)ia->valuedouble;
+    out->expires_in_ms = (uint32_t)ex->valuedouble;
+    out->nonce = (uint64_t)no->valuedouble;
+    out->issuer = DIANA_ISSUER_BACKEND;
+    /* `action` no existe en este canal. Se deja en IDENTIFY, que es la unica
+     * accion sin params obligatorios, para que la validacion de params del
+     * canal de juego no invente un rechazo que aqui no aplica. */
+    out->action = DIANA_CMD_IDENTIFY;
+    out->has_params = true;
+    out->param_duration_ms = true;
+    return true;
+}
+
 static void apply_set_targets(diana_app *a, const cJSON *params)
 {
     const cJSON *arr = cJSON_GetObjectItemCaseSensitive(params, "targets");
@@ -315,6 +365,140 @@ static void handle_config_desired(diana_app *a, const diana_platform_rx *rx)
 }
 
 /**
+ * Ejecuta una orden de MANTENIMIENTO ya validada.
+ *
+ * `led_test` enciende la diana pedida y SOLO esa: hasta ahora reutilizaba el
+ * flag `identify`, que es una orden sobre el modulo entero, asi que el backend
+ * pedia una diana y se encendian las nueve.
+ */
+static void execute_maintenance(diana_app *a, diana_maintenance_type type,
+                                const cJSON *params, uint64_t now)
+{
+    uint32_t ms = 5000;
+    const cJSON *d = params ? cJSON_GetObjectItemCaseSensitive(params, "duration_ms")
+                            : NULL;
+    if (cJSON_IsNumber(d) && d->valuedouble > 0) ms = (uint32_t)d->valuedouble;
+
+    switch (type) {
+    case DIANA_MNT_LED_TEST: {
+        const cJSON *ti = params
+            ? cJSON_GetObjectItemCaseSensitive(params, "target_index") : NULL;
+        if (!cJSON_IsNumber(ti)) {
+            /* Sin diana no hay prueba de diana. Encender el modulo entero
+             * "por si acaso" es justo el comportamiento que se esta
+             * corrigiendo: se rechaza y se dice por que. */
+            diana_publish_diagnostic(a, DIANA_DIAG_COMMAND_REJECTED,
+                                     DIANA_SEV_WARNING,
+                                     "led_test sin params.target_index");
+            return;
+        }
+        int idx = ti->valueint;
+        if (idx < 1 || idx > DIANA_TARGET_COUNT) {
+            diana_publish_diagnostic(a, DIANA_DIAG_COMMAND_REJECTED,
+                                     DIANA_SEV_WARNING,
+                                     "led_test con target_index fuera de 1..9");
+            return;
+        }
+        a->led_test_target = (uint8_t)idx;
+        a->led_test_until_us = now + (uint64_t)ms * 1000ULL;
+        ESP_LOGI(TAG, "led_test: diana %d durante %u ms", idx, (unsigned)ms);
+        break;
+    }
+    case DIANA_MNT_IDENTIFY:
+        a->identify_active = true;
+        a->identify_until_us = now + (uint64_t)ms * 1000ULL;
+        break;
+    case DIANA_MNT_SELF_TEST:
+        diana_publish_diagnostic(a, DIANA_DIAG_SELF_TEST_RESULT, DIANA_SEV_INFO,
+                                 "autodiagnostico solicitado por mantenimiento");
+        break;
+    case DIANA_MNT_START_CALIBRATION:
+        diana_module_fsm_apply(&a->fsm, DIANA_EV_CALIBRATION_START, now);
+        break;
+    case DIANA_MNT_ABORT_CALIBRATION:
+        diana_module_fsm_apply(&a->fsm, DIANA_EV_CALIBRATION_END, now);
+        break;
+    case DIANA_MNT_QUERY_STATUS:
+    case DIANA_MNT_QUERY_VERSION:
+        /* Publicar el estado ES la respuesta; lo hace el llamante al terminar. */
+        break;
+    case DIANA_MNT_REQUEST_TELEMETRY:
+        /* La telemetria la publica la tarea periodica; este firmware no tiene
+         * una publicacion bajo demanda. Se dice, no se sustituye por un status
+         * que el backend leeria como telemetria. */
+    case DIANA_MNT_PIEZO_TEST:
+    default:
+        /* Declarado, no fingido: la excitacion del piezo no esta implementada
+         * en este firmware y decirlo es mejor que un silencio que se lee como
+         * exito. */
+        diana_publish_diagnostic(a, DIANA_DIAG_COMMAND_REJECTED, DIANA_SEV_WARNING,
+                                 "orden de mantenimiento sin implementar en este firmware");
+        return;
+    }
+    diana_publish_status(a);
+}
+
+/**
+ * Canal EXCLUSIVO del backend. La regla de reloj del contrato (README 6-bis) se
+ * aplica ANTES de validar el sobre, a proposito: una orden 'act' sin reloj se
+ * rechaza sin consumir el nonce ni ocupar la cache de duplicados, porque no
+ * llego a ejecutarse nada.
+ */
+static void handle_maintenance(diana_app *a, const cJSON *root,
+                               const diana_platform_rx *rx)
+{
+    diana_command cmd;
+    diana_maintenance_type type;
+    if (!parse_maintenance_envelope(root, &cmd, &type)) {
+        diana_publish_diagnostic(a, DIANA_DIAG_SCHEMA_REJECTED, DIANA_SEV_WARNING,
+                                 "orden de mantenimiento con sobre incompleto");
+        return;
+    }
+
+    if (rx->retained) {
+        /* Un retenido es un replay servido por el broker al suscribirse. El
+         * contrato marca este topico retain=false: si llega retenido, no es
+         * una orden nueva. */
+        ESP_LOGW(TAG, "orden de mantenimiento RETENIDA descartada");
+        diana_publish_diagnostic(a, DIANA_DIAG_COMMAND_REJECTED, DIANA_SEV_WARNING,
+                                 "orden de mantenimiento retenida: replay del broker");
+        return;
+    }
+
+    diana_command_clock clk = clock_now(a, rx->recv_us);
+    bool clock_ok = (clk.epoch_ms > 0);
+    bool expired = clock_ok && clk.epoch_ms > cmd.issued_at_ms &&
+                   (clk.epoch_ms - cmd.issued_at_ms) > (uint64_t)cmd.expires_in_ms;
+
+    if (!diana_maintenance_clock_gate(type, clock_ok, expired)) {
+        diana_command_verdict v;
+        memset(&v, 0, sizeof(v));
+        v.result = DIANA_CMD_RESULT_EXPIRED;
+        v.reason = DIANA_REJECT_EXPIRED;
+        snprintf(v.detail, sizeof(v.detail),
+                 "%s es 'act': %s", diana_maintenance_type_str(type),
+                 clock_ok ? "caducada" : "sin reloj sincronizado");
+        ESP_LOGW(TAG, "mantenimiento %s rechazado: %s",
+                 diana_maintenance_type_str(type), v.detail);
+        remember_verdict(a, cmd.command_id, v);
+        return;
+    }
+
+    diana_command_verdict v =
+        diana_command_validate(&a->guard, &cmd, a->id.module_id, &clk);
+    if (v.result != DIANA_CMD_RESULT_ACCEPTED) {
+        ESP_LOGW(TAG, "mantenimiento %s rechazado: %s",
+                 diana_maintenance_type_str(type), v.detail);
+        remember_verdict(a, cmd.command_id, v);
+        return;
+    }
+
+    execute_maintenance(a, type, cJSON_GetObjectItemCaseSensitive(root, "params"),
+                        a->hal.now_us(a->hal.ctx));
+    remember_verdict(a, cmd.command_id, v);
+}
+
+/**
  * DESPACHADOR UNICO de mensajes entrantes.
  *
  * El enrutado es EXACTO (diana_topic_route, tabla contractual espejo de
@@ -347,14 +531,6 @@ void diana_handle_message(diana_app *a, const diana_platform_rx *rx)
         return;
     }
 
-    if (kind == DIANA_ROUTE_MODULE_MAINTENANCE_COMMAND) {
-        /* Canal EXCLUSIVO del backend (contrato v1.1). El modulo NO se suscribe
-         * a el; si llega algo aqui es una anomalia del broker o de la ACL, y lo
-         * que NO puede pasar es que lo trate el canal de juego. */
-        ESP_LOGW(TAG, "maintenance/command recibido pero no atendido por este "
-                      "firmware: NO se trata como comando de juego");
-        return;
-    }
 
     if (kind == DIANA_ROUTE_GAME_STATE) {
         /* Suscrito (mqtt_client.c) pero SIN handler todavia: el consumo del
@@ -370,6 +546,16 @@ void diana_handle_message(diana_app *a, const diana_platform_rx *rx)
     if (!root) {
         diana_publish_diagnostic(a, DIANA_DIAG_SCHEMA_REJECTED, DIANA_SEV_WARNING,
                                  "payload no es JSON valido");
+        return;
+    }
+
+    if (kind == DIANA_ROUTE_MODULE_MAINTENANCE_COMMAND) {
+        /* Canal EXCLUSIVO del backend (contrato v1.1). Tiene su propio sobre,
+         * su propio espacio de nonce y su propia regla de reloj: NO se trata
+         * como comando de juego, que es lo que pasaba cuando el enrutado iba
+         * por subcadena. */
+        handle_maintenance(a, root, rx);
+        cJSON_Delete(root);
         return;
     }
 
