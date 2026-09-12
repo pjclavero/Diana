@@ -25,6 +25,11 @@ idf_component_register(
          # se compila en la suite de host. Si falta AQUI, el despachador del
          # firmware real no enlaza: la lista es explicita, no un glob.
          "src/topic_route.c"
+         # Reensamblado de payloads MQTT fragmentados. Aqui y no en el
+         # componente ESP porque es logica pura: asi la suite de host la
+         # ejercita fragmento a fragmento, que es justo lo que no se podia
+         # hacer mientras vivia dentro del manejador de eventos.
+         "src/mqtt_reasm.c"
          "src/ota.c"
          # --- D1b · plano DEVICE_MANAGEMENT firmado -------------------------
          # Estos seis estaban en el arbol pero NO aqui: se compilaban solo con

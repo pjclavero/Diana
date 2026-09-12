@@ -6,6 +6,7 @@
 #define DIANA_PLATFORM_INTERNAL_H
 
 #include "diana/platform_esp.h"
+#include "diana/mqtt_reasm.h"
 
 #include "esp_eth.h"
 #include "esp_netif.h"
@@ -46,6 +47,14 @@ struct diana_platform {
     char               sub_module_id[64];
     volatile bool      sub_requested;
     volatile uint32_t  sub_sent;       /**< suscripciones emitidas (diagnostico) */
+    /* Reensamblado de payloads fragmentados. El estado y el mensaje a medias
+     * tienen que SOBREVIVIR entre eventos MQTT_EVENT_DATA, asi que viven aqui
+     * y no en la pila del manejador --- que es exactamente por donde se perdia
+     * todo menos el primer fragmento. `rx_parcial` se reutiliza como destino
+     * para no gastar otros 4 KB de DRAM. */
+    diana_mqtt_reasm   rx_reasm;
+    diana_platform_rx  rx_parcial;
+    volatile uint32_t  rx_descartados;  /**< mensajes descartados (diagnostico) */
 
     /* sensores DO-only por 2 x 74HC165 */
     QueueHandle_t      trigger_queue;

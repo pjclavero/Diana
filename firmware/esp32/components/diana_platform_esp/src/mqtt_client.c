@@ -205,6 +205,11 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t id,
 
     case MQTT_EVENT_DISCONNECTED:
         p->mqtt_connected = false;
+        /* Un mensaje a medias no sobrevive a la desconexion: los fragmentos
+         * que faltan no van a llegar, y guardarlos solo serviria para que el
+         * primer fragmento de la sesion siguiente se pegara a ellos. */
+        diana_mqtt_reasm_reset(&p->rx_reasm);
+        memset(&p->rx_parcial, 0, sizeof(p->rx_parcial));
         /* Una desconexion INMEDIATA tras el CONNACK suele ser el broker
          * cerrando por ACL o por un LWT mal formado, no un fallo de red. Sin
          * el detalle del error no se puede afirmar cual: se dice lo que se ve. */
@@ -239,33 +244,56 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t id,
         break;
 
     case MQTT_EVENT_DATA: {
-        /* El instante de recepcion se toma con el reloj MONOTONICO: es la base
-         * de la caducidad por expires_in_ms (contrato §6). No se usa la hora de
-         * pared, que puede no estar sincronizada. */
-        diana_platform_rx rx;
-        memset(&rx, 0, sizeof(rx));
-        rx.recv_us = (uint64_t)esp_timer_get_time();
-        rx.retained = (ev->retain != 0);
+        /* esp-mqtt entrega un mensaje grande EN VARIOS EVENTOS. El manejador
+         * anterior copiaba `data_len` y lo daba por completo: con el
+         * `config/desired` de un modulo 3x3 (2239 B) eso entregaba al parser el
+         * primer trozo, JSON invalido, y la config no se aplicaba nunca. El
+         * reensamblado vive en diana_core (mqtt_reasm.c) porque este fichero no
+         * se compila en host y ahi no se podria probar. */
+        diana_platform_rx *rx = &p->rx_parcial;
 
-        size_t tlen = (size_t)ev->topic_len;
-        if (tlen >= sizeof(rx.topic)) tlen = sizeof(rx.topic) - 1;
-        memcpy(rx.topic, ev->topic, tlen);
-        rx.topic[tlen] = '\0';
+        /* El topico solo viaja en el PRIMER fragmento; en los siguientes
+         * topic_len es 0. Se captura al principio y se conserva. */
+        if (ev->current_data_offset == 0) {
+            memset(rx, 0, sizeof(*rx));
+            rx->recv_us = (uint64_t)esp_timer_get_time();
+            rx->retained = (ev->retain != 0);
+            size_t tlen = (size_t)ev->topic_len;
+            if (tlen >= sizeof(rx->topic)) tlen = sizeof(rx->topic) - 1;
+            if (ev->topic && tlen) memcpy(rx->topic, ev->topic, tlen);
+            rx->topic[tlen] = '\0';
+        }
 
-        /* Un payload que no cabe se DESCARTA y se registra: truncarlo produciria
-         * JSON invalido y un rechazo confuso aguas abajo. */
-        if ((size_t)ev->total_data_len > DIANA_MQTT_RX_PAYLOAD_MAX) {
-            ESP_LOGE(TAG, "payload de %d bytes descartado en %s (maximo %d)",
-                     ev->total_data_len, rx.topic,
+        size_t plen = 0;
+        const char *motivo = "";
+        diana_reasm_result res = diana_mqtt_reasm_feed(
+            &p->rx_reasm, ev->total_data_len, ev->current_data_offset,
+            ev->data, ev->data_len,
+            rx->payload, DIANA_MQTT_RX_PAYLOAD_MAX, &plen, &motivo);
+
+        if (res == DIANA_REASM_ERROR) {
+            /* Mensaje ENTERO descartado, estado ya limpio, cero efectos
+             * parciales: nada se encola. Se dice el motivo, el topico y las
+             * cifras del evento para poder diagnosticarlo sin la placa. */
+            p->rx_descartados++;
+            ESP_LOGE(TAG, "mensaje descartado en %s: %s "
+                          "(total=%d offset=%d len=%d maximo=%d)",
+                     rx->topic[0] ? rx->topic : "(topico desconocido)", motivo,
+                     ev->total_data_len, ev->current_data_offset, ev->data_len,
                      (int)DIANA_MQTT_RX_PAYLOAD_MAX);
+            memset(rx, 0, sizeof(*rx));
             break;
         }
-        memcpy(rx.payload, ev->data, (size_t)ev->data_len);
-        rx.payload[ev->data_len] = '\0';
-        rx.payload_len = (size_t)ev->data_len;
+        if (motivo[0] != '\0')
+            ESP_LOGW(TAG, "reensamblado en %s: %s", rx->topic, motivo);
+        if (res == DIANA_REASM_INCOMPLETO)
+            break;   /* faltan fragmentos: NO se entrega nada a nadie */
 
-        if (xQueueSend(p->rx_queue, &rx, 0) != pdTRUE)
+        /* Completo: se entrega EXACTAMENTE UNA VEZ. */
+        rx->payload_len = plen;
+        if (xQueueSend(p->rx_queue, rx, 0) != pdTRUE)
             ESP_LOGW(TAG, "cola de recepcion llena: mensaje perdido");
+        memset(rx, 0, sizeof(*rx));
         break;
     }
 

@@ -124,6 +124,68 @@ mutate "M10 capacidad sin margen sobre el peor caso" \
   '#define DIANA_MQTT_RX_PAYLOAD_MAX 2304' \
   "$CAP" '#define DIANA_MQTT_RX_PAYLOAD_MAX 2304'
 
+REASM='python3 firmware/esp32/tools/check_mqtt_reassembly.py'
+CORE="firmware/esp32/components/diana_core"
+PESP="firmware/esp32/components/diana_platform_esp"
+
+# M11 · un mensaje incompleto se entrega igual: exactamente el defecto original,
+# ahora en la logica que SI se compila en host.
+mutate "M11 se entrega un mensaje incompleto" \
+  "$CORE/src/mqtt_reasm.c" \
+  'if (r->recibido < r->total) return DIANA_REASM_INCOMPLETO;' \
+  'if (r->recibido < r->total) r->total = r->recibido;' \
+  "$TEST" 'r->total = r->recibido;'
+
+# M12 · se retira la comprobacion de contiguidad: un fragmento solapado o con
+# salto deja de ser un error y se acomoda, dejando un hueco sin escribir.
+mutate "M12 sin comprobacion de contiguidad" \
+  "$CORE/src/mqtt_reasm.c" \
+  'if (off != r->recibido)' \
+  'if (false && off != r->recibido)' \
+  "$TEST" 'if (false && off != r->recibido)'
+
+# M13 · el exceso de capacidad se TRUNCA en vez de rechazarse: el fallo ruidoso
+# se convierte en el silencioso, que es lo que este arreglo existe para evitar.
+mutate "M13 truncar en vez de rechazar por capacidad" \
+  "$CORE/src/mqtt_reasm.c" \
+  '        if (total > cap) {' \
+  '        if (total > cap) { total = cap; } if (0) {' \
+  "$TEST" 'if (total > cap) { total = cap; }'
+
+# M14 · el total deja de comprobarse entre fragmentos.
+mutate "M14 el total puede cambiar a mitad del mensaje" \
+  "$CORE/src/mqtt_reasm.c" \
+  'if (total != r->total)' \
+  'if (false && total != r->total)' \
+  "$TEST" 'if (false && total != r->total)'
+
+# M15 · el estado NO se limpia tras un error: el parcial contamina al siguiente.
+mutate "M15 el error no limpia el estado" \
+  "$CORE/src/mqtt_reasm.c" \
+  '    diana_mqtt_reasm_reset(r);
+    *motivo = texto;' \
+  '    *motivo = texto;' \
+  "$TEST" '    *motivo = texto;
+    return DIANA_REASM_ERROR;'
+
+# M16 · el firmware real vuelve a copiar el fragmento como si fuera el mensaje.
+# La suite de host seguiria VERDE: mqtt_client.c no se compila ahi. Solo la
+# guarda estructural puede cazarlo.
+mutate "M16 el manejador vuelve a copiar ev->data a pelo" \
+  "$PESP/src/mqtt_client.c" \
+  '        size_t plen = 0;' \
+  '        memcpy(rx->payload, ev->data, (size_t)ev->data_len);
+        size_t plen = 0;' \
+  "$REASM" 'memcpy(rx->payload, ev->data,'
+
+# M17 · el reensamblador se cae del CMakeLists: compila en host por wildcard,
+# pero el binario del ESP32 no lo lleva y el firmware ni siquiera enlaza.
+mutate "M17 mqtt_reasm.c fuera del CMakeLists del componente" \
+  "$CORE/CMakeLists.txt" \
+  '         "src/mqtt_reasm.c"' \
+  '         # "src/mqtt_reasm.c"' \
+  "$REASM" '# "src/mqtt_reasm.c"'
+
 printf '\n=================================================\n'
 printf ' CALIBRACION: %d mutantes cazados, %d huecos\n' "$pass" "$fail"
 printf '=================================================\n'

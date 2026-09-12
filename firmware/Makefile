@@ -119,6 +119,14 @@ contracts:
 # podia aplicarse nunca. Contador PROPIO, no sumado a los demas.
 	@$(PYTHON) $(FW)/tools/check_mqtt_rx_capacity.py
 
+# MQTT_REASSEMBLY. El reensamblado de fragmentos es logica pura en diana_core y
+# la suite de host lo ejercita fragmento a fragmento. Lo que esta guarda fija es
+# el CABLEADO en mqtt_client.c --- que no se compila en host ---: que el
+# manejador use el reensamblador y las tres cifras del evento, que un parcial o
+# un error no lleguen nunca a la cola y que el fuente este en el CMakeLists del
+# componente. Contador PROPIO, no sumado a los demas.
+	@$(PYTHON) $(FW)/tools/check_mqtt_reassembly.py
+
 # ADR-0007. Valida los payloads que llevan `detection_method` contra el contrato
 # de ESTE arbol. Sin descarga ni referencia git: funciona en un clon limpio.
 # La guarda de abajo no es cosmetica: si alguien retira el contrato ADR-0007 de
