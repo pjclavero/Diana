@@ -1,4 +1,8 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import {
+  leerObservacionSelector,
+  type StatusObservable,
+} from '../../domain/modules/selectorObservation';
 import { ContractValidator, RejectionCode, ValidationErrorDetail } from '../../contracts/contract-validator';
 import { parseTopic, ParsedTopic } from '../../contracts/topics';
 import { HitEventPayload, markIfOutOfWindow, toHitRecord } from '../../domain/hits/hit-record';
@@ -13,6 +17,8 @@ import {
   PresenceSinkPort,
   HIT_ATTRIBUTOR,
   HitAttributorPort,
+  MODULE_OBSERVATION,
+  ModuleObservationPort,
 } from '../hits/ports';
 import { PROVISION_STATE_SINK, ProvisionStateSinkPort } from '../provisioning/provisioning.ports';
 import { CONFIG_REPORTED_SINK, ConfigReportedSinkPort } from '../modules/module-config.ports';
@@ -104,6 +110,11 @@ export class IngestService {
      * pero no persiste la versión reportada, que es exactamente lo que hacía
      * antes de existir este puerto. */
     @Optional() @Inject(CONFIG_REPORTED_SINK) private readonly configReported?: ConfigReportedSinkPort,
+    /* 3.1 · observacion del selector fisico. Opcional y AL FINAL, por el mismo
+     * motivo que los anteriores. Sin sumidero la ingesta sigue validando y
+     * contando el mensaje: no persiste la posicion, que es lo que hacia antes
+     * de que este puerto existiera. */
+    @Optional() @Inject(MODULE_OBSERVATION) private readonly observation?: ModuleObservationPort,
   ) {
     this.options = { ...DEFAULT_OPTIONS, ...(options ?? {}) };
   }
@@ -223,6 +234,28 @@ export class IngestService {
       await this.presence
         .touch(parsed.id, receivedAt, parsed.kind === 'module-telemetry')
         .catch(() => undefined);
+    }
+
+    /* 3.1 · SELECTOR OBSERVADO. `module-status` trae la posicion del selector
+     * fisico y hasta ahora se descartaba: el backend no podia saber que modulo
+     * estaba en PRINCIPAL, y la eleccion automatica de coordinador (3.2) no
+     * tendria entrada. Se observa y se persiste; NO se decide nada aqui.
+     *
+     * Un fallo al persistir no tumba la ingesta, igual que con la presencia:
+     * perder una observacion es recuperable --- llegara otra ---, perder el
+     * mensaje entero no. */
+    if (parsed.kind === 'module-status' && this.observation) {
+      const obs = leerObservacionSelector(
+        payload as unknown as StatusObservable,
+        receivedAt,
+      );
+      if (obs) {
+        await this.observation
+          .observeSelector({ moduleSlug: parsed.id, ...obs })
+          .catch((error: Error) =>
+            this.logger.warn(`No se pudo observar el selector: ${error.message}`),
+          );
+      }
     }
 
     // Diagnóstico del módulo: es la ÚNICA vía por la que se sabe cómo fue una

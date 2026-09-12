@@ -1,0 +1,13 @@
+-- Cuándo se OBSERVÓ el selector físico por última vez, según `module-status`.
+--
+-- `last_seen_at` no sirve para esto: se actualiza con cada telemetría —una vez
+-- por segundo— y no dice nada sobre cuándo se vio la posición del interruptor.
+-- Quedó demostrado en el banco al intentar cerrar la propagación del selector.
+--
+-- La elección automática de coordinador necesita distinguir un PRINCIPAL
+-- observado hace dos segundos de uno observado hace dos días; sin esta columna
+-- elegiría sobre estado viejo sin poder saberlo.
+--
+-- Nullable a propósito: los módulos ya dados de alta no lo han declarado
+-- todavía, y un valor inventado sería peor que la ausencia.
+ALTER TABLE "modules" ADD COLUMN "selector_observed_at" TIMESTAMPTZ(6);

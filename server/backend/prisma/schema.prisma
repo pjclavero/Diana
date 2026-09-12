@@ -283,6 +283,14 @@ model Module {
   firmwareVersion  String?           @map("firmware_version") @db.VarChar(32)
   role             ModuleRole?
   selector         SelectorPosition?
+  /// Cuándo se OBSERVÓ el selector por última vez, según `module-status`.
+  ///
+  /// No sirve `lastSeenAt`: se actualiza con cada telemetría (cada segundo) y
+  /// no dice nada sobre cuándo se vio la posición del interruptor. Se midió en
+  /// el banco. La elección automática de coordinador necesita distinguir un
+  /// PRINCIPAL observado hace dos segundos de uno observado hace dos días, y
+  /// sin este campo elegiría sobre estado viejo sin saberlo.
+  selectorObservedAt DateTime?       @map("selector_observed_at") @db.Timestamptz(6)
   state            ModuleState?
   online           Boolean           @default(false)
   /// UUID de arranque vigente. Cambia en cada reinicio (ADR-0003).

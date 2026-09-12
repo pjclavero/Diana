@@ -2,7 +2,14 @@ import { Controller, Get, Global, Module } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ContractValidator, getContractValidator } from '../../contracts/contract-validator';
 import { AppConfig, CONFIG } from '../../config/configuration';
-import { HIT_ATTRIBUTOR, HIT_REPOSITORY, INCIDENT_SINK, PRESENCE_SINK } from '../hits/ports';
+import {
+  HIT_ATTRIBUTOR,
+  HIT_REPOSITORY,
+  INCIDENT_SINK,
+  MODULE_OBSERVATION,
+  PRESENCE_SINK,
+} from '../hits/ports';
+import { ModuleObservationRepository } from '../modules/module-observation.repository';
 import { PrismaHitRepository } from '../hits/prisma-hit.repository';
 import { PrismaHitAttributor } from '../hits/prisma-hit-attributor';
 import { PrismaIncidentSink } from '../maintenance/incident.sink';
@@ -70,6 +77,9 @@ export class MqttController {
     // crear un ciclo con MqttService (la pausa se ordena por MQTT).
     ResilienceService,
     { provide: PRESENCE_SINK, useExisting: ResilienceService },
+    /* 3.1 · el selector observado en `module-status` deja de descartarse. */
+    ModuleObservationRepository,
+    { provide: MODULE_OBSERVATION, useExisting: ModuleObservationRepository },
     {
       provide: INGEST_OPTIONS,
       inject: [CONFIG],

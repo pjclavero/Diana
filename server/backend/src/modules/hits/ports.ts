@@ -4,6 +4,7 @@ export const HIT_REPOSITORY = Symbol('HIT_REPOSITORY');
 export const INCIDENT_SINK = Symbol('INCIDENT_SINK');
 export const EVENT_PUBLISHER = Symbol('EVENT_PUBLISHER');
 export const PRESENCE_SINK = Symbol('PRESENCE_SINK');
+export const MODULE_OBSERVATION = Symbol('MODULE_OBSERVATION');
 export const HIT_ATTRIBUTOR = Symbol('HIT_ATTRIBUTOR');
 
 export interface InsertResult {
@@ -100,6 +101,27 @@ export interface PresenceSinkPort {
    * (`status`) se reentrega al reconectar el backend y no prueba nada.
    */
   touch(moduleSlug: string, at: Date, revives?: boolean): Promise<void>;
+}
+
+/**
+ * Observación del selector físico declarada en `module-status`.
+ *
+ * Separado de `PresenceSinkPort` a propósito: la presencia responde a «¿está
+ * vivo?» y se toca con cada telemetría —una vez por segundo—, mientras que esto
+ * responde a «¿en qué posición está el interruptor y cuándo se vio». Mezclarlos
+ * fue justo lo que impidió cerrar la propagación del selector en el banco:
+ * `lastSeenAt` avanzaba constantemente y no decía nada del selector.
+ *
+ * 3.1 sólo OBSERVA. No elige coordinador ni concede autoridad.
+ */
+export interface ModuleObservationPort {
+  /** Persiste la posición observada. Idempotente: puede llegar repetida. */
+  observeSelector(input: {
+    moduleSlug: string;
+    selector: 'SATELITE' | 'AUTO' | 'PRINCIPAL';
+    role: 'principal' | 'satellite' | 'auto';
+    observedAt: Date;
+  }): Promise<void>;
 }
 
 /**

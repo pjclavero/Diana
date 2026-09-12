@@ -21,6 +21,12 @@ import { PrismaService } from '../../common/prisma/prisma.service';
  *    declarar aplicada una configuración que nadie aplicó.
  *  - `online`, `lastSeenAt`, `offlineSince`, `bootId`: presencia observada.
  *    Nunca estuvieron, y se dice aquí para que no vuelvan.
+ *  - `role`, `selector`, `selectorObservedAt`: posición del interruptor FÍSICO,
+ *    observada en `module-status` (3.1). SÍ estuvieron aquí, y era un agujero:
+ *    con la elección automática de coordinador, poder escribir `selector` por
+ *    REST equivaldría a declararse coordinador sin tocar el hardware —el
+ *    backend elegiría sobre un dato que nadie ha observado—. La única vía de
+ *    escritura es ahora la ingesta de `module-status`.
  */
 export const MODULE_CREATABLE_FIELDS = [
   'slug',
@@ -32,8 +38,6 @@ export const MODULE_CREATABLE_FIELDS = [
   'hardwareRevision',
   'targetBoard',
   'firmwareVersion',
-  'role',
-  'selector',
   'state',
   'maintenance',
 ] as const satisfies readonly string[];
