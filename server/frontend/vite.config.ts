@@ -57,6 +57,15 @@ export default defineConfig({
     // que nadie había escrito. Se escribe. Las pruebas que quieran el
     // adaptador real lo piden con `vi.spyOn`, como ya hacen.
     env: { VITE_API_MODE: "mock" },
+    // 5 s (el defecto) NO alcanza en esta máquina cuando la suite corre
+    // entera y en paralelo: `CredencialMqttCard.test.tsx` agota el plazo en la
+    // tanda completa y pasa en 0,6 s cuando se ejecuta el fichero solo
+    // (medido: `npx vitest run <fichero> --testTimeout=30000` → 5/5 en 17,9 s,
+    // de los cuales 0,588 s son de prueba y el resto arranque del entorno).
+    // Es coste de arranque de jsdom bajo carga, no una espera del producto.
+    // Se sube el plazo en vez de quitar la prueba o darle un `retry`: un
+    // reintento habría escondido una carrera de verdad el día que la haya.
+    testTimeout: 20_000,
     setupFiles: ["./src/test/setup.ts"],
     globals: true,
     // CSS no se procesa en jsdom (no evalúa @media), así que se deja fuera:
