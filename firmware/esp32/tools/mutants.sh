@@ -2,6 +2,10 @@
 # Calibracion del carril FW-PROVISION. NO forma parte de `make test`: es el
 # utillaje que demuestra que las pruebas saben ponerse ROJAS.
 #
+# AVISO: cada mutante se revierte con `git checkout -- <fichero>`, asi que este
+# guion DESTRUYE cualquier cambio sin commitear en los ficheros que muta. Se
+# ejecuta sobre un arbol limpio, despues de commitear, nunca antes.
+#
 # Cada mutante: se aplica, se VERIFICA CON GREP que ha entrado en el fichero
 # (una mutacion que no entra no calibra nada), se ejecuta la comprobacion que
 # deberia cazarla, se registra el rc REAL y se revierte con git checkout.
@@ -100,6 +104,25 @@ mutate "M8 root_key en el estado publicado" \
   '    diana_json_str(&j, "root_key", ctx->st.provisioning_key_fingerprint);
     diana_json_str(&j, "provisioning_key_fingerprint",' \
   "$TEST" 'diana_json_str(&j, "root_key"'
+
+CAP='python3 firmware/esp32/tools/check_mqtt_rx_capacity.py'
+
+# M9 · la capacidad vuelve al 2048 elegido a ojo: el config/desired real de un
+# modulo 3x3 (2239 B) deja de caber y la configuracion no puede aplicarse nunca.
+mutate "M9 capacidad de recepcion por debajo del contrato" \
+  "firmware/esp32/components/diana_platform_esp/include/diana/platform_esp.h" \
+  '#define DIANA_MQTT_RX_PAYLOAD_MAX 4096' \
+  '#define DIANA_MQTT_RX_PAYLOAD_MAX 2048' \
+  "$CAP" '#define DIANA_MQTT_RX_PAYLOAD_MAX 2048'
+
+# M10 · capacidad suficiente para el mensaje real pero SIN el margen declarado:
+# el peor caso del contrato (2640 B) seguiria sin caber. Que quepa "el de hoy"
+# no es lo que la guarda promete.
+mutate "M10 capacidad sin margen sobre el peor caso" \
+  "firmware/esp32/components/diana_platform_esp/include/diana/platform_esp.h" \
+  '#define DIANA_MQTT_RX_PAYLOAD_MAX 4096' \
+  '#define DIANA_MQTT_RX_PAYLOAD_MAX 2304' \
+  "$CAP" '#define DIANA_MQTT_RX_PAYLOAD_MAX 2304'
 
 printf '\n=================================================\n'
 printf ' CALIBRACION: %d mutantes cazados, %d huecos\n' "$pass" "$fail"

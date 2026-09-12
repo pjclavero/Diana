@@ -111,6 +111,14 @@ contracts:
 # PROPIO, no sumado a los demas.
 	@$(PYTHON) $(FW)/tools/check_config_reconcile.py
 
+# MQTT_RX_CAPACITY. El tamano del buffer de recepcion no es una opinion: esta
+# guarda CONSTRUYE el config/desired mas grande que el contrato permite, lo
+# valida contra el esquema y lo mide, y se pone roja si la capacidad declarada
+# en platform_esp.h queda por debajo. Existe porque el buffer de 2048 bytes no
+# llegaba al mensaje normal de un modulo 3x3 (2239 B) y la configuracion no
+# podia aplicarse nunca. Contador PROPIO, no sumado a los demas.
+	@$(PYTHON) $(FW)/tools/check_mqtt_rx_capacity.py
+
 # ADR-0007. Valida los payloads que llevan `detection_method` contra el contrato
 # de ESTE arbol. Sin descarga ni referencia git: funciona en un clon limpio.
 # La guarda de abajo no es cosmetica: si alguien retira el contrato ADR-0007 de

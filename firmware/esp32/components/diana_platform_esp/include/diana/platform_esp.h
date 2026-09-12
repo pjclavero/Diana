@@ -62,10 +62,31 @@ int diana_platform_mqtt_start(diana_platform *p, const char *client_id,
 /** Suscribe a los topicos de entrada del modulo (command, config, ota, game). */
 int diana_platform_mqtt_subscribe(diana_platform *p, const char *module_id);
 
+/* Capacidad del receptor MQTT, en bytes de payload.
+ *
+ * NO es un numero redondo elegido a ojo: `tools/check_mqtt_rx_capacity.py`
+ * construye el `config/desired` MAS GRANDE que el contrato admite --- nueve
+ * dianas calibradas, identificadores y nombre al maximo, red estatica ---, lo
+ * VALIDA contra `module-config.schema.json` y lo mide: 2640 bytes. Con el
+ * margen declarado de 512 quedan 3152; se redondea a 4096 por alineacion.
+ * Esa guarda se pone ROJA si esta cifra baja del peor caso medido.
+ *
+ * El valor anterior (2048) no llegaba ni al mensaje NORMAL de un modulo 3x3
+ * completo (2239 bytes), asi que la configuracion no podia aplicarse nunca.
+ *
+ * Hueco DECLARADO: `neighbour_ratio` (decimales de un double), las marcas
+ * `date-time` (sin maxLength) y `config_version` (entero sin maximo) no estan
+ * realmente acotados por el esquema. Para ellos rige un limite de PRODUCTO
+ * fijado en esa misma guarda. Un mensaje que lo exceda se rechaza limpiamente
+ * por capacidad; nunca se trunca. */
+#define DIANA_MQTT_RX_PAYLOAD_MAX 4096
+
 /** Cola de mensajes MQTT recibidos, para consumir desde la tarea principal. */
 typedef struct {
     char topic[DIANA_TOPIC_MAXLEN];
-    char payload[2048];
+    /* +1 para el NUL: un payload de exactamente DIANA_MQTT_RX_PAYLOAD_MAX
+     * bytes es ACEPTABLE, no un caso limite que se pierde por el terminador. */
+    char payload[DIANA_MQTT_RX_PAYLOAD_MAX + 1];
     size_t payload_len;
     uint64_t recv_us;   /* reloj MONOTONICO de recepcion: base de la caducidad */
 

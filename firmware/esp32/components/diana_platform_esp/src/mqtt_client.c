@@ -254,9 +254,10 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t id,
 
         /* Un payload que no cabe se DESCARTA y se registra: truncarlo produciria
          * JSON invalido y un rechazo confuso aguas abajo. */
-        if ((size_t)ev->total_data_len >= sizeof(rx.payload)) {
-            ESP_LOGE(TAG, "payload de %d bytes descartado en %s",
-                     ev->total_data_len, rx.topic);
+        if ((size_t)ev->total_data_len > DIANA_MQTT_RX_PAYLOAD_MAX) {
+            ESP_LOGE(TAG, "payload de %d bytes descartado en %s (maximo %d)",
+                     ev->total_data_len, rx.topic,
+                     (int)DIANA_MQTT_RX_PAYLOAD_MAX);
             break;
         }
         memcpy(rx.payload, ev->data, (size_t)ev->data_len);
@@ -311,7 +312,12 @@ int diana_platform_mqtt_start(struct diana_platform *p, const char *client_id,
         ESP_LOGW(TAG, "transporte SIN TLS hacia %s: perfil de laboratorio", uri);
     }
 
-    p->rx_queue = xQueueCreate(16, sizeof(diana_platform_rx));
+    /* La profundidad baja de 16 a 8 porque cada entrada DOBLA de tamano al
+     * subir la capacidad de payload: 8 x ~4.3 KB deja el consumo de la cola
+     * donde ya estaba (~34 KB de DRAM), sin robarle memoria a mbedTLS. Ocho
+     * sigue cubriendo el peor instante real, que es la entrega de retenidos
+     * justo tras SUBSCRIBE: cinco suscripciones, cinco mensajes. */
+    p->rx_queue = xQueueCreate(8, sizeof(diana_platform_rx));
     if (!p->rx_queue) return -1;
 
     esp_mqtt_client_config_t cfg = {0};
