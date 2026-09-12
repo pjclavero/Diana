@@ -59,6 +59,74 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
   ) {}
 
+  /**
+   * Esperas de ACEPTACIÓN del coordinador.
+   *
+   * Un PUBACK dice que el BROKER aceptó la orden, no que alguien la haya
+   * atendido: el gate 3.5 encontró exactamente eso — `start_game` con
+   * `delivered: true` y un coordinador que la rechazaba por `INVALID`, sin
+   * que nada en el backend se enterase. La única confirmación real es que el
+   * coordinador publique `system/{id}/game/state` con la fase que la orden
+   * pedía, y eso es lo que se espera aquí.
+   *
+   * El emparejamiento exige `round_id` Y `phase`: `game/state` es RETENIDO,
+   * así que un estado viejo puede llegar solo al reconectar, y aceptar «el
+   * primer game/state que aparezca» convertiría un residuo del broker en una
+   * confirmación falsa.
+   */
+  private readonly esperasGameState = new Set<{
+    systemId: string;
+    cumple: (estado: Record<string, unknown>) => boolean;
+    resolver: (estado: Record<string, unknown>) => void;
+  }>();
+
+  /**
+   * Espera a que el coordinador publique un `game/state` que cumpla `cumple`.
+   * Devuelve el estado, o `null` si no llega dentro del plazo. NUNCA lanza por
+   * agotarse el plazo: quien llama decide qué significa el silencio.
+   */
+  async esperarGameState(
+    systemId: string,
+    cumple: (estado: Record<string, unknown>) => boolean,
+    timeoutMs: number,
+  ): Promise<Record<string, unknown> | null> {
+    return new Promise((resolve) => {
+      const espera = { systemId, cumple, resolver: (e: Record<string, unknown>) => {
+        clearTimeout(temporizador);
+        this.esperasGameState.delete(espera);
+        resolve(e);
+      } };
+      const temporizador = setTimeout(() => {
+        this.esperasGameState.delete(espera);
+        resolve(null);
+      }, timeoutMs);
+      // `unref` para que una espera pendiente no retenga el proceso al cerrar.
+      (temporizador as unknown as { unref?: () => void }).unref?.();
+      this.esperasGameState.add(espera);
+    });
+  }
+
+  /** Reparte un `game/state` recién llegado entre las esperas que lo aguardan. */
+  private notificarGameState(systemId: string, payload: Buffer): void {
+    if (this.esperasGameState.size === 0) return;
+    let estado: Record<string, unknown>;
+    try {
+      estado = JSON.parse(payload.toString('utf8')) as Record<string, unknown>;
+    } catch {
+      return; // un estado ilegible no confirma nada
+    }
+    for (const espera of [...this.esperasGameState]) {
+      if (espera.systemId !== systemId) continue;
+      let ok = false;
+      try {
+        ok = espera.cumple(estado);
+      } catch {
+        ok = false;
+      }
+      if (ok) espera.resolver(estado);
+    }
+  }
+
   get connected(): boolean {
     return this.client?.connected ?? false;
   }
@@ -173,6 +241,11 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
     this.client.on('message', (topic, payload) => {
       // T3 se toma AQUÍ, lo más cerca posible de la llegada del mensaje.
       const receivedAt = new Date();
+      // ACEPTACIÓN del coordinador, antes de la ingesta: es una señal de
+      // control del propio backend y no debe depender de que la persistencia
+      // del evento vaya bien.
+      const ruta = parseTopic(topic);
+      if (ruta?.kind === 'game-state' && ruta.id) this.notificarGameState(ruta.id, payload);
       void this.ingest.handleMessage(topic, payload, receivedAt).catch((error) => {
         this.logger.error(`Fallo procesando ${topic}: ${(error as Error).message}`);
       });

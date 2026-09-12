@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { GameEngine } from '../../domain/game/engine';
@@ -10,6 +11,7 @@ import { createDefaultRegistry, GameModeRegistry } from '../../domain/game/regis
 import { RoundConfig, TargetRef } from '../../domain/game/types';
 import { detectSystemConflicts } from '../../domain/systems/conflicts';
 import { MqttService } from '../mqtt/mqtt.service';
+import { PUBLISH_ACK_TIMEOUT_MS_DEFAULT } from '../../config/configuration';
 
 export interface CreateGameInput {
   target_system_id: string;
@@ -34,6 +36,24 @@ export interface CreateRoundInput {
   strict_order?: boolean;
   reaction_delay_ms?: [number, number] | null;
 }
+
+/**
+ * Plazo para que el COORDINADOR confirme una orden publicando su `game/state`.
+ *
+ * No es el plazo del broker (ése es `MQTT_PUBLISH_ACK_TIMEOUT_MS`): es el que
+ * se le da al dispositivo para decir que ha atendido la orden. Explícito y
+ * visible porque acota cuánto se retiene el cerrojo del panel.
+ */
+export const COORDINATOR_ACCEPT_TIMEOUT_MS = 4_000;
+
+/**
+ * Plazo de la transacción de arranque. El peor caso son DOS publicaciones con
+ * su PUBACK y DOS esperas de aceptación, así que el 5 s por defecto de Prisma
+ * ya no da: una transacción que expira a mitad dejaría la ronda marcada sin
+ * orden, o al revés. Se declara derivado, no a ojo.
+ */
+export const TRANSACCION_ARRANQUE_TIMEOUT_MS =
+  2 * PUBLISH_ACK_TIMEOUT_MS_DEFAULT + 2 * COORDINATOR_ACCEPT_TIMEOUT_MS + 4_000;
 
 /**
  * Subconjunto de Prisma que usa el guardarraíl: sirve tanto el cliente normal
@@ -382,6 +402,29 @@ export class GamesService {
    * Autoriza el comienzo: publica `start_game` al coordinador.
    * El backend NO arranca el cronómetro; sólo da la orden.
    */
+  /**
+   * Una orden que el broker no aceptó NO puede encadenar la siguiente.
+   * `denied` es denegación de ACL; `delivered:false` es incertidumbre (encolada
+   * o sin PUBACK a tiempo). En ambos casos se corta: seguir a `start_game`
+   * tras un `arm_game` que quizá no salió es justo la divergencia que este
+   * carril existe para impedir.
+   */
+  private exigirEntrega(
+    resultado: { delivered?: boolean; denied?: boolean },
+    accion: string,
+  ): void {
+    if (resultado.denied) {
+      throw new ServiceUnavailableException(
+        `El broker DENEGÓ '${accion}' por ACL. La ronda NO se da por iniciada.`,
+      );
+    }
+    if (resultado.delivered !== true) {
+      throw new ServiceUnavailableException(
+        `'${accion}' no llegó al broker (sin PUBACK a tiempo). La ronda NO se da por iniciada.`,
+      );
+    }
+  }
+
   async start(gameId: string, roundId: string) {
     const game = await this.get(gameId);
     const round = game.rounds.find((r) => r.id === roundId);
@@ -427,6 +470,29 @@ export class GamesService {
     // mensaje puede acabar entregándose y revertir crearía la divergencia
     // contraria (partida no marcada, coordinador arrancado).
     let command!: Awaited<ReturnType<MqttService['sendSystemCommand']>>;
+    let armado!: Awaited<ReturnType<MqttService['sendSystemCommand']>>;
+
+    // El sobre de la partida. Va en `arm_game`, que es la orden que DECLARA la
+    // partida; `start_game` sólo la enciende.
+    const sobreDeJuego = {
+      game: {
+        game_id: game.id,
+        round_id: round.id,
+        mode: round.mode,
+        countdown_ms: round.countdownMs,
+        time_limit_ms: round.timeLimitMs,
+        penalty_ms: round.penaltyMs,
+        strict_order: round.strictOrder,
+        targets,
+        sequence: round.mode === 'sequence' ? plan.activations.map((a) => a.targets[0]) : null,
+        reaction_delay_ms:
+          round.reactionDelayMinMs !== null && round.reactionDelayMaxMs !== null
+            ? [round.reactionDelayMinMs, round.reactionDelayMaxMs]
+            : null,
+        seed: Number(round.seed ?? 0),
+      },
+    };
+
     await this.prisma.$transaction(async (tx) => {
       await this.lockPanels(tx as unknown as TransactionClient, game);
       // Dosier 11/12: «El sistema no permitirá iniciar una partida si detecta
@@ -446,42 +512,71 @@ export class GamesService {
         where: { id: roundId },
         data: { phase: 'countdown', startedAt: new Date() },
       });
+      // ── PASO 1 · ARMAR ───────────────────────────────────────────────────
+      // El contrato es de DOS pasos y lo implementan igual el firmware
+      // (`coordinator.c`: `start_game` exige `have_game`, que sólo pone
+      // `arm_game`) y el simulador (`start_game` -> `startArmedGame()`). El
+      // backend publicaba `start_game` a secas con la partida dentro: el
+      // coordinador la rechazaba con INVALID y aquí se daba la ronda por
+      // iniciada igual. Lo encontró el banco, no la suite.
+      armado = await this.mqtt.sendSystemCommand(
+        game.targetSystem.slug,
+        'arm_game',
+        sobreDeJuego,
+        10000,
+      );
+      this.exigirEntrega(armado, 'arm_game');
+
+      // ── PASO 2 · ACEPTACIÓN REAL DEL COORDINADOR ─────────────────────────
+      // El PUBACK sólo dice que el broker la aceptó. Que la partida exista en
+      // el dispositivo lo dice el coordinador publicando su `game/state`.
+      const aceptado = await this.mqtt.esperarGameState(
+        game.targetSystem.slug,
+        (e) => e.round_id === round.id && e.phase === 'armed',
+        COORDINATOR_ACCEPT_TIMEOUT_MS,
+      );
+      if (!aceptado) {
+        throw new ServiceUnavailableException(
+          `El coordinador no confirmó el armado de la ronda en ${COORDINATOR_ACCEPT_TIMEOUT_MS} ms ` +
+            '(sin `game/state` con phase=armed para esta ronda). La ronda NO se da por iniciada.',
+        );
+      }
+
+      // ── PASO 3 · ARRANCAR ────────────────────────────────────────────────
       command = await this.mqtt.sendSystemCommand(
         game.targetSystem.slug,
         'start_game',
-        {
-        game: {
-          game_id: game.id,
-          round_id: round.id,
-          mode: round.mode,
-          countdown_ms: round.countdownMs,
-          time_limit_ms: round.timeLimitMs,
-          penalty_ms: round.penaltyMs,
-          strict_order: round.strictOrder,
-          targets,
-          sequence: round.mode === 'sequence' ? plan.activations.map((a) => a.targets[0]) : null,
-          reaction_delay_ms:
-            round.reactionDelayMinMs !== null && round.reactionDelayMaxMs !== null
-              ? [round.reactionDelayMinMs, round.reactionDelayMaxMs]
-              : null,
-            seed: Number(round.seed ?? 0),
-          },
-        },
+        {},
         10000,
       );
-    });
+      this.exigirEntrega(command, 'start_game');
 
-    const startDelivered = (command as { delivered?: boolean }).delivered === true;
-    const startDenied = (command as { denied?: boolean }).denied === true;
+      // ── PASO 4 · ACEPTACIÓN DEL ARRANQUE ─────────────────────────────────
+      const corriendo = await this.mqtt.esperarGameState(
+        game.targetSystem.slug,
+        (e) => e.round_id === round.id && (e.phase === 'running' || e.phase === 'countdown'),
+        COORDINATOR_ACCEPT_TIMEOUT_MS,
+      );
+      if (!corriendo) {
+        throw new ServiceUnavailableException(
+          `El coordinador no confirmó el arranque de la ronda en ${COORDINATOR_ACCEPT_TIMEOUT_MS} ms. ` +
+            'La ronda NO se da por iniciada.',
+        );
+      }
+    }, { timeout: TRANSACCION_ARRANQUE_TIMEOUT_MS, maxWait: 5_000 });
+
+    // Si se llega aquí, las CUATRO puertas se pasaron: PUBACK de `arm_game`,
+    // `game/state` con phase=armed, PUBACK de `start_game` y `game/state`
+    // corriendo. Cualquier fallo anterior lanzó y revirtió la transacción, así
+    // que ya no existe el caso «delivered:true con la partida sin arrancar»
+    // que este carril tenía.
     return {
       command,
-      delivered: startDelivered,
-      denied: startDenied,
-      note: startDenied
-        ? 'ATENCIÓN: el broker DENEGÓ la orden al coordinador (ACL). Hay incidencia registrada.'
-        : startDelivered
-          ? null
-          : 'La orden no llegó al broker MQTT: el coordinador puede no haberla recibido.',
+      armed: armado,
+      delivered: true,
+      denied: false,
+      accepted_by_coordinator: true,
+      note: null,
     };
   }
 

@@ -157,12 +157,18 @@ describe('GamesService.start() · el cerrojo del panel no queda tomado por un br
       },
       viewPanel: { findMany: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn(async (fn: (t: unknown) => Promise<unknown>) => {
-        const salida = await fn(tx);
         // El cerrojo `pg_advisory_xact_lock` se suelta al CERRAR la
-        // transacción: este es el instante en que el panel vuelve a estar
-        // libre. Si la espera del broker no tuviera plazo, no se alcanzaría.
-        traza.push('lock-soltado');
-        return salida;
+        // transacción, CONFIRME O REVIERTA: este es el instante en que el
+        // panel vuelve a estar libre. Si la espera del broker no tuviera
+        // plazo, no se alcanzaría. Va en `finally` porque desde que el
+        // arranque exige aceptación del coordinador el camino normal de un
+        // broker mudo es LANZAR, y un doble que sólo suelte al confirmar
+        // afirmaría un cerrojo retenido que en PostgreSQL no lo está.
+        try {
+          return await fn(tx);
+        } finally {
+          traza.push('lock-soltado');
+        }
       }),
       __tx: tx,
     } as never;
@@ -190,7 +196,13 @@ describe('GamesService.start() · el cerrojo del panel no queda tomado por un br
     );
 
     const t0 = Date.now();
-    const salida = await new GamesService(prisma, mqtt).start('g1', 'r1');
+    // Desde el contrato de dos pasos, un broker que no confirma NO devuelve
+    // `delivered:false`: corta. Dar la ronda por iniciada con un PUBACK que
+    // nunca llegó era precisamente el agujero que el banco encontró.
+    const fallo = await new GamesService(prisma, mqtt)
+      .start('g1', 'r1')
+      .then(() => null)
+      .catch((e: Error) => e);
     const transcurrido = Date.now() - t0;
 
     // ORDEN, no sólo presencia: si alguien saca la publicación FUERA de la
@@ -199,9 +211,11 @@ describe('GamesService.start() · el cerrojo del panel no queda tomado por un br
     // 'lock-soltado' y esta prueba muere.
     expect(traza).toEqual(['lock-tomado', 'publicado', 'lock-soltado']);
     expect(transcurrido).toBeLessThan(ACK_TIMEOUT_MS * 20);
-    expect(salida.delivered).toBe(false);
-    expect(salida.denied).toBe(false);
-    expect(salida.note).toMatch(/no llegó al broker/);
+    // un broker mudo no puede dar la ronda por iniciada
+    expect(fallo).toBeInstanceOf(Error);
+    expect((fallo as Error).message).toMatch(/no llegó al broker/);
+    // Y corta en el PRIMER paso: sin `arm_game` confirmado no se publica nada más.
+    expect((fallo as Error).message).toMatch(/arm_game/);
     // La publicación sigue OCURRIENDO DENTRO de la transacción (defecto N-D2
     // de G-H: sacarla fuera rompía la atomicidad). Lo acotado es la espera.
     expect(client.publish).toHaveBeenCalledTimes(1);

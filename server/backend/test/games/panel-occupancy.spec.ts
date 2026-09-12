@@ -160,7 +160,22 @@ describe('GamesService · el guardarraíl está cableado de verdad', () => {
     return prisma;
   }
 
-  const mqttStub = { sendSystemCommand: jest.fn().mockReturnValue({ command_id: 'c1' }) } as any;
+  // El doble tiene que CONFIRMAR como lo haría el broker y el coordinador:
+  // desde el contrato de dos pasos, un `arm_game` sin PUBACK o sin `game/state`
+  // corta el arranque, y estas pruebas hablan del cerrojo y del orden, no de la
+  // entrega. Lo que no confirma se prueba en `arm-before-start.spec.ts`.
+  const mqttStub = {
+    sendSystemCommand: jest
+      .fn()
+      .mockReturnValue({ command_id: 'c1', delivered: true, denied: false }),
+    esperarGameState: jest.fn(async (_s: string, cumple: (e: any) => boolean) => {
+      for (const fase of ['armed', 'running']) {
+        const estado = { round_id: 'r1', phase: fase };
+        if (cumple(estado)) return estado;
+      }
+      return null;
+    }),
+  } as any;
 
   it('start() bloquea dos módulos EN LÍNEA forzados como PRINCIPAL (dosier 11/12), DENTRO de la transacción', async () => {
     const prisma = gamePrisma({
