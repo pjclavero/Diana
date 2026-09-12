@@ -104,6 +104,19 @@ jobs:
               console.error("FALSO VERDE: jest salió con 0, pero no ejecutó NINGUNA prueba de integración.");
               process.exit(1);
             }
+            // La comprobación de arriba es AGREGADA, y eso no basta: una suite
+            // entera puede saltarse y el job sigue verde porque las demás
+            // suman. Lo encontró la revisión independiente. Se exige por
+            // SUITE, que es la unidad que puede desaparecer.
+            const mudas = (r.testResults ?? []).filter(
+              (s) => (s.assertionResults ?? []).every((a) => a.status === "pending"),
+            );
+            if (mudas.length > 0) {
+              console.error("FALSO VERDE: estas suites no ejecutaron NINGUNA prueba:");
+              for (const s of mudas) console.error("  - " + s.name);
+              console.error("Un `describe.skip` por falta de entorno sale con rc=0 y no mide nada.");
+              process.exit(1);
+            }
           '
 
       - name: Recoger logs de Mosquitto si algo falla

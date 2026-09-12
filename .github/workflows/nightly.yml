@@ -46,7 +46,11 @@ jobs:
       - name: Ejecutar el perfil de carga (9 módulos / 81 dianas, ráfagas)
         working-directory: tests/load
         env:
-          MQTT_URL: mqtt://localhost:1883
+          # El 1883 en claro ya NO existe en el stack productivo (P0-2). Apuntar
+          # ahi dejaria el perfil de carga fallando por «no conecta», que es un
+          # sintoma que no dice nada, en vez de por la causa real.
+          MQTT_URL: mqtts://localhost:8883
+          MQTT_CA_FILE: infrastructure/mosquitto/certs/ca.crt
           DURATION_S: "120"
         run: npm start
       - name: Logs si falla

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 // js-yaml, declarado en devDependencies: parser de verdad en vez de una regex
 // por línea. Se carga con require para no depender de @types/js-yaml.
@@ -42,6 +42,8 @@ const COMPOSE = join(RAIZ, 'compose.yml');
 const COMPOSE_DEV = join(RAIZ, 'compose.dev.yml');
 const CONF_TEST = join(RAIZ, 'infrastructure', 'mosquitto', 'mosquitto.test.conf');
 const FIREWALL = join(RAIZ, 'infrastructure', 'provisioning', '04-firewall.sh');
+const ENV_EJEMPLO = join(RAIZ, '.env.example');
+const WORKFLOWS = join(RAIZ, '.github', 'workflows');
 
 /** Líneas efectivas: sin comentarios (donde SÍ se habla del 1883 histórico). */
 function lineasVivas(ruta: string): string[] {
@@ -214,6 +216,58 @@ describe('P0-2: el broker no tiene ningún camino MQTT/TCP en claro', () => {
       .filter((l) => /\bdport\b/.test(l));
     expect(reglas.some((l) => /tcp\s+dport\s+8883\b.*\baccept\b/.test(l))).toBe(true);
     expect(reglas.filter((l) => /\bdport\s+1883\b/.test(l))).toEqual([]);
+  });
+
+  /**
+   * LA CUARTA VIA, que esta prueba no vigilaba.
+   *
+   * Lo encontro la revision independiente: de las cuatro formas de reabrir el
+   * texto en claro --- listener, publicacion de puerto, regla de firewall y
+   * la variable de entorno --- esta comprobaba tres. Un `MQTT_PORT=1883` en
+   * `.env.example` no levanta ningun listener por si solo, pero es la
+   * plantilla desde la que se escribe el `.env` de un despliegue, y el
+   * backend solo aborta ante un esquema en claro si `NODE_ENV === production`
+   * --- condicion que un homelab incumple con facilidad.
+   *
+   * Cerrar tres de cuatro es el cierre a medias que pasa desapercibido.
+   *
+   * MUTACION QUE DEBE PONERLA ROJA: anadir `MQTT_PORT=1883` sin comentar.
+   */
+  it('.env.example no ofrece el 1883 como valor de plantilla', () => {
+    const vivas = readFileSync(ENV_EJEMPLO, 'utf8')
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0 && !l.startsWith('#'));
+    expect(vivas.filter((l) => /^MQTT_PORT\s*=/.test(l))).toEqual([]);
+    expect(vivas.filter((l) => /\b1883\b/.test(l))).toEqual([]);
+  });
+
+  /**
+   * QUINTA VIA, tambien de la revision independiente: los workflows de CI.
+   *
+   * `e2e.yml` y `nightly.yml` apuntaban a `mqtt://localhost:1883` contra el
+   * stack de `compose.yml`, del que acabamos de retirar ese puerto. Hoy es
+   * latente porque esas pruebas estan en `fixme`; se activa el dia que dejen
+   * de estarlo, y entonces el fallo sera «no conecta» en vez de «alguien
+   * reabrio el texto en claro».
+   *
+   * `integration.yml` es la excepcion LEGITIMA y se declara por nombre:
+   * levanta su propio broker efimero con `-p 1883:1883`, aislado, que no es
+   * el stack de produccion.
+   */
+  it('ningun workflow de CI apunta al 1883 del stack productivo', () => {
+    const permitidos = new Set(['integration.yml']);
+    const ofensores: string[] = [];
+    for (const f of readdirSync(WORKFLOWS).filter((n) => n.endsWith('.yml'))) {
+      if (permitidos.has(f)) continue;
+      const vivas = readFileSync(join(WORKFLOWS, f), 'utf8')
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0 && !l.startsWith('#'))
+        .filter((l) => /\b1883\b/.test(l));
+      for (const l of vivas) ofensores.push(`${f}: ${l}`);
+    }
+    expect(ofensores).toEqual([]);
   });
 
   /**

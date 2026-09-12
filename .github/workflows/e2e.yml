@@ -140,7 +140,11 @@ jobs:
         working-directory: tests/e2e
         env:
           DIANA_BASE_URL: http://localhost:8080
-          MQTT_URL: mqtt://localhost:1883
+          # El 1883 en claro ya NO existe en el stack productivo (P0-2). Apuntar
+          # ahi dejaria el stack de compose.yml fallando por «no conecta», que es un
+          # sintoma que no dice nada, en vez de por la causa real.
+          MQTT_URL: mqtts://localhost:8883
+          MQTT_CA_FILE: infrastructure/mosquitto/certs/ca.crt
         run: npm test
 
       - name: Logs del stack si algo falla
@@ -160,3 +164,56 @@ jobs:
       - name: Derribar el stack
         if: always()
         run: docker compose down -v
+
+  # ---------------------------------------------------------------------------
+  # Gestion de modulos en navegador REAL contra backend, PostgreSQL y Mosquitto
+  # reales. Arnes propio, aislado del stack de compose.yml de arriba.
+  # ---------------------------------------------------------------------------
+  # POR QUE ESTE JOB EXISTE. La suite existia --- 19 escenarios, verdes --- y
+  # CI NUNCA la ejecutaba: `e2e.yml` llamaba a `npm test` (los 16 escenarios
+  # del stack, hoy todos en `fixme`) y jamas a `npm run test:modules-ui`. Lo
+  # encontro la revision independiente. Un gate que nadie ejecuta se pudre: el
+  # dia que alguien rompa el panel, nada se pondra rojo hasta que un humano se
+  # acuerde de lanzarlo a mano.
+  #
+  # No publica presencia ni impactos de ningun dispositivo: el modulo se queda
+  # OFFLINE con last_seen_at NULL, que es lo correcto cuando no hay hardware.
+  modules-ui-navegador-real:
+    name: "E2E de navegador · gestion de modulos (19 escenarios)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Construir la imagen del backend para el arnes
+        run: docker build -f tests/e2e/game/harness/Dockerfile.e2e -t diana/backend:e2emodules .
+
+      - name: Construir el panel con la URL del arnes horneada
+        run: bash tests/e2e/modules-ui/harness/build-frontend.sh
+
+      - name: Instalar la suite
+        working-directory: tests/e2e
+        run: npm ci
+
+      - name: Levantar el escenario (PostgreSQL, Mosquitto TLS, backend y panel reales)
+        run: bash tests/e2e/modules-ui/harness/up.sh
+
+      - name: Ejecutar los 19 escenarios en Chromium real
+        working-directory: tests/e2e
+        run: npx playwright test --config modules-ui/playwright.config.ts
+
+      - name: Recoger el informe si algo falla
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-modules-ui
+          path: tests/e2e/modules-ui/.test-results/
+          if-no-files-found: ignore
+
+      - name: Derribar el escenario
+        if: always()
+        run: bash tests/e2e/modules-ui/harness/down.sh || true
