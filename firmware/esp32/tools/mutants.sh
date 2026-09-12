@@ -421,12 +421,9 @@ mutate "M39 coordinador que no publica" \
 # eleccion automatica de coordinador se vuelve no determinista.
 mutate "M40 cambio de selector sin propagar" \
   "$MAIN/app_tasks.c" \
-  '                diana_publish_status(a);
-            }
-        }' \
-  '            }
-        }' \
-  "$WIRING" 'DIANA_SEL_EV_CAMBIO'
+  '                atomic_store(&a->status_dirty, true);' \
+  '                (void)0;' \
+  "$WIRING" '                (void)0;'
 
 # M41 · el transito 1,1 se trata como un cambio de posicion: concederia
 # autoridad durante los 180-420 ms en que el comun viaja entre contactos.
@@ -445,6 +442,24 @@ mutate "M42 selector sin antirrebote" \
   '    if (t->muestras < DIANA_SELECTOR_DEBOUNCE) return DIANA_SEL_EV_NADA;' \
   '    if (false) return DIANA_SEL_EV_NADA;' \
   "$TEST" 'if (false) return DIANA_SEL_EV_NADA;'
+
+# M43 · vuelve la publicacion directa desde la tarea de ENTRADAS: 3 KB de pila,
+# bucle de 20 ms y una llamada que puede bloquear. En el banco eso hizo que el
+# broker echara al modulo por keepalive vencido. M40 no lo veia: la llamada
+# existia, solo que en el sitio equivocado.
+mutate "M43 publicacion de red en la tarea de entradas" \
+  "$MAIN/app_tasks.c" \
+  '                atomic_store(&a->status_dirty, true);' \
+  '                diana_publish_status(a);' \
+  "$WIRING" '                diana_publish_status(a);'
+
+# M44 · la tarea de red deja de consumir la solicitud: el cambio de selector no
+# llega nunca al backend y la eleccion de coordinador no reacciona.
+mutate "M44 solicitud de status sin consumir" \
+  "$MAIN/app_tasks.c" \
+  '        if (atomic_exchange(&a->status_dirty, false)) {' \
+  '        if (false && atomic_exchange(&a->status_dirty, false)) {' \
+  "$WIRING" 'if (false && atomic_exchange(&a->status_dirty, false))'
 
 printf '\n=================================================\n'
 printf ' CALIBRACION: %d mutantes cazados, %d huecos\n' "$pass" "$fail"

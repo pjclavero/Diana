@@ -6,6 +6,8 @@
 
 /* diana_is_uuid(): el resultado de mantenimiento no se publica sin un
  * request_id valido con que correlarlo. */
+#include <stdatomic.h>
+
 #include "diana/ids.h"
 #include "diana/selector_track.h"
 
@@ -116,7 +118,9 @@ void diana_task_inputs(void *arg)
                  * hasta el siguiente status espontaneo --- y `status` es
                  * RETENIDO, no periodico ---, con lo que la eleccion
                  * automatica no reaccionaria a mover el interruptor. */
-                diana_publish_status(a);
+                /* Se SOLICITA la publicacion; la hace diana_net. Publicar
+                 * aqui tumbo la conexion MQTT en el banco. */
+                atomic_store(&a->status_dirty, true);
             }
         }
 
@@ -617,6 +621,15 @@ void diana_task_network(void *arg)
          * de las suscripciones, en cuanto llego el primer mensaje. `static` es
          * seguro porque diana_task_network es la UNICA tarea que ejecuta esta
          * funcion; si algun dia deja de serlo, hay que volver aqui. */
+        /* PUBLICACION DIFERIDA del estado. `atomic_exchange` lee y limpia en
+         * un solo paso: si llega otro cambio de selector justo despues, la
+         * bandera se vuelve a marcar y se publicara en la siguiente vuelta, sin
+         * perderse ni duplicarse. */
+        if (atomic_exchange(&a->status_dirty, false)) {
+            diana_publish_status(a);
+            ESP_LOGI(TAG, "module-status publicado por cambio de selector");
+        }
+
         static diana_platform_rx rx;
         while (diana_platform_rx_pop(a->pf, &rx, 20))
             diana_handle_message(a, &rx);

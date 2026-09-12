@@ -6,6 +6,8 @@
 #define DIANA_APP_H
 
 #include "diana/command.h"
+#include <stdatomic.h>
+
 #include "diana/config.h"
 #include "diana/coordinator.h"
 #include "diana/event.h"
@@ -41,6 +43,23 @@ typedef struct {
 
     diana_selector_position selector;
     diana_module_role  role;
+
+    /* PUBLICACION DIFERIDA de module-status.
+     *
+     * La tarea de entradas DETECTA el cambio de selector pero NO publica: tiene
+     * 3 KB de pila y gira cada 20 ms, y `esp_mqtt_client_publish` con QoS 1
+     * puede bloquear. Publicar desde ahi tumbo la conexion en el banco --- el
+     * broker echo al modulo por keepalive vencido ("has exceeded timeout") y
+     * quedo en bucle de reconexion ---, y el status nunca llego a salir.
+     *
+     * Es el mismo patron que ya usan las suscripciones: se ANOTA la intencion y
+     * la emite quien tiene contexto para hacerlo (la tarea de red, 8 KB).
+     *
+     * Atomica porque la escriben y la leen tareas distintas. COALESCE por
+     * naturaleza: si el selector va y vuelve antes de publicar, se publica el
+     * estado ACTUAL una sola vez --- no hay cola historica de posiciones que
+     * reproducir, y no la queremos. */
+    _Atomic bool       status_dirty;
 
     /* Estado del rol de COORDINADOR. Solo se usa si el selector estable es
      * PRINCIPAL; en SATELITE el modulo ni siquiera esta suscrito a la entrada. */

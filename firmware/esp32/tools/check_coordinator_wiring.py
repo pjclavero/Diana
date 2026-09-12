@@ -38,6 +38,20 @@ TASKS = FW / "main/app_tasks.c"
 MAIN = FW / "main/app_main.c"
 
 
+def condicion_viva(texto: str, marca: str) -> bool:
+    """True si el `if` que contiene `marca` NO esta neutralizado.
+
+    Comprobar que una llamada APAREZCA es comprobar presencia; `if (false && …)`
+    la deja intacta. Es el cuarto mutante que se cuela por aqui (M28, M31, M39,
+    M44), asi que la comprobacion se hace sobre la CONDICION entera.
+    """
+    m = re.search(r"if\s*\(([^)]*" + re.escape(marca) + r"[^)]*\)?[^{]*)\{",
+                  texto, re.S)
+    if not m:
+        return False
+    return not re.search(r"\b(false|0)\s*&&", m.group(1))
+
+
 def vivo(texto: str) -> str:
     """Sin comentarios ni ramas desactivadas: presencia no es alcanzabilidad."""
     texto = re.sub(r"/\*.*?\*/", "", texto, flags=re.S)
@@ -152,8 +166,27 @@ def main() -> int:
     check("DIANA_SEL_EV_CAMBIO" in tarea,
           "y actua sobre el EVENTO de cambio, no sobre cada lectura")
     cambio = tarea.split("DIANA_SEL_EV_CAMBIO", 1)[1] if "DIANA_SEL_EV_CAMBIO" in tarea else ""
-    check("diana_publish_status(a)" in cambio,
-          "al cambiar el selector se publica module-status inmediatamente")
+    check("atomic_store(&a->status_dirty, true)" in cambio,
+          "al cambiar el selector se SOLICITA la publicacion de module-status")
+
+    # LA REGLA QUE FALTABA. `diana_task_inputs` tiene 3 KB de pila y gira cada
+    # 20 ms; `esp_mqtt_client_publish` con QoS 1 puede bloquear. Publicar desde
+    # ahi tumbo la conexion en el banco: el broker echo al modulo por keepalive
+    # vencido y quedo en bucle de reconexion, sin que el status llegara a salir.
+    #
+    # M40 no lo veia: comprobaba que la llamada EXISTIERA, y existia --- en el
+    # sitio equivocado. Alcanzabilidad si, emplazamiento no.
+    publicaciones_en_inputs = re.findall(r"diana_publish_\w+\s*\(", tarea)
+    check(not publicaciones_en_inputs,
+          "diana_task_inputs NO publica por red: solo solicita (%s)"
+          % (", ".join(sorted(set(publicaciones_en_inputs))) or "ninguna"))
+
+    red = bloque(tasks, "void diana_task_network")
+    check(condicion_viva(red, "atomic_exchange(&a->status_dirty, false)"),
+          "la tarea de RED consume la solicitud y limpia en un solo paso, "
+          "con la condicion VIVA")
+    check("diana_publish_status(a)" in red,
+          "y es ella quien publica el module-status")
     check("DIANA_SEL_EV_INVALIDO" in tarea,
           "el transito se distingue del cambio y no mueve el rol")
 
