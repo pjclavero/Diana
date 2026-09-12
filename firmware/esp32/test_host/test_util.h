@@ -80,6 +80,7 @@ int run_contract(void);
 int run_config_reconcile(void);
 int run_mqtt_reasm(void);
 int run_coordinator(void);
+int run_selector_track(void);
 int run_coordination(void);
 int run_led(void);
 int run_ota(void);

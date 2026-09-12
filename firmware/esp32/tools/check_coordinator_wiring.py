@@ -141,6 +141,22 @@ def main() -> int:
     check("diana_platform_mqtt_set_coordinator" in main_c,
           "y en el arranque se anota el rol del selector inicial")
 
+    print("\n[5] el cambio de selector se PROPAGA (paso 2.5)")
+    # El antirrebote y la deteccion de cambio viven en el nucleo y se prueban
+    # por ejecucion (test_selector_track.c). Aqui solo se fija que la tarea use
+    # ese nucleo y publique al cambiar: sin la publicacion, el backend no se
+    # entera hasta el siguiente status espontaneo --- y `status` es retenido, no
+    # periodico.
+    check("diana_selector_track(" in tarea,
+          "la tarea usa el seguimiento del nucleo, no un antirrebote propio")
+    check("DIANA_SEL_EV_CAMBIO" in tarea,
+          "y actua sobre el EVENTO de cambio, no sobre cada lectura")
+    cambio = tarea.split("DIANA_SEL_EV_CAMBIO", 1)[1] if "DIANA_SEL_EV_CAMBIO" in tarea else ""
+    check("diana_publish_status(a)" in cambio,
+          "al cambiar el selector se publica module-status inmediatamente")
+    check("DIANA_SEL_EV_INVALIDO" in tarea,
+          "el transito se distingue del cambio y no mueve el rol")
+
     print("\nCOORDINATOR_WIRING: %d comprobaciones, %d fallidas" % (checks, len(fallos)))
     if fallos:
         print("COORDINATOR_WIRING: FALLO")

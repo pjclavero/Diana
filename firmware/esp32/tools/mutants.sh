@@ -416,6 +416,36 @@ mutate "M39 coordinador que no publica" \
   '    if (false) diana_publish_module_command(a, &plan);' \
   "$WIRING" 'if (false) diana_publish_module_command(a, &plan);'
 
+# M40 · el cambio de selector deja de publicar status: el backend no se entera
+# de que un modulo paso a PRINCIPAL hasta el siguiente status espontaneo, y la
+# eleccion automatica de coordinador se vuelve no determinista.
+mutate "M40 cambio de selector sin propagar" \
+  "$MAIN/app_tasks.c" \
+  '                diana_publish_status(a);
+            }
+        }' \
+  '            }
+        }' \
+  "$WIRING" 'DIANA_SEL_EV_CAMBIO'
+
+# M41 · el transito 1,1 se trata como un cambio de posicion: concederia
+# autoridad durante los 180-420 ms en que el comun viaja entre contactos.
+mutate "M41 transito tratado como posicion" \
+  "$CORE/src/selector_track.c" \
+  '        if (t->invalido_desde_us == 0) t->invalido_desde_us = now_us;
+        return DIANA_SEL_EV_INVALIDO;' \
+  '        if (t->invalido_desde_us == 0) t->invalido_desde_us = now_us;
+        return DIANA_SEL_EV_CAMBIO;' \
+  "$TEST" 'return DIANA_SEL_EV_CAMBIO;'
+
+# M42 · se retira el antirrebote: una lectura suelta bastaria para cambiar de
+# posicion, y el rebote del interruptor movaria el rol de coordinador.
+mutate "M42 selector sin antirrebote" \
+  "$CORE/src/selector_track.c" \
+  '    if (t->muestras < DIANA_SELECTOR_DEBOUNCE) return DIANA_SEL_EV_NADA;' \
+  '    if (false) return DIANA_SEL_EV_NADA;' \
+  "$TEST" 'if (false) return DIANA_SEL_EV_NADA;'
+
 printf '\n=================================================\n'
 printf ' CALIBRACION: %d mutantes cazados, %d huecos\n' "$pass" "$fail"
 printf '=================================================\n'

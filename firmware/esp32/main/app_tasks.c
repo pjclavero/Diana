@@ -7,6 +7,7 @@
 /* diana_is_uuid(): el resultado de mantenimiento no se publica sin un
  * request_id valido con que correlarlo. */
 #include "diana/ids.h"
+#include "diana/selector_track.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -59,9 +60,12 @@ void diana_task_inputs(void *arg)
     diana_app *a = (diana_app *)arg;
     esp_task_wdt_add(NULL);
 
-    int selector_candidate = -1;
-    int selector_stable = -1;
-    uint8_t selector_samples = 0;
+    /* El antirrebote y la deteccion de cambio viven en el nucleo
+     * (diana/selector_track.h): asi la cadena selector -> status -> backend se
+     * prueba por EJECUCION en la suite de host, con la secuencia real medida en
+     * el banco, en vez de por encontrar una llamada en este fichero. */
+    diana_selector_tracker selector;
+    diana_selector_tracker_reset(&selector);
     bool button_candidate = a->hal.button_pressed(a->hal.ctx);
     bool button_stable = button_candidate;
     uint8_t button_samples = 0;
@@ -72,17 +76,21 @@ void diana_task_inputs(void *arg)
 
         int s1 = gpio_get_level(DIANA_PIN_SELECTOR_A);
         int s2 = gpio_get_level(DIANA_PIN_SELECTOR_B);
-        int selector_raw = (s1 << 1) | s2;
-        if (selector_raw != selector_candidate) {
-            selector_candidate = selector_raw;
-            selector_samples = 1;
-        } else if (selector_samples < 3) {
-            selector_samples++;
+        diana_selector_position sel = a->selector;
+        diana_selector_event ev = diana_selector_track(
+            &selector, s1, s2, DIANA_SELECTOR_PROFILE,
+            a->hal.now_us(a->hal.ctx), &sel);
+
+        if (ev == DIANA_SEL_EV_INVALIDO) {
+            /* TRANSITO, no averia: un SPDT pasa por 1,1 mientras el comun
+             * viaja entre contactos (180-420 ms medidos en el banco). No
+             * cambia el rol ni publica nada. La politica de SELECTOR_FAULT
+             * --- invalido PERSISTENTE --- se decide en el paso 3;
+             * diana_selector_invalid_for() ya da la cifra que hara falta. */
+            ESP_LOGW(TAG, "SELECTOR GPIO15=%d GPIO16=%d en transito", s1, s2);
         }
-        if (selector_samples == 3 && selector_stable != selector_candidate) {
-            diana_selector_position sel;
-            if (diana_selector_decode(s1, s2, DIANA_SELECTOR_PROFILE, &sel) ==
-                DIANA_HAL_OK) {
+        if (ev == DIANA_SEL_EV_CAMBIO) {
+            {
                 a->selector = sel;
                 a->role = diana_role_from_selector(sel);
                 ESP_LOGI(TAG, "SELECTOR GPIO15=%d GPIO16=%d mode=%s", s1, s2,
@@ -101,11 +109,15 @@ void diana_task_inputs(void *arg)
                 if (!principal) diana_coordinator_reset(&a->coord);
                 diana_platform_mqtt_set_coordinator(a->pf, principal,
                                                     a->id.system_id);
-            } else {
-                ESP_LOGE(TAG, "SELECTOR GPIO15=%d GPIO16=%d mode=INVALID_SELECTOR",
-                         s1, s2);
+
+                /* PROPAGACION INMEDIATA (paso 2.5). `module-status` lleva el
+                 * selector y el rol, y es lo que el backend usara para elegir
+                 * coordinador. Sin publicar aqui, el cambio no se conoceria
+                 * hasta el siguiente status espontaneo --- y `status` es
+                 * RETENIDO, no periodico ---, con lo que la eleccion
+                 * automatica no reaccionaria a mover el interruptor. */
+                diana_publish_status(a);
             }
-            selector_stable = selector_candidate;
         }
 
         bool button = a->hal.button_pressed(a->hal.ctx);

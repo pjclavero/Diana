@@ -69,6 +69,14 @@ def suscripciones() -> tuple[set[str], list[str]]:
     sufijos = set(re.findall(r'"([^"]+)"', m.group(1))) if m else set()
     absolutos = re.findall(r'esp_mqtt_client_subscribe\(\s*p->mqtt\s*,\s*"([^"]+)"',
                            txt)
+    # Suscripciones CONSTRUIDAS: el topico se arma con snprintf y luego se pasa
+    # por variable. La del coordinador es asi porque lleva el system_id. Se
+    # recogen las cadenas de formato que se suscriben, para no dar por ausente
+    # una suscripcion que existe --- y sin aflojar la regla: si nadie se
+    # suscribe, tampoco aparecera aqui.
+    if re.search(r"esp_mqtt_client_subscribe\(\s*p->mqtt\s*,\s*topic\b", txt):
+        absolutos += [f.replace("%s", "+")
+                      for f in re.findall(r'snprintf\(topic[^;]*?"([^"]*%s[^"]*)"', txt, re.S)]
     return sufijos, absolutos
 
 

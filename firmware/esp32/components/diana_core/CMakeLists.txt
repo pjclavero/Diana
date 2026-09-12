@@ -34,6 +34,10 @@ idf_component_register(
          # main/ por el mismo motivo que mqtt_reasm.c: aqui la suite de host
          # puede ejercitar la autoridad, el dedup y el nonce sin MQTT.
          "src/coordinator.c"
+         # Antirrebote y deteccion de cambio del selector fisico. En el
+         # nucleo para que la cadena selector -> status -> backend se pruebe
+         # por EJECUCION y no por encontrar una llamada en un fichero.
+         "src/selector_track.c"
          "src/ota.c"
          # --- D1b · plano DEVICE_MANAGEMENT firmado -------------------------
          # Estos seis estaban en el arbol pero NO aqui: se compilaban solo con
