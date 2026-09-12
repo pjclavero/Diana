@@ -36,6 +36,18 @@ else
   echo "PROJECT_VER=(sin declarar: el binario NO sera identificable)"
 fi
 
+# Perfil de configuracion. El del BANCO apunta al broker real de VM109; sin el,
+# el binario sale con el host por defecto (mqtt.diana.local), que no resuelve
+# desde la red del banco, y la placa se queda dando vueltas en
+# ESP_ERR_ESP_TLS_CANNOT_RESOLVE_HOSTNAME. Paso por aqui una vez.
+if [ -n "${DIANA_SDKCONFIG_DEFAULTS:-}" ]; then
+  export SDKCONFIG_DEFAULTS="$DIANA_SDKCONFIG_DEFAULTS"
+  echo "SDKCONFIG_DEFAULTS=$SDKCONFIG_DEFAULTS"
+  # El sdkconfig ya generado GANA a los defaults: si se deja, el perfil nuevo
+  # no entra y el binario sale con la configuracion anterior sin avisar.
+  rm -f sdkconfig
+fi
+
 idf.py set-target esp32s3 >/tmp/settarget.log 2>&1
 echo "SETTARGET_RC=$?"
 
