@@ -479,8 +479,51 @@ static int mqtt_do_subscribe(struct diana_platform *p)
         return -1;
     }
     p->sub_sent++;
+
+    /* ENTRADA DEL COORDINADOR, condicional al rol. Un satelite no se suscribe:
+     * no es que ignore las ordenes de sistema, es que no las recibe. */
+    if (p->coord_active && p->coord_system_id[0]) {
+        snprintf(topic, sizeof(topic), "targets/v1/system/%s/command",
+                 p->coord_system_id);
+        if (esp_mqtt_client_subscribe(p->mqtt, topic, 1) < 0) {
+            ESP_LOGE(TAG, "[MQTT] SUBSCRIBE rechazado para '%s'", topic);
+            return -1;
+        }
+        p->sub_sent++;
+        ESP_LOGI(TAG, "[OK] COORDINADOR: suscrito a %s", topic);
+    }
+
     ESP_LOGI(TAG, "[OK] %u suscripciones emitidas tras el CONNACK",
              (unsigned)p->sub_sent);
+    return 0;
+}
+
+int diana_platform_mqtt_set_coordinator(struct diana_platform *p, bool active,
+                                        const char *system_id)
+{
+    if (!p) return -1;
+    if (active && (!system_id || !system_id[0])) return -1;
+
+    bool antes = p->coord_active;
+    p->coord_active = active;
+    if (active) snprintf(p->coord_system_id, sizeof(p->coord_system_id), "%s",
+                         system_id);
+    if (antes == active) return 0;          /* sin cambio de rol */
+    if (!p->mqtt || !p->mqtt_connected) return 0;  /* ya se emitira en el CONNACK */
+
+    char topic[DIANA_TOPIC_MAXLEN];
+    snprintf(topic, sizeof(topic), "targets/v1/system/%s/command",
+             p->coord_system_id);
+    if (active) {
+        if (esp_mqtt_client_subscribe(p->mqtt, topic, 1) < 0) return -1;
+        p->sub_sent++;
+        ESP_LOGI(TAG, "[OK] COORDINADOR activo: suscrito a %s", topic);
+    } else {
+        /* DESUSCRIBIR de verdad: dejar de procesar y seguir recibiendo seria
+         * una autoridad silenciosa a un SIGHUP de distancia de reactivarse. */
+        if (esp_mqtt_client_unsubscribe(p->mqtt, topic) < 0) return -1;
+        ESP_LOGW(TAG, "COORDINADOR inactivo: desuscrito de %s", topic);
+    }
     return 0;
 }
 

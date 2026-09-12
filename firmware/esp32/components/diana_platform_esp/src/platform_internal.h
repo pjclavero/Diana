@@ -47,6 +47,13 @@ struct diana_platform {
     char               sub_module_id[64];
     volatile bool      sub_requested;
     volatile uint32_t  sub_sent;       /**< suscripciones emitidas (diagnostico) */
+    /* Rol de COORDINADOR. La suscripcion a `system/{id}/command` es
+     * CONDICIONAL: solo la emite un modulo cuyo selector estable es PRINCIPAL.
+     * Se guarda la intencion porque las suscripciones se reemiten en CADA
+     * CONNACK --- depender de la sesion persistente seria depender de un estado
+     * que no controlamos. */
+    char               coord_system_id[DIANA_ID_MAXLEN];
+    volatile bool      coord_active;
     /* Reensamblado de payloads fragmentados. El estado y el mensaje a medias
      * tienen que SOBREVIVIR entre eventos MQTT_EVENT_DATA, asi que viven aqui
      * y no en la pila del manejador --- que es exactamente por donde se perdia

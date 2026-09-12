@@ -7,6 +7,7 @@
 
 #include "diana/command.h"
 #include "diana/config.h"
+#include "diana/coordinator.h"
 #include "diana/event.h"
 #include "diana/identity.h"
 #include "diana/led.h"
@@ -40,6 +41,10 @@ typedef struct {
 
     diana_selector_position selector;
     diana_module_role  role;
+
+    /* Estado del rol de COORDINADOR. Solo se usa si el selector estable es
+     * PRINCIPAL; en SATELITE el modulo ni siquiera esta suscrito a la entrada. */
+    diana_coordinator  coord;
 
     bool               identify_active;
     bool               identify_button_active;
@@ -140,6 +145,12 @@ void diana_publish_maintenance_result(diana_app *a, const char *request_id,
                                       const char *component, int target_index,
                                       uint32_t duration_ms);
 void diana_publish_config_reported(diana_app *a);
+
+/* COORDINADOR · las dos publicaciones que emite un modulo PRINCIPAL.
+ * `module/{id}/command` lleva las ordenes de juego a los modulos y
+ * `system/{id}/game/state` declara la partida (RETENIDO, contrato). */
+void diana_publish_module_command(diana_app *a, const diana_coord_plan *plan);
+void diana_publish_game_state(diana_app *a, const diana_coord_plan *plan);
 
 /* Comandos entrantes (app_commands.c). */
 void diana_handle_message(diana_app *a, const diana_platform_rx *rx);

@@ -311,17 +311,10 @@ mutate "M29 descarte silencioso de diagnostico" \
   '    else   ESP_LOGE(TAG, "diagnostico '"'"'%s'"'"' NO serializado: se descarta",
                     diana_diagnostic_kind_str(d.kind));
     free(buf);
-}
-
-void diana_publish_maintenance_result' \
+}' \
   '    free(buf);
-}
-
-void diana_publish_maintenance_result' \
-  "$RETURN" '    free(buf);
-}
-
-void diana_publish_maintenance_result'
+}' \
+  "$RETURN" 'NO serializado'
 
 AUTH='python3 firmware/esp32/tools/check_authority_exclusion.py'
 
@@ -389,6 +382,39 @@ mutate "M35 nonce del coordinador estancado" \
 }
 
 /** Manda a SAFE'
+
+WIRING='python3 firmware/esp32/tools/check_coordinator_wiring.py'
+
+# M36 · se cae la suscripcion a la entrada del coordinador: el rol queda escrito
+# y sin transporte, que es el defecto que ya tuvieron provision, config/desired
+# y maintenance/command. La suite de host sigue VERDE.
+mutate "M36 coordinador sin suscripcion" \
+  "$PESP/src/mqtt_client.c" \
+  '    if (p->coord_active && p->coord_system_id[0]) {' \
+  '    if (false && p->coord_active && p->coord_system_id[0]) {' \
+  "$WIRING" 'if (false && p->coord_active'
+
+# M37 · un SATELITE tambien se suscribe: la autoridad deja de depender del
+# selector y cualquier modulo recibiria ordenes de sistema.
+mutate "M37 satelite suscrito a la entrada de juego" \
+  "$MAIN/app_tasks.c" \
+  '                bool principal = (sel == DIANA_SELECTOR_PRINCIPAL);' \
+  '                bool principal = true;' \
+  "$WIRING" 'bool principal = true;'
+
+# M38 · el handler deja de pasar el rol al nucleo y le dice que siempre manda.
+mutate "M38 autoridad fija en el handler" \
+  "$MAIN/app_commands.c" \
+  '    bool principal = (a->selector == DIANA_SELECTOR_PRINCIPAL);' \
+  '    bool principal = true;' \
+  "$WIRING" 'bool principal = true;'
+
+# M39 · desaparece la publicacion del comando: el coordinador decide y no emite.
+mutate "M39 coordinador que no publica" \
+  "$MAIN/app_commands.c" \
+  '    if (plan.emit_command) diana_publish_module_command(a, &plan);' \
+  '    if (false) diana_publish_module_command(a, &plan);' \
+  "$WIRING" 'if (false) diana_publish_module_command(a, &plan);'
 
 printf '\n=================================================\n'
 printf ' CALIBRACION: %d mutantes cazados, %d huecos\n' "$pass" "$fail"

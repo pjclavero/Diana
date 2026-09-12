@@ -157,6 +157,12 @@ contracts:
 # exclusion EN EL MODULO, que es la ultima autoridad. Contador PROPIO.
 	@$(PYTHON) $(FW)/tools/check_authority_exclusion.py
 
+# COORDINATOR_WIRING. El nucleo de decision se prueba en host; el CABLEADO vive
+# en main/ y en el componente ESP, que no se compilan alli. Un rol presente pero
+# inalcanzable seria peor que no tenerlo: el backend elegiria coordinador, el
+# ACL le daria permisos, y no coordinaria. Contador PROPIO.
+	@$(PYTHON) $(FW)/tools/check_coordinator_wiring.py
+
 # ADR-0007. Valida los payloads que llevan `detection_method` contra el contrato
 # de ESTE arbol. Sin descarga ni referencia git: funciona en un clon limpio.
 # La guarda de abajo no es cosmetica: si alguien retira el contrato ADR-0007 de

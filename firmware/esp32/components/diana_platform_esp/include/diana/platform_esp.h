@@ -62,6 +62,19 @@ int diana_platform_mqtt_start(diana_platform *p, const char *client_id,
 /** Suscribe a los topicos de entrada del modulo (command, config, ota, game). */
 int diana_platform_mqtt_subscribe(diana_platform *p, const char *module_id);
 
+/**
+ * Activa o desactiva el rol de COORDINADOR en el transporte.
+ *
+ * Con `active` true suscribe a `system/{system_id}/command`, que es la entrada
+ * del coordinador; con false se DESUSCRIBE y deja de recibirla. Es lo que hace
+ * que mover el selector a SATELITE deje de coordinar de inmediato en vez de
+ * seguir escuchando ordenes de juego.
+ *
+ * La intencion se recuerda: las suscripciones se reemiten en cada CONNACK.
+ */
+int diana_platform_mqtt_set_coordinator(diana_platform *p, bool active,
+                                        const char *system_id);
+
 /* Capacidad del receptor MQTT, en bytes de payload.
  *
  * NO es un numero redondo elegido a ojo: `tools/check_mqtt_rx_capacity.py`

@@ -8,6 +8,8 @@
  */
 #include "app.h"
 
+#include "diana/coordinator.h"
+
 #include <stdio.h>
 #include <string.h>
 
@@ -568,6 +570,101 @@ static void handle_maintenance(diana_app *a, const cJSON *root,
 }
 
 /**
+ * Sobre de `system/{id}/command` (system-command.schema.json).
+ *
+ * Es la ENTRADA del coordinador. El nucleo no toca JSON: aqui se traduce a
+ * `diana_system_command` y alli se decide. `targets` se acota a las dianas de
+ * UN modulo, que es el alcance del camino minimo; una lista mayor se rechaza en
+ * vez de truncarse, porque truncar una partida en silencio seria peor que no
+ * atenderla.
+ */
+static bool parse_system_command(const cJSON *root, diana_system_command *out)
+{
+    memset(out, 0, sizeof(*out));
+
+    const cJSON *sv = cJSON_GetObjectItemCaseSensitive(root, "schema_version");
+    const cJSON *ci = cJSON_GetObjectItemCaseSensitive(root, "command_id");
+    const cJSON *si = cJSON_GetObjectItemCaseSensitive(root, "system_id");
+    const cJSON *ac = cJSON_GetObjectItemCaseSensitive(root, "action");
+    const cJSON *ia = cJSON_GetObjectItemCaseSensitive(root, "issued_at_ms");
+    const cJSON *ex = cJSON_GetObjectItemCaseSensitive(root, "expires_in_ms");
+    const cJSON *no = cJSON_GetObjectItemCaseSensitive(root, "nonce");
+    const cJSON *is = cJSON_GetObjectItemCaseSensitive(root, "issuer");
+
+    if (!cJSON_IsNumber(sv) || !cJSON_IsString(ci) || !cJSON_IsString(si) ||
+        !cJSON_IsString(ac) || !cJSON_IsNumber(ia) || !cJSON_IsNumber(ex) ||
+        !cJSON_IsNumber(no) || !cJSON_IsString(is))
+        return false;
+
+    if (diana_system_action_parse(ac->valuestring, &out->action) != 0) return false;
+    if (diana_issuer_parse(is->valuestring, &out->issuer) != 0) return false;
+
+    out->schema_version = (uint32_t)sv->valuedouble;
+    snprintf(out->command_id, sizeof(out->command_id), "%s", ci->valuestring);
+    snprintf(out->system_id, sizeof(out->system_id), "%s", si->valuestring);
+    out->issued_at_ms = (uint64_t)ia->valuedouble;
+    out->expires_in_ms = (uint32_t)ex->valuedouble;
+    out->nonce = (uint64_t)no->valuedouble;
+
+    const cJSON *g = cJSON_GetObjectItemCaseSensitive(root, "game");
+    if (cJSON_IsObject(g)) {
+        const cJSON *gi = cJSON_GetObjectItemCaseSensitive(g, "game_id");
+        const cJSON *ri = cJSON_GetObjectItemCaseSensitive(g, "round_id");
+        if (cJSON_IsString(gi)) snprintf(out->game_id, sizeof(out->game_id), "%s",
+                                         gi->valuestring);
+        if (cJSON_IsString(ri)) snprintf(out->round_id, sizeof(out->round_id), "%s",
+                                         ri->valuestring);
+        const cJSON *tg = cJSON_GetObjectItemCaseSensitive(g, "targets");
+        if (cJSON_IsArray(tg)) {
+            int n = cJSON_GetArraySize(tg);
+            if (n > DIANA_COORD_MAX_TARGETS) return false;
+            const cJSON *it = NULL;
+            cJSON_ArrayForEach(it, tg) {
+                const cJSON *mi = cJSON_GetObjectItemCaseSensitive(it, "module_id");
+                const cJSON *ti = cJSON_GetObjectItemCaseSensitive(it, "target_index");
+                if (!cJSON_IsString(mi) || !cJSON_IsNumber(ti)) return false;
+                snprintf(out->targets[out->target_count].module_id,
+                         DIANA_ID_MAXLEN, "%s", mi->valuestring);
+                out->targets[out->target_count].target_index =
+                    (uint8_t)ti->valueint;
+                out->target_count++;
+            }
+        }
+        out->has_game = (out->target_count > 0);
+    }
+    return true;
+}
+
+/**
+ * Atiende una orden de sistema. SOLO llega aqui un modulo suscrito, y solo se
+ * suscribe el que es PRINCIPAL: la autoridad se comprueba igualmente en el
+ * nucleo, porque el transporte no es una defensa.
+ */
+static void handle_system_command(diana_app *a, const cJSON *root)
+{
+    diana_system_command cmd;
+    if (!parse_system_command(root, &cmd)) {
+        diana_publish_diagnostic(a, DIANA_DIAG_SCHEMA_REJECTED, DIANA_SEV_WARNING,
+                                 "orden de sistema con sobre incompleto");
+        return;
+    }
+
+    bool principal = (a->selector == DIANA_SELECTOR_PRINCIPAL);
+    diana_coord_plan plan;
+    diana_coord_result r = diana_coordinator_on_system_command(
+        &a->coord, principal, a->id.system_id, &cmd, &plan);
+
+    if (r != DIANA_COORD_OK) {
+        ESP_LOGW(TAG, "orden de sistema '%s' no atendida (%d)",
+                 diana_system_action_str(cmd.action), (int)r);
+        return;
+    }
+
+    if (plan.emit_command) diana_publish_module_command(a, &plan);
+    if (plan.emit_state) diana_publish_game_state(a, &plan);
+}
+
+/**
  * DESPACHADOR UNICO de mensajes entrantes.
  *
  * El enrutado es EXACTO (diana_topic_route, tabla contractual espejo de
@@ -615,6 +712,15 @@ void diana_handle_message(diana_app *a, const diana_platform_rx *rx)
     if (!root) {
         diana_publish_diagnostic(a, DIANA_DIAG_SCHEMA_REJECTED, DIANA_SEV_WARNING,
                                  "payload no es JSON valido");
+        return;
+    }
+
+    if (kind == DIANA_ROUTE_SYSTEM_COMMAND) {
+        /* Entrada del COORDINADOR. Un satelite no se suscribe, asi que en su
+         * caso esto no se alcanza; si llegara igualmente, el nucleo lo rechaza
+         * por autoridad. */
+        handle_system_command(a, root);
+        cJSON_Delete(root);
         return;
     }
 

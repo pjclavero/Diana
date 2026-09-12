@@ -401,6 +401,13 @@ void app_main(void)
                  * pierde -- que es exactamente por lo que el modulo nunca
                  * recibia config/desired (CONFIG_RECONCILIATION). */
                 diana_platform_mqtt_subscribe(a->pf, a->id.module_id);
+                /* Rol de COORDINADOR segun el selector leido en el arranque.
+                 * Se ANOTA aqui igual que el resto: la emision va en el
+                 * CONNACK. Un satelite no anota nada y por tanto no se
+                 * suscribira a la entrada de ordenes de sistema. */
+                diana_platform_mqtt_set_coordinator(
+                    a->pf, a->selector == DIANA_SELECTOR_PRINCIPAL,
+                    a->id.system_id);
             }
         } else {
             ESP_LOGW(TAG, "MQTT deshabilitado hasta aprovisionar module_id");

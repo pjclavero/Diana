@@ -87,6 +87,20 @@ void diana_task_inputs(void *arg)
                 a->role = diana_role_from_selector(sel);
                 ESP_LOGI(TAG, "SELECTOR GPIO15=%d GPIO16=%d mode=%s", s1, s2,
                          diana_selector_str(sel));
+
+                /* ROL DE COORDINADOR, atado al selector ESTABLE (tres muestras
+                 * iguales). El transito entre contactos de un SPDT pasa por
+                 * 1,1 durante 180-420 ms --- medido en el banco --- y NO
+                 * concede autoridad: `diana_selector_decode` lo rechaza y esta
+                 * rama no se ejecuta.
+                 *
+                 * Al salir de PRINCIPAL se DESUSCRIBE y se olvida la partida:
+                 * dejar de coordinar tiene que ser inmediato, no "dejar de
+                 * atender pero seguir escuchando". */
+                bool principal = (sel == DIANA_SELECTOR_PRINCIPAL);
+                if (!principal) diana_coordinator_reset(&a->coord);
+                diana_platform_mqtt_set_coordinator(a->pf, principal,
+                                                    a->id.system_id);
             } else {
                 ESP_LOGE(TAG, "SELECTOR GPIO15=%d GPIO16=%d mode=INVALID_SELECTOR",
                          s1, s2);
@@ -193,6 +207,63 @@ void diana_publish_command_rejected(diana_app *a, const char *command_id,
     if (n) publish(a, a->topic_diagnostic, buf, n, DIANA_TOPIC_DIAGNOSTIC);
     else   ESP_LOGE(TAG, "diagnostico '%s' NO serializado: se descarta",
                     diana_diagnostic_kind_str(d.kind));
+    free(buf);
+}
+
+void diana_publish_module_command(diana_app *a, const diana_coord_plan *plan)
+{
+    if (!a || !plan || !plan->emit_command) return;
+
+    char command_id[DIANA_UUID_LEN];
+    diana_uuid4(&a->hal, command_id);
+
+    char *buf = alloc_message_buffer();
+    if (!buf) return;
+    /* TTL corto: una orden de juego que llega tarde ya no sirve, y el receptor
+     * la rechazaria por 6-bis. 5 s cubre de sobra la red del banco. */
+    size_t n = diana_coord_module_command_json(
+        plan, command_id, a->hal.epoch_ms ? a->hal.epoch_ms(a->hal.ctx) : 0,
+        5000, buf, DIANA_MSG_JSON_MAX);
+    if (n) {
+        char topic[DIANA_TOPIC_MAXLEN];
+        diana_topic_build(topic, sizeof(topic), DIANA_TOPIC_COMMAND,
+                          plan->command_module_id);
+        publish(a, topic, buf, n, DIANA_TOPIC_COMMAND);
+        ESP_LOGI(TAG, "COORDINADOR -> %s: diana %u activa",
+                 plan->command_module_id, (unsigned)plan->active_target_index);
+    } else {
+        ESP_LOGE(TAG, "comando de coordinador NO serializado: se descarta");
+    }
+    free(buf);
+}
+
+void diana_publish_game_state(diana_app *a, const diana_coord_plan *plan)
+{
+    if (!a || !plan || !plan->emit_state) return;
+
+    char *buf = alloc_message_buffer();
+    if (!buf) return;
+    uint64_t ahora = a->hal.now_us(a->hal.ctx);
+    size_t n = diana_coord_game_state_json(
+        &a->coord, plan, a->id.system_id, a->id.module_id,
+        ahora - a->boot_us, ahora, ahora - a->boot_us,
+        a->id.boot_id, buf, DIANA_MSG_JSON_MAX);
+    if (n) {
+        char topic[DIANA_TOPIC_MAXLEN];
+        diana_system_topic_build(topic, sizeof(topic), DIANA_SYS_TOPIC_GAME_STATE,
+                                 a->id.system_id);
+        /* QoS 1 y RETENIDO por contrato (game-state.schema.json). No pasa por
+         * diana_topic_retain() porque ese enum describe los topicos de MODULO:
+         * meter game/state alli permitiria construir `module/x/game/state`, que
+         * no existe. */
+        diana_hal_mqtt_msg msg = {
+            .topic = topic, .payload = buf, .payload_len = n,
+            .qos = 1, .retain = true,
+        };
+        a->hal.mqtt_publish(a->hal.ctx, &msg);
+    } else {
+        ESP_LOGE(TAG, "game/state NO serializado: se descarta");
+    }
     free(buf);
 }
 
