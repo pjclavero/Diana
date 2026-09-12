@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { DATOS_DE_DEMOSTRACION } from "../../api";
 import "./AppShell.css";
 
-/** En modo mock los datos de negocio son de demostración (la sesión es real). */
-const DEMO_DATA = (import.meta.env.VITE_API_MODE ?? "mock") !== "real";
+/** En modo mock los datos de negocio son de demostración (la sesión es real).
+ *  Se IMPORTA ya resuelto (`src/api/index.ts`): derivarlo aquí a mano fue lo que
+ *  dejó vivo el defecto `?? "mock"` después de invertirlo en `apiMode.ts`. */
+const DEMO_DATA = DATOS_DE_DEMOSTRACION;
 
 interface NavLinkDef {
   to: string;

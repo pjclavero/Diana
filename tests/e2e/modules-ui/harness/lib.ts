@@ -313,3 +313,92 @@ export function comprobarAcl(
     });
   });
 }
+
+// ============================================================================
+// RBAC REAL, leído del artefacto que el backend está ejecutando
+// ============================================================================
+/*
+ * `server/backend/src/domain/rbac/permissions.ts` no se puede importar desde
+ * aquí (esta suite se transpila a CJS y el backend es otro proyecto con su
+ * propio `tsconfig`), y copiar la tabla a la prueba sería lo peor de todo: una
+ * copia pasa aunque el original cambie.
+ *
+ * Así que se lee el módulo YA COMPILADO dentro del contenedor del backend, que
+ * es exactamente el código que decide los 403 de este escenario. No es la
+ * fuente: es el artefacto, que es la autoridad. Se evalúa además con la propia
+ * `roleAllows` del backend, y no con un `grep` ni con una reimplementación:
+ * un `grep` daría por buena una concesión escrita de otra forma
+ * (`provisioning:*`, o el permiso metido en una lista compartida como
+ * `READ_ONLY`) y no la vería.
+ */
+export interface PermisosDelBackend {
+  ROLE: Record<string, string>;
+  ROLE_PERMISSIONS: Record<string, string[]>;
+  /** La función REAL del backend, reconstruida como llamada al contenedor. */
+  roleAllows(role: string, required: readonly string[]): boolean;
+}
+
+const RUTA_COMPILADA = "/app/dist/domain/rbac/permissions.js";
+
+export function leerPermisosDelBackend(env: Entorno): PermisosDelBackend {
+  const crudo = docker([
+    "exec",
+    env.containers.backend,
+    "node",
+    "-e",
+    `const p = require(${JSON.stringify(RUTA_COMPILADA)});
+     const roles = Object.values(p.ROLE);
+     const veredictos = {};
+     for (const r of roles) {
+       veredictos[r] = {};
+       for (const perm of ["provisioning:issue", "provisioning:read"]) {
+         veredictos[r][perm] = p.roleAllows(r, [perm]);
+       }
+     }
+     process.stdout.write(JSON.stringify({
+       ROLE: p.ROLE,
+       ROLE_PERMISSIONS: p.ROLE_PERMISSIONS,
+       veredictos,
+     }));`,
+  ]);
+
+  let datos: {
+    ROLE: Record<string, string>;
+    ROLE_PERMISSIONS: Record<string, string[]>;
+    veredictos: Record<string, Record<string, boolean>>;
+  };
+  try {
+    datos = JSON.parse(crudo);
+  } catch (e) {
+    throw new Error(
+      `No se pudo leer ${RUTA_COMPILADA} del contenedor del backend. ` +
+        `Sin la tabla RBAC real esta comprobación no mide nada, así que falla en voz alta.\n` +
+        `Salida: ${crudo.slice(0, 400)}\nCausa: ${(e as Error).message}`,
+    );
+  }
+
+  // Se exige que haya llegado algo: un `{}` bien formado colaría como «ningún
+  // rol tiene el permiso», que es justo el veredicto que se quiere comprobar.
+  const roles = Object.values(datos.ROLE ?? {});
+  if (roles.length === 0) {
+    throw new Error(`La tabla RBAC llegó vacía desde el backend: ${crudo.slice(0, 400)}`);
+  }
+
+  return {
+    ROLE: datos.ROLE,
+    ROLE_PERMISSIONS: datos.ROLE_PERMISSIONS,
+    roleAllows(role, required) {
+      const fila = datos.veredictos[role];
+      if (!fila) throw new Error(`Rol desconocido para el backend: ${role}`);
+      return required.every((perm) => {
+        if (!(perm in fila)) {
+          throw new Error(
+            `El permiso ${perm} no se consultó al backend. Añádelo a la lista de ` +
+              `\`leerPermisosDelBackend\`: evaluarlo aquí sería reimplementar \`roleAllows\`.`,
+          );
+        }
+        return fila[perm];
+      });
+    },
+  };
+}

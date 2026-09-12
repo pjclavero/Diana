@@ -8,6 +8,7 @@ import { Card, ErrorState, LoadingState } from "../../components/ui/Feedback";
 import { BackButton } from "../../components/ui/BackButton";
 import { TargetLight } from "../../components/target/TargetLight";
 import { CredencialMqttCard } from "../../components/modules/CredencialMqttCard";
+import { IdentidadRedCard } from "../../components/modules/IdentidadRedCard";
 import { rotatedTargetIndices } from "../../utils/gridRotation";
 import "./ModuleDetailPage.css";
 
@@ -157,6 +158,11 @@ export function ModuleDetailPage() {
               </>
             )}
           </Card>
+
+          {/* Identidad, red y presencia ANTES de la credencial: es la ficha que
+              contesta «¿qué módulo es éste y está vivo?», y hasta ahora la IP y
+              la MAC no se veían en ninguna pantalla del panel. */}
+          <IdentidadRedCard moduleId={moduleId} />
 
           {/* Credencial MQTT del módulo: emisión, metadatos, rotación y
               revocación. El secreto sólo existe aquí en memoria y sólo hasta

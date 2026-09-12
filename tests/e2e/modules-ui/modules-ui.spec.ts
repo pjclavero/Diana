@@ -48,6 +48,7 @@ import {
   psql,
   senalarVigilante,
   psqlUno,
+  leerPermisosDelBackend,
   type Entorno,
 } from "./harness/lib";
 
@@ -776,4 +777,298 @@ test("13 · sin el SIGHUP del vigilante, la credencial recién emitida NO autent
 
   // Nada de esto ha puesto en línea a ningún módulo.
   expect(psqlUno(env, "select count(*) from modules where online = true;")[0]).toBe("0");
+});
+
+// ============================================================================
+// 14 · ALTA, EDICIÓN y BAJA **POR NAVEGADOR** (no por API)
+// ============================================================================
+/*
+ * Esto era un hueco de MEDIDA, no de producto. La cabecera de este fichero
+ * dice —y era cierto cuando se escribió— que la pantalla de módulos «es de
+ * sólo lectura», y por eso los pasos 2 y 10 dan de alta y parchean POR API.
+ * Ya no lo es: `ModulesPage.tsx` monta `AltaModuloCard` y, dentro de cada
+ * ficha desplegada, `EdicionModuloCard` (alta, edición y baja con
+ * confirmación). Ese camino —el que va a recorrer un operador— no lo tocaba
+ * ninguna prueba.
+ *
+ * Se usa `module-03` porque está DECLARADO en
+ * `infrastructure/mosquitto/identities.json`, igual que `module-01` (paso 2) y
+ * `module-02` (paso 13): inventar un slug aquí chocaría con la invariante F-02 en cuanto alguien le añadiese
+ * una emisión de credencial a este paso.
+ *
+ * El módulo se da de baja al final, así que el invariante de cierre
+ * (`test.afterAll`) sigue valiendo — y mientras existe nunca se conecta.
+ */
+const SLUG_ALTA = "module-03";
+
+test("14 · alta, edición y baja DESDE EL NAVEGADOR se ven en PostgreSQL", async ({ page }) => {
+  const [antes] = psqlUno(env, `select count(*) from modules where slug = '${SLUG_ALTA}';`);
+  expect(antes, "el escenario no debe traer este módulo de antes").toBe("0");
+
+  await entrar(page);
+  await abrirModulos(page);
+
+  // ── ALTA ────────────────────────────────────────────────────────────────
+  const alta = page.getByRole("form", { name: "Alta de módulo" });
+  await expect(alta).toBeVisible();
+  await alta.getByLabel("Identificador MQTT (slug) *").fill(SLUG_ALTA);
+  await alta.getByLabel("Nombre visible").fill("Alta desde el panel");
+  await alta.getByLabel("Número de serie").fill("SN-PANEL-0003");
+  await alta.getByLabel("MAC (AA:BB:CC:DD:EE:FF)").fill("AA:BB:CC:DD:EE:03");
+  await alta.getByRole("button", { name: "Dar de alta" }).click();
+
+  // El veredicto sale de la BASE, no del cartel de la pantalla.
+  await expect
+    .poll(() => psql(env, `select count(*) from modules where slug = '${SLUG_ALTA}';`)[0][0], {
+      timeout: 15_000,
+    })
+    .toBe("1");
+  const creado = psqlUno(
+    env,
+    `select coalesce(friendly_name,'NULL'), coalesce(serial,'NULL'), coalesce(mac,'NULL'),
+            online, coalesce(last_seen_at::text,'NULL')
+       from modules where slug = '${SLUG_ALTA}';`,
+  );
+  expect(creado[0]).toBe("Alta desde el panel");
+  expect(creado[1]).toBe("SN-PANEL-0003");
+  expect(creado[2]).toBe("AA:BB:CC:DD:EE:03");
+  // Un alta NO enciende nada: el módulo sigue sin haber hablado nunca.
+  expect(creado[3], "dar de alta un módulo no lo pone en línea").toBe("f");
+  expect(creado[4], "dar de alta un módulo no le inventa una señal").toBe("NULL");
+
+  // ── EDICIÓN ─────────────────────────────────────────────────────────────
+  const ficha = await desplegarFicha(page, SLUG_ALTA);
+  const edicion = ficha.getByRole("form", { name: `Edición de ${SLUG_ALTA}` });
+  await expect(edicion).toBeVisible();
+  await edicion.getByLabel("Nombre visible").fill("Editado desde el panel");
+  await edicion.getByRole("button", { name: "Guardar cambios" }).click();
+
+  await expect
+    .poll(
+      () =>
+        psqlUno(env, `select coalesce(friendly_name,'NULL') from modules where slug = '${SLUG_ALTA}';`)[0],
+      { timeout: 15_000 },
+    )
+    .toBe("Editado desde el panel");
+
+  // ── BAJA (con confirmación explícita) ───────────────────────────────────
+  await ficha.getByRole("button", { name: "Dar de baja" }).click();
+  // Pedir la baja NO la ejecuta: la fila sigue ahí mientras no se confirme.
+  expect(psql(env, `select count(*) from modules where slug = '${SLUG_ALTA}';`)[0][0]).toBe("1");
+
+  await page.getByRole("button", { name: `Sí, dar de baja «${SLUG_ALTA}»` }).click();
+  await expect
+    .poll(() => psql(env, `select count(*) from modules where slug = '${SLUG_ALTA}';`)[0][0], {
+      timeout: 15_000,
+    })
+    .toBe("0");
+});
+
+// ============================================================================
+// 15 · La FICHA del módulo enseña identidad, red y presencia REALES
+// ============================================================================
+/*
+ * Hueco de PRODUCTO, cerrado en este carril: la IP, la MAC y el número de
+ * serie de un módulo no se podían ver en NINGUNA pantalla del panel.
+ *
+ *  - `GET /api/modules/overview` no los trae: `modules-overview.service.ts`
+ *    compone los items a mano y esos tres campos no están.
+ *  - La ficha los pedía por `apiClient.getModule()`, que pasa la fila por
+ *    `aModuleStatus()` — la forma del contrato MQTT, sin hueco para ellos, así
+ *    que se caían allí en silencio.
+ *
+ * Ahora `IdentidadRedCard` lee la fila cruda de `GET /api/modules/{id}`. La
+ * prueba ESCRIBE la IP por API y comprueba que es ESA la que sale en el
+ * navegador: una tarjeta que pintase un valor fijo pasaría un `toBeVisible` y
+ * fallaría esto.
+ */
+test("15 · la ficha enseña la IP, la revisión y el slug REALES de la fila, con last_seen_at NULL", async ({
+  page,
+}) => {
+  const IP = "10.77.0.42";
+  const r = await api(env, "PATCH", `/api/modules/${moduleId}`, {
+    token: adminToken,
+    body: { ip: IP, hardwareRevision: "rev-E2E" },
+  });
+  expect(r.status, `PATCH de ip/hardwareRevision es legítimo: ${JSON.stringify(r.body)}`).toBe(200);
+  // Confirmado en la BASE antes de mirar la pantalla.
+  const [ipEnBd] = psqlUno(env, `select coalesce(ip,'NULL') from modules where slug = '${SLUG}';`);
+  expect(ipEnBd).toBe(IP);
+
+  await entrar(page);
+  await page.goto(`${env.webBaseUrl}/modulos/${moduleId}`);
+
+  const tarjeta = page.locator("section").filter({ hasText: "Identidad, red y presencia" }).last();
+  await expect(tarjeta).toBeVisible({ timeout: 20_000 });
+  await expect(tarjeta).toContainText(IP);
+  await expect(tarjeta).toContainText("rev-E2E");
+  await expect(tarjeta).toContainText(SLUG);
+
+  // Presencia: nadie ha publicado nada, así que PENDIENTE y `last_seen_at`
+  // NULL — dicho con esas palabras, no con un guion ambiguo.
+  await expect(tarjeta).toContainText("pendiente");
+  await expect(tarjeta).toContainText("no ha dado señal NUNCA");
+  await expect(tarjeta).not.toContainText("en línea");
+
+  // Y las dos versiones, con el nombre EXACTO de la columna del backend.
+  await expect(tarjeta).toContainText("desired_config_version");
+  await expect(tarjeta).toContainText("reported_config_version");
+  await expect(tarjeta).toContainText("no ha reportado ninguna versión");
+
+  const fila = filaEnBd(SLUG);
+  expect(fila.reportedConfigVersion, "nadie ha reportado: sigue NULL").toBe("NULL");
+  await expect(tarjeta).toContainText(String(fila.desiredConfigVersion));
+});
+
+// ============================================================================
+// 16 · La LISTA enseña las dos versiones con el nombre del backend
+// ============================================================================
+/*
+ * Antes la ficha de la lista sólo pintaba el veredicto («aplicada»,
+ * «pendiente») y su frase. En la rama `applied` esa frase no lleva ningún
+ * número, así que el operador leía «aplicada» sin poder decir CUÁL, ni
+ * distinguir «reportada 7 = deseada 7» de «el backend dice applied con la
+ * reportada a NULL». Los dos números van ahora siempre y con el nombre de la
+ * columna, para poder casarlos con `psql` sin traducir nada.
+ */
+test("16 · la lista pinta desired_config_version y reported_config_version y casan con la BD", async ({
+  page,
+}) => {
+  const fila = filaEnBd(SLUG);
+
+  await entrar(page);
+  await abrirModulos(page);
+  const ficha = await desplegarFicha(page, SLUG);
+
+  await expect(ficha).toContainText("desired_config_version");
+  await expect(ficha).toContainText("reported_config_version");
+
+  const texto = (await ficha.innerText()).replace(/\s+/g, " ");
+  // La DESEADA, con el valor real de la base.
+  expect(texto, `la deseada de la BD es ${fila.desiredConfigVersion}`).toContain(
+    `desired_config_version: v${fila.desiredConfigVersion}`,
+  );
+  // La REPORTADA es NULL y se escribe `null`, no «—» ni «v0»: nadie la ha
+  // reportado, y eso no es lo mismo que haber reportado la versión cero.
+  expect(fila.reportedConfigVersion).toBe("NULL");
+  expect(texto).toContain("reported_config_version: null");
+  expect(texto).not.toContain("reported_config_version: v0");
+});
+
+// ============================================================================
+// 17 · `provisioning:issue` / `provisioning:read` no los tiene NINGÚN rol
+// ============================================================================
+/*
+ * Es deliberado y se COMPRUEBA, no se cambia. Dos mitades:
+ *
+ *  (a) Sobre la tabla RBAC REAL que el backend está ejecutando, evaluada con
+ *      su propia `roleAllows` (ver `leerPermisosDelBackend` en `harness/lib.ts`).
+ *      No con un `grep`: un `grep` daría por buena una concesión escrita de
+ *      otra forma (`provisioning:*`, o el permiso metido en una lista
+ *      compartida como `READ_ONLY`) y no la vería.
+ *  (b) Sobre la API real: el usuario `consulta` recibe 403 en las dos rutas y
+ *      la base no cambia.
+ *
+ * Si alguien concede `provisioning:issue` a un rol, (a) se pone roja diciendo
+ * exactamente qué rol lo ganó.
+ */
+test("17 · sólo el administrador (por su «*») alcanza provisioning:issue/read", async () => {
+  // ── (a) la tabla real, evaluada ─────────────────────────────────────────
+  const { ROLE, ROLE_PERMISSIONS, roleAllows } = leerPermisosDelBackend(env);
+  const roles = Object.values(ROLE);
+  expect(roles.length, "se esperaban los 7 roles reales").toBe(7);
+
+  for (const permiso of ["provisioning:issue", "provisioning:read"]) {
+    const conPermiso = roles.filter((r) => roleAllows(r, [permiso]));
+    expect(
+      conPermiso,
+      `${permiso} sólo debe alcanzarlo el administrador, y lo alcanzan: ${conPermiso.join(", ")}`,
+    ).toEqual([ROLE.ADMINISTRADOR]);
+  }
+
+  // Y lo alcanza por el COMODÍN, no por una concesión literal: si algún día
+  // aparece escrita, esto lo dice en vez de dejarlo pasar.
+  for (const [rol, permisos] of Object.entries(ROLE_PERMISSIONS)) {
+    const literales = permisos.filter((p) => p.startsWith("provisioning"));
+    expect(literales, `${rol} tiene concesiones literales de provisioning: ${literales.join(", ")}`).toEqual(
+      [],
+    );
+  }
+  expect(ROLE_PERMISSIONS[ROLE.ADMINISTRADOR]).toContain("*");
+
+  // ── (b) la API real ─────────────────────────────────────────────────────
+  const tokenConsulta = await login(env, env.viewerUsername, env.viewerPassword);
+  const antes = filaEnBd(SLUG);
+
+  const lectura = await api(env, "GET", `/api/provisioning/modules/${SLUG}/state`, {
+    token: tokenConsulta,
+  });
+  expect(lectura.status, `provisioning:read sin permiso: ${JSON.stringify(lectura.body)}`).toBe(403);
+
+  const emision = await api(env, "POST", `/api/provisioning/modules/${SLUG}/orders`, {
+    token: tokenConsulta,
+    body: { action: "rotate_credential", mode: "observational_only" },
+  });
+  expect(emision.status, `provisioning:issue sin permiso: ${JSON.stringify(emision.body)}`).toBe(403);
+
+  // Rechazar no basta: la base no se movió.
+  expect(filaEnBd(SLUG)).toEqual(antes);
+});
+
+// ============================================================================
+// 18 · El PANEL SERVIDO no lleva datos de demostración dentro
+// ============================================================================
+/*
+ * `RUNTIME_MOCK_DEPENDENCY` comprobado sobre el ARTEFACTO que el navegador se
+ * descarga, no sobre el código fuente.
+ *
+ * El panel se compila con `VITE_API_MODE=real` y `apiMode.ts` prohíbe `mock` en
+ * una build de producción — dos guardas que impiden ARRANCAR en modo
+ * demostración. Pero `vite.config.ts` prometía además que «el bundle de
+ * producción con el adaptador de demostración dentro no llega a existir», y eso
+ * NO era cierto: `src/api/index.ts` elegía el adaptador con una LLAMADA
+ * (`resolverModoApi(...)`), que Rollup no puede plegar, así que `mockAdapter` →
+ * `mockData` viajaba entero al navegador (medido antes del arreglo:
+ * `grep -c "Sistema de demostración" dist/assets/*.js` → 1).
+ *
+ * Aquí se descarga el JS REAL que sirve nginx y se comprueba que los literales
+ * del juego de datos inventados no están. Falsable: revierte el pliegue por
+ * `import.meta.env.PROD` de `src/api/index.ts`, reconstruye la imagen del panel
+ * y esta prueba vuelve a ponerse roja.
+ */
+test("18 · el bundle que sirve el panel real NO contiene el juego de datos de demostración", async ({
+  request,
+}) => {
+  const indice = await request.get(`${env.webBaseUrl}/`);
+  expect(indice.status()).toBe(200);
+  const html = await indice.text();
+
+  const rutas = [...html.matchAll(/src="([^"]+\.js)"/g)].map((m) => m[1]);
+  expect(rutas.length, `el index.html no referencia ningún JS:\n${html}`).toBeGreaterThan(0);
+
+  let bytes = 0;
+  const encontrados: string[] = [];
+  // Literales EXCLUSIVOS de `src/api/mockData.ts`. No se busca la palabra
+  // «mock» a secas: aparece legítimamente en el texto del guardián
+  // («CONFIGURACIÓN PROHIBIDA: VITE_API_MODE=mock…»), que SÍ tiene que estar.
+  const literales = ["Sistema de demostración", "module-05", "Jugador de demostración"];
+
+  for (const ruta of rutas) {
+    const r = await request.get(new URL(ruta, env.webBaseUrl).toString());
+    expect(r.status(), `no se pudo descargar ${ruta}`).toBe(200);
+    const js = await r.text();
+    bytes += js.length;
+    for (const lit of literales) if (js.includes(lit)) encontrados.push(`${lit} (en ${ruta})`);
+  }
+
+  // Control de que la prueba MIDIÓ algo: si no se descargó bundle, un `[]`
+  // vacío de coincidencias no significaría nada.
+  expect(bytes, "no se llegó a descargar el bundle: la prueba no habría medido nada").toBeGreaterThan(
+    50_000,
+  );
+  // Y el guardián SÍ tiene que viajar: es la prueba de que se está mirando el
+  // bundle del panel y no una página cualquiera.
+  expect(encontrados, `el panel sirve datos de demostración al navegador: ${encontrados.join("; ")}`).toEqual(
+    [],
+  );
 });

@@ -157,6 +157,20 @@ export function ModulesPage() {
   );
 }
 
+/**
+ * Versión de configuración tal cual, sin adornar.
+ *
+ * `null` es un dato REAL del backend («el módulo nunca ha reportado ninguna»)
+ * y se escribe `null`; `undefined` es «el backend no me lo ha mandado» y se
+ * escribe «sin dato». Pintar los dos como «—» fue lo que permitió que la ficha
+ * dijera «aplicada» sin que nadie pudiera comprobar contra qué.
+ */
+export function formatearVersion(v: number | string | null | undefined): string {
+  if (v === undefined) return "sin dato";
+  if (v === null) return "null";
+  return `v${v}`;
+}
+
 /** Clase CSS de la insignia por estado. `stale` NO comparte color con `online`. */
 const CLASE_INSIGNIA: Record<EstadoModulo, string> = {
   online: "badge--ok",
@@ -195,6 +209,20 @@ function ModuleRow({ module: m, ahora, expanded, onToggle, onCambiado }: { modul
           <p>{diag.motivo}</p>
           <p>
             Configuración: <strong>{config.estado}</strong> — {config.motivo}
+          </p>
+          {/* LAS DOS VERSIONES, SIEMPRE Y CON EL NOMBRE DEL BACKEND.
+              Antes sólo se pintaba el veredicto (`aplicada`/`pendiente`) y su
+              frase, y en la rama `applied` esa frase no lleva ningún número:
+              el operador veía «aplicada» sin poder decir CUÁL. Peor aún, no
+              había forma de distinguir «reportada 7 = deseada 7» de «el
+              backend dice applied y la reportada está a NULL», que es
+              exactamente el desacuerdo que hay que poder ver.
+              `null`/`undefined` se escriben como tales: un «—» ambiguo
+              volvería a mezclar «no lo ha reportado nunca» con «no lo sé». */}
+          <p className="module-row__versions">
+            <code>desired_config_version</code>: <strong>{formatearVersion(m.desiredConfigVersion)}</strong>{" "}
+            · <code>reported_config_version</code>:{" "}
+            <strong>{formatearVersion(m.reportedConfigVersion)}</strong>
           </p>
           <p>
             Dueño: {m.owner ? <strong>{m.owner.displayName || m.owner.username}</strong> : <em>sin vincular</em>} · Última señal:{" "}
