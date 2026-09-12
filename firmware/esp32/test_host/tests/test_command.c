@@ -355,7 +355,10 @@ int run_command(void)
          * es lo unico que separa "diagnosticable" de "ladrillo mudo". */
         struct { diana_maintenance_type t; diana_maintenance_category c; } esperado[] = {
             { DIANA_MNT_REQUEST_TELEMETRY, DIANA_MNT_CAT_READ },
-            { DIANA_MNT_IDENTIFY,          DIANA_MNT_CAT_READ },
+            /* P1.5: identify es ACT, no read. Ilumina las nueve dianas y
+             * puede pisar la senalizacion del coordinador; llamarlo "lectura"
+             * era la categoria ambigua que rompia la separacion de autoridad. */
+            { DIANA_MNT_IDENTIFY,          DIANA_MNT_CAT_ACT },
             { DIANA_MNT_QUERY_VERSION,     DIANA_MNT_CAT_READ },
             { DIANA_MNT_QUERY_STATUS,      DIANA_MNT_CAT_READ },
             { DIANA_MNT_LED_TEST,          DIANA_MNT_CAT_ACT },
@@ -372,8 +375,12 @@ int run_command(void)
         /* read: se acepta sin reloj y aunque haya vencido. */
         CHECK(diana_maintenance_clock_gate(DIANA_MNT_QUERY_STATUS, false, false),
               "read sin reloj se ACEPTA (si no, un modulo sin hora es indiagnosticable)");
-        CHECK(diana_maintenance_clock_gate(DIANA_MNT_IDENTIFY, false, true),
+        CHECK(diana_maintenance_clock_gate(DIANA_MNT_QUERY_VERSION, false, true),
               "read vencida se ACEPTA igual");
+        CHECK(!diana_maintenance_clock_gate(DIANA_MNT_IDENTIFY, false, false),
+              "identify SIN reloj se rechaza: es act y no tiene excepcion (P1.5)");
+        CHECK(diana_maintenance_clock_gate(DIANA_MNT_IDENTIFY, true, false),
+              "identify con reloj valido se acepta");
 
         /* act: las dos condiciones, por separado y juntas. */
         CHECK(diana_maintenance_clock_gate(DIANA_MNT_LED_TEST, true, false),
@@ -388,6 +395,24 @@ int run_command(void)
         /* safety: parar algo no puede depender de tener la hora. */
         CHECK(diana_maintenance_clock_gate(DIANA_MNT_ABORT_CALIBRATION, false, true),
               "safety se ACEPTA sin reloj y vencida");
+
+        /* P1.6 · que ordenes modifican una salida fisica. Es la frontera con
+         * la autoridad de juego: con partida activa, ninguna de estas puede
+         * ejecutarse, porque pisaria la senalizacion del coordinador. */
+        CHECK(diana_maintenance_touches_output(DIANA_MNT_LED_TEST),
+              "led_test toca salida");
+        CHECK(diana_maintenance_touches_output(DIANA_MNT_IDENTIFY),
+              "identify toca salida (las nueve dianas)");
+        CHECK(diana_maintenance_touches_output(DIANA_MNT_PIEZO_TEST),
+              "piezo_test toca salida");
+        CHECK(diana_maintenance_touches_output(DIANA_MNT_START_CALIBRATION),
+              "start_calibration toca salida");
+        CHECK(!diana_maintenance_touches_output(DIANA_MNT_ABORT_CALIBRATION),
+              "abort_calibration NO se bloquea: es 'safety' y se acepta siempre");
+        CHECK(!diana_maintenance_touches_output(DIANA_MNT_QUERY_STATUS),
+              "una lectura pura no toca salida: sigue disponible en partida");
+        CHECK(!diana_maintenance_touches_output(DIANA_MNT_REQUEST_TELEMETRY),
+              "request_telemetry tampoco");
 
         /* Los nombres del contrato, ida y vuelta. */
         diana_maintenance_type mt;

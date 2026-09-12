@@ -151,6 +151,12 @@ contracts:
 # Contador PROPIO.
 	@$(PYTHON) $(FW)/tools/check_maintenance_return_path.py
 
+# AUTHORITY_EXCLUSION. identify estaba declarado 'read' --- "no actua sobre el
+# hardware" --- y repintaba las nueve dianas, pisando la senalizacion del
+# coordinador en mitad de una partida. P1.5 lo pasa a 'act' y P1.6 impone la
+# exclusion EN EL MODULO, que es la ultima autoridad. Contador PROPIO.
+	@$(PYTHON) $(FW)/tools/check_authority_exclusion.py
+
 # ADR-0007. Valida los payloads que llevan `detection_method` contra el contrato
 # de ESTE arbol. Sin descarga ni referencia git: funciona en un clon limpio.
 # La guarda de abajo no es cosmetica: si alguien retira el contrato ADR-0007 de

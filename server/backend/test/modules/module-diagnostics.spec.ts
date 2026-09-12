@@ -292,7 +292,11 @@ describe('Diagnóstico · guardarraíl DOBLE de game_in_progress (backend, no s�
    * dejaría de bloquearse una actuación física durante la partida.
    */
   it('ACTING_COMMAND_TYPES tiene exactamente las órdenes que ACTÚAN, y abort_calibration NO está', () => {
+    // `identify` entra en P1.5: no es una lectura. Ilumina las nueve dianas y
+    // pisaba la señalización del coordinador en mitad de una partida — la
+    // revisión independiente lo encontró como duplicación real de autoridad.
     expect([...ACTING_COMMAND_TYPES].sort()).toEqual([
+      'identify',
       'led_test',
       'piezo_test',
       'self_test',

@@ -270,13 +270,13 @@ diana_maintenance_category diana_maintenance_category_of(diana_maintenance_type 
 {
     switch (t) {
     case DIANA_MNT_REQUEST_TELEMETRY:
-    case DIANA_MNT_IDENTIFY:
     case DIANA_MNT_QUERY_VERSION:
     case DIANA_MNT_QUERY_STATUS:
         return DIANA_MNT_CAT_READ;
     case DIANA_MNT_ABORT_CALIBRATION:
         return DIANA_MNT_CAT_SAFETY;
     case DIANA_MNT_LED_TEST:
+    case DIANA_MNT_IDENTIFY:   /* P1.5: ilumina las nueve dianas */
     case DIANA_MNT_PIEZO_TEST:
     case DIANA_MNT_SELF_TEST:
     case DIANA_MNT_START_CALIBRATION:
@@ -297,5 +297,27 @@ bool diana_maintenance_clock_gate(diana_maintenance_type t, bool clock_ok,
     case DIANA_MNT_CAT_SAFETY: return true;
     case DIANA_MNT_CAT_ACT:
     default:                   return clock_ok && !expired;
+    }
+}
+
+bool diana_maintenance_touches_output(diana_maintenance_type t)
+{
+    switch (t) {
+    case DIANA_MNT_LED_TEST:          /* enciende la diana pedida */
+    case DIANA_MNT_IDENTIFY:          /* barrido cian en las nueve */
+    case DIANA_MNT_PIEZO_TEST:        /* excitaria el piezo */
+    case DIANA_MNT_START_CALIBRATION: /* pone las dianas en calibracion */
+        return true;
+    case DIANA_MNT_ABORT_CALIBRATION:
+        /* 'safety': el contrato exige aceptarla SIEMPRE. Parar lo que otra
+         * orden arranco no puede depender de que haya partida. */
+        return false;
+    case DIANA_MNT_SELF_TEST:
+        /* Hoy solo publica un diagnostico: no mueve ninguna salida. Si alguna
+         * vez llega a encender LEDs o excitar el piezo, tiene que pasar a
+         * true, y por eso esta nombrado y no cae en el default. */
+        return false;
+    default:
+        return false;
     }
 }

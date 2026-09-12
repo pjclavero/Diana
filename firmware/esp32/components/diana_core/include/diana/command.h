@@ -151,10 +151,19 @@ typedef struct {
  * Categoria de una orden de MANTENIMIENTO por su consecuencia
  * (module-maintenance-command.schema.json, README 6-bis).
  *
- *   read   — no tocan el hardware: request_telemetry, identify, query_version,
- *            query_status.
- *   act    — arrancan un proceso o mueven un actuador: led_test, piezo_test,
- *            self_test, start_calibration.
+ *   read   — no tocan el hardware: request_telemetry, query_version,
+ *            query_status. Pueden ejecutarse SIN reloj.
+ *   act    — arrancan un proceso o mueven un actuador: led_test, identify,
+ *            piezo_test, self_test, start_calibration.
+ *
+ *            `identify` se reclasifico de 'read' a 'act' (P1.5): ilumina las
+ *            NUEVE dianas y puede pisar la senalizacion del coordinador en
+ *            mitad de una partida. Llamarlo "lectura" era exactamente la
+ *            categoria ambigua que rompia la separacion de autoridad. Se acepta
+ *            la consecuencia: sin reloj valido ya no se puede hacer parpadear
+ *            el modulo para localizarlo. No hay excepcion ni categoria
+ *            intermedia: "actuaciones fisicas que pueden saltarse 6-bis" seria
+ *            un precedente que complicaria firmware, simulador y backend.
  *   safety — para lo que otra orden arranco: abort_calibration, la unica.
  */
 typedef enum {
@@ -182,6 +191,20 @@ diana_maintenance_category diana_maintenance_category_of(diana_maintenance_type 
  */
 bool diana_maintenance_clock_gate(diana_maintenance_type t, bool clock_ok,
                                   bool expired);
+
+/**
+ * true si la orden MODIFICA una salida fisica del modulo (LEDs, actuadores).
+ *
+ * Es la frontera de P1.6: mientras haya autoridad de JUEGO activa, ninguna
+ * orden de mantenimiento puede tocar esas salidas, porque pisaria la
+ * senalizacion del coordinador. Las lecturas puras siguen funcionando: durante
+ * una partida se puede seguir preguntando estado y version.
+ *
+ * `abort_calibration` queda FUERA a proposito: es la unica orden 'safety' y el
+ * contrato exige que se acepte siempre. Parar algo que ya esta en marcha no
+ * puede depender de que haya una partida.
+ */
+bool diana_maintenance_touches_output(diana_maintenance_type t);
 
 /**
  * Inicializa el guardian y CARGA de NVS el ultimo nonce aceptado por emisor.

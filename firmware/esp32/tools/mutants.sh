@@ -323,6 +323,39 @@ void diana_publish_maintenance_result' \
 
 void diana_publish_maintenance_result'
 
+AUTH='python3 firmware/esp32/tools/check_authority_exclusion.py'
+
+# M30 · identify vuelve a ser 'read': se ejecutaria sin reloj y, peor, se
+# colaria durante una partida repintando las nueve dianas.
+mutate "M30 identify de vuelta a lectura" \
+  "$CORE/src/command.c" \
+  '    case DIANA_MNT_REQUEST_TELEMETRY:
+    case DIANA_MNT_QUERY_VERSION:' \
+  '    case DIANA_MNT_REQUEST_TELEMETRY:
+    case DIANA_MNT_IDENTIFY:
+    case DIANA_MNT_QUERY_VERSION:' \
+  "$TEST" '    case DIANA_MNT_IDENTIFY:
+    case DIANA_MNT_QUERY_VERSION:'
+
+# M31 · se retira la exclusion del firmware: el backend seguiria impidiendolo,
+# pero el modulo dejaria de ser la ultima autoridad y cualquier orden que
+# llegara por otra via pisaria los LEDs del juego.
+mutate "M31 sin exclusion juego/mantenimiento en el modulo" \
+  "$MAIN/app_commands.c" \
+  '    if (diana_maintenance_touches_output(type) &&
+        diana_module_fsm_game_in_progress(&a->fsm)) {' \
+  '    if (false && diana_maintenance_touches_output(type) &&
+        diana_module_fsm_game_in_progress(&a->fsm)) {' \
+  "$AUTH" 'if (false && diana_maintenance_touches_output(type)'
+
+# M32 · led_test deja de contar como "modifica salida": la exclusion existe
+# pero no cubre justo la orden que enciende LEDs.
+mutate "M32 led_test no modifica salida" \
+  "$CORE/src/command.c" \
+  '    case DIANA_MNT_LED_TEST:          /* enciende la diana pedida */' \
+  '    case DIANA_MNT_LED_TEST_NUNCA:' \
+  "$TEST" 'case DIANA_MNT_LED_TEST_NUNCA:'
+
 printf '\n=================================================\n'
 printf ' CALIBRACION: %d mutantes cazados, %d huecos\n' "$pass" "$fail"
 printf '=================================================\n'

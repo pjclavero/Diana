@@ -524,6 +524,34 @@ static void handle_maintenance(diana_app *a, const cJSON *root,
         return;
     }
 
+    /* P1.6 · EXCLUSION JUEGO <-> MANTENIMIENTO.
+     *
+     * Con una partida en curso, el coordinador es la autoridad sobre los LEDs.
+     * Una orden de mantenimiento que toque salidas fisicas borraria su
+     * senalizacion en mitad del juego --- `identify` repinta las NUEVE dianas
+     * con el barrido cian ---, asi que se rechaza AQUI. El backend tambien lo
+     * impide antes de publicar, pero el modulo es la ultima autoridad: esconder
+     * el boton en el panel no es una defensa, y una orden puede llegar por otra
+     * via (una reentrega, un operador con la API, un backend futuro).
+     *
+     * Las lecturas puras siguen funcionando durante la partida: preguntar
+     * estado o version no molesta a nadie. */
+    if (diana_maintenance_touches_output(type) &&
+        diana_module_fsm_game_in_progress(&a->fsm)) {
+        diana_command_verdict vg;
+        memset(&vg, 0, sizeof(vg));
+        vg.result = DIANA_CMD_RESULT_REJECTED;
+        vg.reason = DIANA_REJECT_GAME_IN_PROGRESS;
+        snprintf(vg.detail, sizeof(vg.detail),
+                 "%s modifica salidas y hay partida en curso: manda el coordinador",
+                 diana_maintenance_type_str(type));
+        ESP_LOGW(TAG, "mantenimiento %s DENEGADO: %s",
+                 diana_maintenance_type_str(type), vg.detail);
+        diana_publish_command_rejected(a, cmd.command_id, vg.reason, vg.detail);
+        remember_verdict(a, cmd.command_id, vg);
+        return;
+    }
+
     diana_command_verdict v =
         diana_command_validate(&a->guard, &cmd, a->id.module_id, &clk);
     if (v.result != DIANA_CMD_RESULT_ACCEPTED) {

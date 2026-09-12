@@ -275,12 +275,16 @@ describe('maintenance/command · game_in_progress (leer sí, actuar no)', () => 
     }
   });
 
-  it('los cuatro command_type de leer se aceptan con partida activa', async () => {
+  it('los TRES command_type de leer se aceptan con partida activa', async () => {
     const { sim, moduleId } = await makeSim();
     const m = sim.modules.get(moduleId)!;
     m.setModuleState('game_active');
 
-    const readCommands = ['request_telemetry', 'identify', 'query_version', 'query_status'];
+    // `identify` salió de esta lista en P1.5: ilumina las nueve dianas, así que
+    // es 'act' y con partida activa manda el coordinador. Mantenerlo aquí haría
+    // que el simulador aceptara durante el juego algo que el módulo real
+    // rechaza — la divergencia que convierte al simulador en un falso verde.
+    const readCommands = ['request_telemetry', 'query_version', 'query_status'];
     let i = 0;
     for (const commandType of readCommands) {
       i += 1;

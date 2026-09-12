@@ -40,8 +40,16 @@ export interface DiagnosticsActor {
  * piezo, disparan un autodiagnóstico o una calibración). El contrato v1.1
  * (README §6-bis) y la orden expresa del operador coinciden en un mismo
  * corte: éstos, y sólo éstos, se bloquean si hay una partida activa sobre el
- * panel del módulo. `identify`, `request_telemetry`, `query_version` y
- * `query_status` son "leer" y se permiten siempre.
+ * panel del módulo. `request_telemetry`, `query_version` y `query_status` son
+ * "leer" y se permiten siempre.
+ *
+ * `identify` ESTÁ aquí desde P1.5. Estaba clasificado como lectura y no lo es:
+ * ilumina las NUEVE dianas con el barrido cian y sobreescribe la señalización
+ * del coordinador en mitad de una partida. La revisión independiente lo
+ * encontró como duplicación real de autoridad —el backend podía borrar los
+ * LEDs del juego con una orden que el contrato declaraba inocua—. Se acepta la
+ * consecuencia: sin reloj válido ya no se puede hacer parpadear un módulo para
+ * localizarlo. No se abre una categoría intermedia para salvar ese caso.
  *
  * `abort_calibration` NO está aquí: el contrato lo puso en una TERCERA
  * categoría, "seguridad" (`module-maintenance-command.schema.json`,
@@ -55,6 +63,7 @@ export interface DiagnosticsActor {
  */
 export const ACTING_COMMAND_TYPES: ReadonlySet<MaintenanceCommandType> = new Set([
   'led_test',
+  'identify',
   'piezo_test',
   'self_test',
   'start_calibration',

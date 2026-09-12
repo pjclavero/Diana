@@ -98,7 +98,11 @@ type MaintenanceCommandCategory = 'read' | 'act' | 'safety';
 
 const MAINTENANCE_COMMAND_CATEGORY: Readonly<Record<string, MaintenanceCommandCategory>> = {
   request_telemetry: 'read',
-  identify: 'read',
+  // P1.5: `identify` es ACT, no lectura. Ilumina las nueve dianas y puede pisar
+  // la señalización del coordinador; el contrato lo reclasificó y el firmware
+  // físico también. Dejarlo aquí como 'read' haría que el simulador aceptara
+  // sin reloj algo que el módulo real rechaza: un falso verde por divergencia.
+  identify: 'act',
   query_version: 'read',
   query_status: 'read',
   led_test: 'act',
