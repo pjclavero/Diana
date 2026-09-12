@@ -52,22 +52,23 @@ reported_config_version    0      <- lo que cierra el gate de configuración
 
 ## Pendientes físicos, en orden
 
-1. **Flashear primero.** El firmware de la placa es anterior a los arreglos:
-   sin reflashear, ni la cola ni la configuración pueden cerrarse.
-2. **Flashear el candidato limpio** (sólo aplicación). En el arranque hay que
+1. **Flashear el candidato limpio** (sólo aplicación). Va primero, y no
+   después de un golpe: el firmware de la placa es anterior a los dos
+   arreglos, así que sin reflashear ni la cola ni la configuración pueden
+   cerrarse. En el arranque hay que
    ver, en este orden: `[OK] CONNACK aceptado`, luego
    `[OK] N suscripciones emitidas tras el CONNACK`, luego
    `config v1 APLICADA y persistida`, y el aviso de la cola retirando los 8
    eventos de la identidad anterior por una sola vez.
-3. **Comprobar en VM109**: `reported_config_version = 1`, `config_state =
+2. **Comprobar en VM109**: `reported_config_version = 1`, `config_state =
    applied`, `config_applied_at` no nulo. Cierra `CONFIG_RECONCILIATION_PHYSICAL`.
-4. **Reiniciar otra vez**: el retenido vuelve y el log debe decir
+3. **Reiniciar otra vez**: el retenido vuelve y el log debe decir
    `noop, se redeclara`, no un segundo «APLICADA». Eso demuestra la
    persistencia en NVS y que no hay bucle.
-5. **Golpe único en D1** → debe publicarse (la cola ya no lo bloquea) y cerrar
+4. **Golpe único en D1** → debe publicarse (la cola ya no lo bloquea) y cerrar
    `QUEUE_IDENTITY_BINDING_PHYSICAL_GATE`.
-6. **Comando desde el panel → LED físico**.
-7. **Los tres juegos**, `reconnect` y `endurance` de una hora.
+5. **Comando desde el panel → LED físico**.
+6. **Los tres juegos**, `reconnect` y `endurance` de una hora.
 
 ## Comandos exactos para rearmar el vigilante
 
