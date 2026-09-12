@@ -486,6 +486,10 @@ void diana_task_telemetry(void *arg)
     diana_app *a = (diana_app *)arg;
     esp_task_wdt_add(NULL);
     uint64_t last_versionr_us = 0;
+    /* Arranca en true para que el PRIMER paso por el bucle anuncie el estado
+     * real: el modulo arranca siempre sin hora, y un "false -> false" silencioso
+     * dejaria el caso normal sin registrar. */
+    bool clock_valido_anterior = true;
 
     for (;;) {
         esp_task_wdt_reset();
@@ -523,6 +527,25 @@ void diana_task_telemetry(void *arg)
          * lectura cada DIANA_VERSIONR_PERIOD_US, por el mismo camino SPI y bajo
          * el mismo mutex. Sirve para detectar en caliente una degradacion
          * 0x04 -> 0x00 durante la endurance, invisible de otro modo. */
+        /* CLOCK_VALID observable. Sin esto, "el modulo no tiene hora" solo se
+         * podia deducir de que los comandos 'act' se rechazaban --- es decir,
+         * por su consecuencia y no por su causa. La transicion se anuncia UNA
+         * vez, para no convertir el log en un goteo. */
+        {
+            uint64_t epoch = a->hal.epoch_ms ? a->hal.epoch_ms(a->hal.ctx) : 0;
+            bool valido = (epoch > 0);
+            if (valido != clock_valido_anterior) {
+                clock_valido_anterior = valido;
+                if (valido)
+                    ESP_LOGI(TAG, "CLOCK_VALID=true (epoch_ms=%llu): la caducidad "
+                                  "de comandos ya se verifica",
+                             (unsigned long long)epoch);
+                else
+                    ESP_LOGW(TAG, "CLOCK_VALID=false: sin hora de pared; el "
+                                  "repertorio 'act' de mantenimiento se rechaza");
+            }
+        }
+
         if (now - last_versionr_us >= DIANA_VERSIONR_PERIOD_US) {
             last_versionr_us = now;
             uint8_t vr = 0;

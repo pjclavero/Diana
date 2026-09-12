@@ -134,6 +134,11 @@ contracts:
 # topico. Contador PROPIO, no sumado a los demas.
 	@$(PYTHON) $(FW)/tools/check_topic_subscriptions.py
 
+# CLOCK_SOURCE. Sin hora de pared la regla 6-bis rechaza todo el repertorio
+# 'act' del canal de mantenimiento: el panel no puede pedir nada que mueva
+# hardware. net_w5500.c no se compila en host. Contador PROPIO.
+	@$(PYTHON) $(FW)/tools/check_clock_source.py
+
 # ADR-0007. Valida los payloads que llevan `detection_method` contra el contrato
 # de ESTE arbol. Sin descarga ni referencia git: funciona en un clon limpio.
 # La guarda de abajo no es cosmetica: si alguien retira el contrato ADR-0007 de

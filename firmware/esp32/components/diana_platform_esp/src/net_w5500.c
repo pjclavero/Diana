@@ -321,20 +321,51 @@ static void start_sntp(void)
 {
     esp_sntp_config_t cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG(CONFIG_DIANA_NTP_HOST);
     cfg.start = true;
-    cfg.server_from_dhcp = true;      /* si el DHCP ofrece NTP, se usa */
-    cfg.renew_servers_after_new_IP = true;
     cfg.sync_cb = NULL;
+
+    /* El servidor del DHCP es un EXTRA, nunca el requisito.
+     *
+     * Estaba puesto a true incondicionalmente, y esa opcion exige
+     * CONFIG_LWIP_DHCP_GET_NTP_SRV en lwIP. Sin ella, esp_netif_sntp_init()
+     * falla ENTERO --- no "ignora el extra": se lleva por delante tambien el
+     * servidor explicito --- y el modulo se queda sin hora para siempre. Medido
+     * en el banco:
+     *
+     *   E esp_netif_sntp: Tried to configure SNTP server from DHCP, while
+     *                     disabled. Please enable CONFIG_LWIP_DHCP_GET_NTP_SRV
+     *   E esp_netif_sntp: esp_netif_sntp_init(119): Failed initialize SNTP
+     *
+     * Con la caducidad de comandos medida contra hora de pared, eso dejaba
+     * VETADO todo el repertorio 'act' del canal de mantenimiento. Un extra no
+     * puede tumbar el camino principal. */
+#ifdef CONFIG_LWIP_DHCP_GET_NTP_SRV
+    cfg.server_from_dhcp = true;
+    cfg.renew_servers_after_new_IP = true;
+#else
+    cfg.server_from_dhcp = false;
+    cfg.renew_servers_after_new_IP = false;
+#endif
 
     esp_err_t err = esp_netif_sntp_init(&cfg);
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
         /* Sin hora, el modulo SIGUE operando: la defensa contra reproduccion
          * pasa a ser el nonce persistido, y cada comando aceptado lo declara
-         * en su veredicto. No se bloquea el arranque por esto. */
-        ESP_LOGW(TAG, "SNTP no disponible: la caducidad de comandos no se "
-                      "podra verificar (defensa por nonce persistido)");
+         * en su veredicto. No se bloquea el arranque por esto. Lo que SI se
+         * dice es el codigo exacto: "no disponible" sin motivo obligaba a
+         * reproducir el fallo con la placa delante. */
+        ESP_LOGW(TAG, "SNTP no arranco (%s): sin hora de pared no se verifica "
+                      "la caducidad; el repertorio 'act' de mantenimiento se "
+                      "rechazara (README 6-bis)", esp_err_to_name(err));
         return;
     }
-    ESP_LOGI(TAG, "SNTP arrancado contra %s", CONFIG_DIANA_NTP_HOST);
+    ESP_LOGI(TAG, "SNTP arrancado contra %s (servidor del DHCP: %s)",
+             CONFIG_DIANA_NTP_HOST,
+#ifdef CONFIG_LWIP_DHCP_GET_NTP_SRV
+             "tambien"
+#else
+             "no, lwIP sin CONFIG_LWIP_DHCP_GET_NTP_SRV"
+#endif
+    );
 }
 
 static void got_ip_handler(void *arg, esp_event_base_t base, int32_t id,

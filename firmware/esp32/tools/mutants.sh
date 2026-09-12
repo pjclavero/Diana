@@ -234,6 +234,25 @@ mutate "M22 read exigiendo reloj" \
   '    case DIANA_MNT_CAT_READ:   return clock_ok;' \
   "$TEST" 'case DIANA_MNT_CAT_READ:   return clock_ok;'
 
+CLOCK='python3 firmware/esp32/tools/check_clock_source.py'
+
+# M23 · vuelve el server_from_dhcp incondicional: esp_netif_sntp_init falla
+# entero, el modulo se queda sin hora y el repertorio 'act' queda vetado. Es el
+# defecto exacto que se midio en el banco, y la suite de host no lo ve.
+mutate "M23 SNTP dependiendo del DHCP" \
+  "$PESP/src/net_w5500.c" \
+  '#ifdef CONFIG_LWIP_DHCP_GET_NTP_SRV
+    cfg.server_from_dhcp = true;
+    cfg.renew_servers_after_new_IP = true;
+#else
+    cfg.server_from_dhcp = false;
+    cfg.renew_servers_after_new_IP = false;
+#endif' \
+  '    cfg.server_from_dhcp = true;
+    cfg.renew_servers_after_new_IP = true;' \
+  "$CLOCK" '    cfg.server_from_dhcp = true;
+    cfg.renew_servers_after_new_IP = true;'
+
 printf '\n=================================================\n'
 printf ' CALIBRACION: %d mutantes cazados, %d huecos\n' "$pass" "$fail"
 printf '=================================================\n'
