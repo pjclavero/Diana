@@ -2,6 +2,7 @@
 
 **Fecha:** 2026-09-13 · **Máquina:** VM109 `diana-server` (192.168.1.209) · **Severidad:** alta (pérdida silenciosa de servicio)
 **Estado:** diagnosticado parcialmente, **sin corregir** (por decisión del operador: primero plan, luego arreglo)
+**Revisión 2 (2026-09-13):** la sección 6 de la versión original contenía una afirmación FALSA sobre la persistencia de Mosquitto. Corregida y explicada abajo.
 
 ---
 
@@ -71,22 +72,48 @@ docker inspect diana-mosquitto-1
 
 - *Montaje tardío de `/opt/diana`*: `findmnt` confirma que está en `/dev/sda1` sobre la raíz ext4. No hay unidad de montaje separada que pudiera llegar después que Docker.
 - *Permisos del ACL* (incidencia D6 conocida, que dejaba el contenedor en `Exited(13)`): el código aquí es 255 y el fichero está en 644.
+- *Pérdida de la base de retenidos*: descartada — vive en un volumen nombrado (ver §6).
 
-## 6. Segunda fragilidad, independiente y encontrada de paso
+## 6. CORRECCIÓN · la «segunda fragilidad» que publiqué NO existe
 
-El broker declara persistencia:
+**La primera versión de este informe afirmaba que `/mosquitto/data` no tenía volumen y que
+cualquier recreación del contenedor borraría los retenidos. Es falso.** Queda aquí en vez de
+borrarse, porque el error de método importa más que el dato.
+
+Lo verificado, en los dos extremos:
 
 ```
-persistence true
-persistence_location /mosquitto/data/
-persistence_file mosquitto.db
+compose.yml:442        - mosquitto_data:/mosquitto/data
+compose.yml:713-714    mosquitto_data:  name: diana_mosquitto_data
+producción             docker inspect diana-mosquitto-1
+                       volume diana_mosquitto_data -> /mosquitto/data  rw=true
+                       /var/lib/docker/volumes/diana_mosquitto_data/_data/mosquitto.db
+                       9223 bytes · uid 1883 · mtime 2026-09-13 02:36
 ```
 
-pero **el compose no monta ningún volumen en `/mosquitto/data`**. Sólo se montan, en solo lectura, la configuración, el `acl`, el `passwd` y los tres ficheros TLS. La base de retenidos vive por tanto en la **capa de escritura del contenedor**.
+El volumen existe desde el commit original del compose, está en producción y `mosquitto.db`
+vive en él. **Los retenidos sobreviven a recrear el contenedor.**
 
-Consecuencia: sobrevive a un `docker start` o `restart`, pero **cualquier recreación del contenedor borra todos los mensajes retenidos**, en silencio. Entre ellos `module/+/config/desired`, que es el mecanismo por el que los módulos reciben su configuración. Un `docker compose up -d --force-recreate` rutinario dejaría a los módulos sin configuración deseada sin un solo error visible.
+**Cómo se produjo el error, que es lo que hay que no repetir:** se leyó una ventana de veinte
+líneas del compose (`sed -n '311,330p'`), se vio que la lista de `volumes` contenía sólo
+configuración y certificados, y se concluyó que no había volumen de datos. La lista continuaba
+más abajo. Una ventana truncada leída como si fuera la lista completa — el mismo patrón contra
+el que este proyecto lleva toda la sesión: afirmar sobre lo que no se ha observado entero.
 
-Durante la recuperación de esta incidencia se usó `docker start` **deliberadamente** en lugar de `up`, por este motivo. Se verificó después que el estado seguía íntegro: `module-01` en línea, `configState=applied`, deseada 1 = reportada 1.
+**Consecuencias:**
+
+- La fase «migrar la persistencia de Mosquitto» **no tiene objeto**: ya está migrada. Lo que sí
+  queda por hacer es lo contrario de lo que decía este informe: **demostrar** que se conserva —
+  recreando el contenedor de verdad y comprobando los retenidos — y dejar un control negativo
+  que detecte una regresión futura.
+- La recuperación se hizo con `docker start` en vez de `up` por esta premisa falsa. Fue
+  conservador y no causó daño, pero no era necesario por el motivo que se creyó.
+- **El fallo de arranque sigue sin explicación.** La persistencia nunca fue candidata a causa;
+  descartarla no acerca el diagnóstico.
+
+Lo que sí sigue en pie y merece verificarse en A1: que el UID/GID del volumen (1883) y sus
+permisos son correctos, y que `mosquitto.db` se escribe de verdad al cerrar (el log del cierre
+limpio mostraba `Saving in-memory database`, así que hay indicio, no prueba, de que sí).
 
 ## 7. Contexto: por qué se reinició la VM
 
@@ -107,7 +134,7 @@ Por orden de lo que este incidente demuestra que falta:
 1. **Que la ausencia de un servicio se note.** Es lo más urgente y lo más barato. Hoy nada distingue «broker caído» de «todo bien» desde fuera. Cualquier arreglo del arranque puede volver a fallar; que no avise, no debería.
 2. **Determinar la causa real del `unless-stopped` que no aplicó**, antes de elegir remedio. Cambiar a `restart: always`, o añadir una unidad `systemd` que ejecute `docker compose up -d` tras `docker.service`, son parches razonables — pero elegir sin saber por qué falló arriesga tapar el síntoma.
 3. **Reproducirlo.** El fallo se da con un reinicio limpio, así que es reproducible a voluntad en una ventana controlada. Sin reproducción no hay forma de saber si un arreglo arregla.
-4. **Montar un volumen en `/mosquitto/data`.** Independiente de lo anterior y sin riesgo apreciable; hoy los retenidos dependen de que nadie recree el contenedor.
+4. **Demostrar la persistencia que ya existe.** El volumen está montado (§6); lo que falta es la prueba de que los retenidos sobreviven a una recreación real del contenedor, y un control negativo, versionado, que se ponga rojo si alguien quita ese volumen.
 5. **Verificación de arranque como parte del procedimiento de despliegue**: contar 7/7 y comprobar el broker explícitamente, no confiar en que `/api/health` responda.
 
 ## 10. Deuda relacionada, ya registrada
@@ -118,4 +145,4 @@ Por orden de lo que este incidente demuestra que falta:
 
 ---
 
-*Recuperación aplicada en esta incidencia: `docker start diana-mosquitto-1` (NO `up --force-recreate`). Comprobado después: 7/7 contenedores sanos, `module-01` y backend reconectados, `configState=applied`, panel libre.*
+*Recuperación aplicada en esta incidencia: `docker start diana-mosquitto-1`, elegido por una premisa que resultó falsa (ver §6); conservador, pero no necesario por el motivo que se creyó. Comprobado después: 7/7 contenedores sanos, `module-01` y backend reconectados, `configState=applied`, panel libre.*
